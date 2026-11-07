@@ -4,7 +4,7 @@ import {ModController} from '../src/controller.js';
 const mod=new ModController(service), content=document.querySelector('#content'), message=document.querySelector('#message'), enabled=document.querySelector('#enabled');
 let running=false, current=null;
 const el=(tag,text)=>{const e=document.createElement(tag); if(text!==undefined)e.textContent=text;return e;};
-async function perform(fn){if(running)return;running=true;message.textContent='Working…';try{await fn(); message.textContent='Done.';}catch(e){message.textContent=e.message;}finally{running=false;await refresh(true);}}
+async function perform(fn){if(running)return;running=true;document.querySelectorAll('button,input,select').forEach(e=>e.disabled=true);message.textContent='Working…';try{await fn(); message.textContent='Done.';}catch(e){message.textContent=e.message;}finally{running=false;await refresh(true);}}
 function button(parent,text,op,value=null,disabled=false){const b=el('button',text);b.disabled=disabled;b.onclick=()=>perform(()=>mod.action(op,value));parent.append(b);}
 function section(title,text){const s=el('section');s.append(el('h2',title),el('p',text));content.append(s);return s;}
 function render(s){
