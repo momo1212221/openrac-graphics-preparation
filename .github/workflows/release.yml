@@ -1,0 +1,82 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test
+        run: |
+          node --test
+          python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Build release artifacts
+        run: python3 tools/package.py
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("openrac-mod.json"))["version"])')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Mark v0.1.0 as obsolete preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view v0.1.0 >/dev/null 2>&1; then
+            gh release edit v0.1.0 \
+              --title "Graphics preparation 0.1.0 — obsolete preview" \
+              --prerelease \
+              --notes "OBSOLETE PREVIEW — do not install this on current official OpenRAC.
+
+This release requires the older momo1212221/OpenRAC fork launcher with the launcher-service bridge.
+
+Use v0.2.0 or newer for current official OpenRAC, including Steam Deck/Linux."
+          fi
+
+      - name: Publish current release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists; leaving it unchanged."
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            "dist/graphics-preparation-$VERSION.zip" \
+            "dist/openrac-graphics-helper.py" \
+            "dist/SHA256SUMS" \
+            --target "$GITHUB_SHA" \
+            --title "Graphics preparation $VERSION" \
+            --notes "Current official OpenRAC compatible release.
+
+- Uses the documented OpenRAC mod-tool page API.
+- No launcher-service bridge is required.
+- Enhanced lighting/GI, probe baking, water and reflections use OpenRAC's built-in path.
+- Ultra/AI texture preparation currently uses the separately started helper.
+- AI mesh preparation is not implemented yet.
+
+For Steam Deck/Linux, install graphics-preparation-$VERSION.zip through Mods -> Add mod -> ZIP."
