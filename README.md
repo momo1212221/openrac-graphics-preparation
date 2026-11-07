@@ -1,19 +1,126 @@
 # Graphics preparation
 
-An independently installed OpenRAC launcher mod, maintained and released from this repository.
+A companion tool for the **current official OpenRAC launcher**.
+
+Version 0.2 removes the private `launcher-service` dependency and uses only OpenRAC's documented
+protocol-1 mod-tool page API.
+
+## Compatibility with current OpenRAC
+
+The mod itself now works with the current official OpenRAC launcher.
+
+OpenRAC already provides the native preparation path for:
+
+- enhanced lighting / GI
+- probe baking
+- interior lighting
+- water preparation
+- reflections
+
+For those features, use:
+
+**Mods -> Enhanced graphics -> Prepare the enhanced lighting**
+
+No external helper is required for that built-in OpenRAC path.
+
+## External helper required for Ultra / AI textures
+
+Ultra textures and AI-texture preparation are different.
+
+The official OpenRAC mod page runs in a sandbox and intentionally cannot start arbitrary local
+programs. Therefore the mod cannot launch the texture upscaler itself.
+
+For **Ultra textures** and **AI textures**, you must currently:
+
+1. Open **Graphics preparation** in OpenRAC.
+2. Export the requested JSON job.
+3. Start `openrac-graphics-helper.py` externally.
+4. Let the helper create the prepared OpenRAC overrides-pack ZIP.
+5. Install that ZIP through **Mods -> Add mod -> ZIP**.
+
+The helper is not needed for the normal Enhanced graphics lighting bake.
 
 ## Install
 
-Requires the **momo1212221/OpenRAC fork launcher 1.0.5 or newer**, with the launcher-service bridge. It does not run on unmodified official launchers: their tool pages deliberately cannot run the baker or write saves.
+1. Build with `python3 tools/package.py` or download the release artifacts.
+2. In official OpenRAC choose **Mods -> Add mod -> ZIP**.
+3. Select `graphics-preparation-0.2.0.zip`.
+4. Open **Graphics preparation** from the mod page.
 
-Download `graphics-preparation-0.1.0.zip` from this repository's Releases. In the launcher choose **Mods → Add mod → ZIP**, then open **Graphics preparation**. The launcher asks for the specific service permission before showing the page. Enable the feature inside the mod. Remove it from the normal mod page to uninstall; existing caches and save archives stay intact. Uninstalling disables automatic work.
+No fork launcher and no `launcher-service` bridge are required.
 
-## Graphics
+## Running the external texture helper
 
-The mod owns preparation controls, settings and job orchestration for lighting/GI, water/cloud baking, Ultra textures and AI assets. It can prepare while Enhanced graphics is off. Enable Enhanced graphics as well to render prepared lighting and clouds; Metal sunlight uses the native port bridge. The game renderer remains Vulkan/MoltenVK, not a separate replacement Metal renderer. Baker binaries and native rendering code come from the compatible fork launcher, not from a copied disc or this ZIP. AI preparation needs the supported local AI backend.
+Example:
+
+```sh
+python3 openrac-graphics-helper.py openrac-rac1-pal-ultra-textures.json \
+  --openrac-root /path/to/OpenRAC \
+  --out ./prepared
+```
+
+The helper looks for `realesrgan-ncnn-vulkan` in `PATH`.
+
+You can override the executable with:
+
+```sh
+python3 openrac-graphics-helper.py job.json \
+  --openrac-root /path/to/OpenRAC \
+  --upscaler /path/to/realesrgan-ncnn-vulkan
+```
+
+or set:
+
+```sh
+OPENRAC_TEXTURE_UPSCALER=/path/to/realesrgan-ncnn-vulkan
+```
+
+The helper uses OpenRAC's own `editor/assets.py` exporter/importer. It exports the available
+`level_XX` assets, processes their PNG textures, imports the changes again and creates a normal
+OpenRAC overrides-pack ZIP.
+
+If the exported OpenRAC levels are stored outside the checkout, pass:
+
+```sh
+--levels /path/to/levels
+```
+
+Use `--dry-run` to validate the job and print the intended processing steps without starting
+OpenRAC tools or the texture upscaler.
+
+## AI meshes
+
+The portable job format already reserves an **AI meshes** operation, but it is not functional yet.
+
+Current official OpenRAC does not ship a mesh upscaler, so a separate mesh backend must be selected
+and integrated before this operation can run.
+
+## Security model
+
+The OpenRAC mod page remains sandboxed.
+
+It uses only the official mod-tool calls needed for the UI, such as `info`, `save`, `open` and
+optional mod-store access.
+
+The page cannot:
+
+- execute terminal commands
+- start the external helper by itself
+- choose arbitrary filesystem paths
+- start arbitrary local programs
+- connect to a privileged localhost service
+
+The external helper runs only when the user starts it separately.
 
 ## Develop
 
-`node --test` runs dependency-free controller tests. `python3 tools/package.py` creates a deterministic installable ZIP and SHA256SUMS. The UI is sandboxed and uses the documented `service` message with a fixed operation allowlist. No terminal command or arbitrary filesystem path is accepted. This repository contains no game, disc, model weights or save data.
+```sh
+node --test
+python3 -m unittest discover -s tests -p 'test_*.py'
+python3 tools/package.py
+```
 
-GPL-3.0-or-later. Derived from the user's OpenRAC fork; underlying host services remain in that GPL project.
+The package build is deterministic and produces the installable mod ZIP plus the helper script, with
+hashes in `dist/SHA256SUMS`.
+
+GPL-3.0-or-later. No game, disc, save data or model weights are included.
