@@ -2,25 +2,17 @@
   "format": 2,
   "id": "graphics-preparation",
   "name": "Graphics preparation",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "OpenRAC fork contributors",
-  "description": "Independent lighting/GI, water/cloud baking and Ultra/AI asset preparation. Works alongside Enhanced graphics.",
+  "description": "Preparation companion for official OpenRAC: delegates built-in enhanced lighting and exports portable helper jobs for offline texture/AI preparation.",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/momo1212221/openrac-graphics-preparation",
   "games": {
-    "rac1": [
-      "pal",
-      "ntsc"
-    ],
-    "rac2": [
-      "ntsc",
-      "pal",
-      "ntsc2"
-    ]
+    "rac1": ["pal", "ntsc"],
+    "rac2": ["ntsc", "pal", "ntsc2"]
   },
   "tool": {
-    "page": "ui/index.html",
-    "service": "graphics-preparation"
+    "page": "ui/index.html"
   },
   "multiplayer": "cosmetic"
 }
