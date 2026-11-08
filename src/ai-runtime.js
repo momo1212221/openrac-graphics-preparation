@@ -602,19 +602,56 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     outputCtx.drawImage(alpha, 0, 0);
     outputCtx.restore();
 
-    const outData = outputCtx.getImageData(0, 0, output.width, output.height);
+    let outData = outputCtx.getImageData(0, 0, output.width, output.height);
     const stats = restoreSourceDetail(sourceData, outData, mode, preserveMicrodetail, preserveStars, {
       detailQuality: effectiveQuality,
       textureClass,
       material,
     });
-    if(sourceColorLock && textureClass!=="normal" && textureClass!=="mask"){
-      lockSourceChroma(sourceData,outData,effectiveQuality==="max"?.82:.70);
-    }
     const cnnRejectedRatio=consideredDetailPixels?rejectedDetailPixels/consideredDetailPixels:0;
+    const agreement=cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1;
+    const confidence=cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1;
+    const baseline=new ImageData(new Uint8ClampedArray(outData.data),outData.width,outData.height);
+    if(sourceColorLock && textureClass!=="normal" && textureClass!=="mask"){
+      lockSourceChroma(sourceData,baseline,effectiveQuality==="max"?.82:.70);
+    }
+
+    let specializedCnnUsed=false,specializedRejected=false,specializedModelSha=null;
+    if(effectiveQuality==="max"&&textureClass==="diffuse"){
+      try{
+        const refined=await specializedRefine(outData,material,runtime,wrap);
+        if(refined){
+          const candidate=refined.image;
+          if(sourceColorLock)lockSourceChroma(sourceData,candidate,.82);
+          const baseMetrics=qualityMetrics(sourceData,baseline,{
+            cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,
+          });
+          const candidateMetrics=qualityMetrics(sourceData,candidate,{
+            cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,
+          });
+          const safe=(candidateMetrics.score>=baseMetrics.score-1)
+            && (candidateMetrics.hallucinationScore<=baseMetrics.hallucinationScore+3)
+            && (candidateMetrics.colorDrift<=baseMetrics.colorDrift+2);
+          if(safe){
+            outData=candidate;
+            specializedCnnUsed=true;
+            specializedModelSha=refined.runtime.sha256;
+          }else{
+            outData=baseline;
+            specializedRejected=true;
+          }
+        }else{
+          outData=baseline;
+        }
+      }catch{
+        outData=baseline;
+      }
+    }else{
+      outData=baseline;
+    }
     const metrics=qualityMetrics(sourceData,outData,{
-      cnnAgreement:cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1,
-      cnnConfidence:cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1,
+      cnnAgreement:agreement,
+      cnnConfidence:confidence,
       cnnRejectedRatio,
     });
     if(wrap.x||wrap.y)metrics.expectSeamless=true;
@@ -633,7 +670,10 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       rejectedDetailPixels,
       consideredDetailPixels,
       cnnRejectedRatio,
-      cnnConfidence:cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1,
+      cnnConfidence:confidence,
+      specializedCnnUsed,
+      specializedRejected,
+      specializedModelSha,
       metrics,
       failures,
       classification,
