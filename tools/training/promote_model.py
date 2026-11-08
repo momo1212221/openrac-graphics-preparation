@@ -34,6 +34,7 @@ def main():
         "validation":validation.name,
         "l1_improvement":report["l1_improvement"],
         "gradient_improvement":report["gradient_improvement"],
+        "laplacian_improvement":report.get("laplacian_improvement"),
         "dataset_manifest_sha256":report.get("dataset_manifest_sha256"),
         "dataset_input_pipeline":report.get("dataset_input_pipeline"),
         "base_model_sha256":report.get("base_model_sha256"),
