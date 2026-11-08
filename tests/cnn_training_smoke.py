@@ -11,6 +11,7 @@ import numpy as np
 import onnxruntime as ort
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -70,7 +71,53 @@ def main():
     if report["release_gate_pass"]:
         raise AssertionError("identity baseline must not pass the release gate")
 
-    # 5) Exported ONNX must preserve dynamic spatial dimensions and run on CPU ORT.
+    # 5) The CNN must actually learn source-derived detail on held-out inputs.
+    # The target is a conservative high-frequency residual computed from the input itself,
+    # so improvement measures reconstruction ability rather than memorising invented texture.
+    torch.manual_seed(42)
+    learn_x=torch.rand(10,3,16,16)*.65+.175
+    learn_blur=F.avg_pool2d(learn_x,3,1,1)
+    learn_y=torch.clamp(learn_x+(learn_x-learn_blur)*.22,0,1)
+    train_x,train_y=learn_x[:8],learn_y[:8]
+    val_x,val_y=learn_x[8:],learn_y[8:]
+    learner=train_detail.DetailCNN(c=8,blocks=1).cpu().train()
+    learner_opt=torch.optim.AdamW(learner.parameters(),lr=2e-3)
+    with torch.no_grad():
+        initial,initial_colour,initial_gx,initial_gy=train_detail.fidelity_loss(
+            learner(val_x),val_y,nn.L1Loss(),gradient_weight=.35
+        )
+    for _ in range(60):
+        learned=learner(train_x)
+        learned_loss,_,_,_=train_detail.fidelity_loss(
+            learned,train_y,nn.L1Loss(),gradient_weight=.35
+        )
+        learner_opt.zero_grad(set_to_none=True)
+        learned_loss.backward()
+        torch.nn.utils.clip_grad_norm_(learner.parameters(),1.0)
+        learner_opt.step()
+    with torch.no_grad():
+        final,final_colour,final_gx,final_gy=train_detail.fidelity_loss(
+            learner(val_x),val_y,nn.L1Loss(),gradient_weight=.35
+        )
+        flat=learner(torch.full((1,3,16,16),.5))
+    loss_improvement=float((initial-final)/initial)
+    colour_improvement=float((initial_colour-final_colour)/initial_colour)
+    initial_gradient=(initial_gx+initial_gy)*.5
+    final_gradient=(final_gx+final_gy)*.5
+    gradient_improvement=float((initial_gradient-final_gradient)/initial_gradient)
+    if loss_improvement<.50 or colour_improvement<.50 or gradient_improvement<.50:
+        raise AssertionError(
+            "specialized CNN failed learnable-detail gate: "
+            f"loss={loss_improvement:.3f}, colour={colour_improvement:.3f}, "
+            f"gradient={gradient_improvement:.3f}"
+        )
+    if abs(float(flat.mean())-.5)>.05 or float(flat.std())>.05:
+        raise AssertionError(
+            f"trained CNN destabilized a flat field: mean={float(flat.mean()):.4f}, "
+            f"std={float(flat.std()):.4f}"
+        )
+
+    # 6) Exported ONNX must preserve dynamic spatial dimensions and run on CPU ORT.
     model=model.eval()
     with tempfile.TemporaryDirectory() as td:
         path=Path(td)/"detail-smoke.onnx"
@@ -91,7 +138,11 @@ def main():
         if float(result.min()) < -1e-5 or float(result.max()) > 1.00001:
             raise AssertionError("ONNX output escaped the expected [0,1] range")
 
-    print("CNN training smoke test passed: identity, fidelity loss, gradients, validation gate and ONNX inference.")
+    print(
+        "CNN training smoke test passed: identity, fidelity loss, gradients, "
+        f"held-out learnable detail ({loss_improvement:.1%} loss / "
+        f"{gradient_improvement:.1%} gradient improvement), validation gate and ONNX inference."
+    )
 
 if __name__=="__main__":
     main()
