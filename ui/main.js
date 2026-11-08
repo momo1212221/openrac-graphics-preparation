@@ -464,7 +464,7 @@ async function createPack({ai}) {
             await zip.add(root+"emissive.png", generatedMaps.emissive);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.10.4",
+              generator:"Graphics preparation 0.10.5",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
@@ -608,7 +608,7 @@ function render() {
 
   const detailRow = settingRow(
     "Detail reconstruction",
-    "Adds source-derived material structure and CNN context, not extra sharpening. High is the new recommended mode.",
+    "Auto selects Current/High/Max per texture; detail comes from source structure and CNN context, not extra sharpening.",
   );
   detailRow.control.append(select([
     ["auto", "Auto · per texture"],
