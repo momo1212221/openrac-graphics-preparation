@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.16.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.16.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.16.0.zip`.
+2. Install `graphics-preparation-0.16.1.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -377,3 +377,31 @@ renderer sidecars only, avoiding unnecessary pack growth.
 Curvature remains optional in the UI. Turning it off skips the sidecar and is recorded in
 `material.json`, while Height, Normal, AO and Roughness continue to be generated identically.
 
+
+
+## Final material and training hardening (0.16.1)
+
+0.16.1 closes the production hardening pass around the staged material pipeline and long-running AI exports.
+
+- Quality Lab adds a synthetic **Lit relief preview** built from Albedo, Normal, Roughness, AO,
+  Specular and Emissive so reconstructed surface depth can be judged as lighting response instead of
+  only inspecting the purple normal texture. This preview is QA-only and is not written into normal
+  texture packs.
+- Material QA reports mean/P50/P95/max tangent-normal tilt, flat/steep-normal ratios and final height
+  range. Percentiles use a fixed 0–90 degree histogram, so QA does not allocate one angle value per
+  output pixel on very large 4× textures.
+- Height profiles include conservative parallax authoring scale hints. `material.json` declares
+  `height.png` as a relative-height map with 0.5 neutral height and explicitly records that renderer
+  support is still required. The stock renderer is not claimed to provide parallax or displacement.
+- The full-run progress display now reserves progress for material-map generation, mip generation and
+  pack writing. A texture reaches 100% only after its sidecars/output are finished, and cache hits do
+  not masquerade as GPU throughput.
+- Specialized detail-CNN architecture v2 now uses matching dilation padding, preserving spatial
+  dimensions through every residual block. Training checkpoints also persist scheduler state and bind
+  resume to the exact dataset-manifest SHA-256, architecture and fidelity weights.
+- Specialized model release validation is test-only: the validation split remains diagnostic/model
+  selection data, while `release_candidate` is decided only from the untouched test split.
+
+The deterministic staged Height/Normal/PBR generator is production-ready in the preparation mod.
+Actual runtime parallax/displacement still depends on OpenRAC renderer support for the exported
+`Materials/<hash>/` sidecars.
