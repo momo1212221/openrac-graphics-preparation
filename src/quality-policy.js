@@ -19,14 +19,40 @@ export const QUALITY_TARGETS=Object.freeze({
   }),
 });
 
-export function qualityTargetFor(detailQuality="standard"){
-  return QUALITY_TARGETS[detailQuality]||QUALITY_TARGETS.standard;
+const MATERIAL_TARGET_ADJUST=Object.freeze({
+  terrain:{ssim:-.02,hallucination:4,cnnConfidence:-.08,cnnRejectedRatio:.10,edgeGain:.20},
+  stone:{ssim:-.025,hallucination:5,cnnConfidence:-.10,cnnRejectedRatio:.12,edgeGain:.25},
+  metal:{ssim:-.005,hallucination:1,cnnConfidence:-.02,cnnRejectedRatio:.03,edgeGain:.05},
+  fabric:{ssim:-.015,hallucination:3,cnnConfidence:-.06,cnnRejectedRatio:.08,edgeGain:.15},
+  organic:{ssim:.005,hallucination:-1,cnnConfidence:.02,cnnRejectedRatio:-.03,edgeGain:-.05},
+  character:{ssim:.02,hallucination:-3,cnnConfidence:.06,cnnRejectedRatio:-.08,edgeGain:-.18},
+  weapon:{ssim:.005,hallucination:-1,cnnConfidence:.03,cnnRejectedRatio:-.04,edgeGain:-.08},
+  energy:{ssim:.015,hallucination:-4,cnnConfidence:.07,cnnRejectedRatio:-.08,edgeGain:-.20},
+  glass:{ssim:.03,hallucination:-5,cnnConfidence:.10,cnnRejectedRatio:-.12,edgeGain:-.30},
+  sky:{ssim:.025,hallucination:-5,cnnConfidence:.09,cnnRejectedRatio:-.10,edgeGain:-.25},
+  ui:{ssim:.035,hallucination:-6,cnnConfidence:.12,cnnRejectedRatio:-.15,edgeGain:-.35},
+});
+
+export function qualityTargetFor(detailQuality="standard",material="generic",textureClass=null){
+  const base=QUALITY_TARGETS[detailQuality]||QUALITY_TARGETS.standard;
+  const key=textureClass&&MATERIAL_TARGET_ADJUST[textureClass]?textureClass:material;
+  const adj=MATERIAL_TARGET_ADJUST[key]||{};
+  return Object.freeze({
+    ...base,
+    ssim:clamp(base.ssim+(adj.ssim||0),0,1),
+    hallucination:clamp(base.hallucination+(adj.hallucination||0),0,100),
+    cnnConfidence:clamp(base.cnnConfidence+(adj.cnnConfidence||0),0,1),
+    cnnRejectedRatio:clamp(base.cnnRejectedRatio+(adj.cnnRejectedRatio||0),0,1),
+    edgeGain:Math.max(1,base.edgeGain+(adj.edgeGain||0)),
+  });
 }
 
 export function evaluateQuality(metrics={},context={}){
   const detailQuality=["standard","high","max"].includes(context.detailQuality)
     ? context.detailQuality : "standard";
-  const target=qualityTargetFor(detailQuality);
+  const material=context.material||"generic";
+  const textureClass=context.textureClass||"diffuse";
+  const target=qualityTargetFor(detailQuality,material,textureClass);
 
   if(metrics?.score===undefined||metrics?.score===null){
     return {
@@ -48,13 +74,19 @@ export function evaluateQuality(metrics={},context={}){
   if(Number(metrics.edgeGain??1)>target.edgeGain)reasons.push("edge amplification");
   if(metrics.ssim!==undefined&&Number(metrics.ssim)<target.ssim)reasons.push("low structural similarity");
   if(Number(metrics.hallucinationScore??0)>target.hallucination)reasons.push("hallucination risk");
+  if(metrics.psnr!==undefined&&Number(metrics.psnr)<12)reasons.push("extreme reconstruction drift");
 
+  const confidence=Number(metrics.cnnConfidence??metrics.cnnAgreement??1);
+  const rejected=Number(metrics.cnnRejectedRatio??0);
   const catastrophic=
     score<60||
     Number(metrics.hallucinationScore??0)>70||
     Number(metrics.alphaCoverageDiff??0)>10||
     (metrics.ssim!==undefined&&Number(metrics.ssim)<.45)||
-    Number(metrics.edgeGain??1)>4;
+    Number(metrics.edgeGain??1)>4||
+    confidence<Math.max(.10,target.cnnConfidence*.35)||
+    rejected>.94||
+    (metrics.psnr!==undefined&&Number(metrics.psnr)<8);
 
   const minimumMet=score>=target.score;
   const retry=!catastrophic&&(reasons.length>0);
@@ -91,7 +123,13 @@ export function chooseBetterQuality(primary,conservative){
   const bh=conservative?.metrics?.hallucinationScore??0;
   const as=primary?.metrics?.ssim;
   const bs=conservative?.metrics?.ssim;
+  const ac=primary?.metrics?.cnnConfidence??1;
+  const bc=conservative?.metrics?.cnnConfidence??1;
+  const ar=primary?.metrics?.cnnRejectedRatio??0;
+  const br=conservative?.metrics?.cnnRejectedRatio??0;
   if(bh+12<ah&&b>=a-2)return conservative;
+  if(bc>ac+.15&&b>=a-2)return conservative;
+  if(br+.25<ar&&b>=a-2)return conservative;
   if(as!==undefined&&bs!==undefined&&bs>as+.08&&b>=a-2)return conservative;
   if(b>a+1)return conservative;
   return primary;
