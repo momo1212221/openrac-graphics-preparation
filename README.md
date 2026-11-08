@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.15.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.16.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.15.1.zip`.
+2. Install `graphics-preparation-0.16.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -331,3 +331,49 @@ Runtime particle and haze authoring now uses OpenRAC's exported level structure 
 - authored particle/haze packs require **Graphics Effects Runtime 0.1.1**, which fixes the TSV parser and validates external preset/coordinate input.
 
 The placement coordinates use the same column-major 4x4 transform convention as OpenRAC's official level export.
+
+
+## Production staged material reconstruction (0.16.0)
+
+The enhanced material path now uses one fixed, inspectable production order:
+
+```text
+Upscaled Diffuse
+ -> Albedo Cleanup
+ -> Coarse Height
+ -> Mid Height
+ -> Micro Height
+ -> Height Merge
+ -> Normal From Height
+ -> AO / Roughness
+ -> optional Curvature
+```
+
+The stages are deliberately separated. Coarse, mid and micro height bands are frequency-isolated
+before merge, so absolute diffuse brightness is not treated as absolute geometry. Normal maps are
+generated only from the merged relative height field using a 3x3 Sobel derivative. AO and roughness
+are then derived from the reconstructed surface rather than from raw colour.
+
+Production hardening in 0.16.0 adds:
+
+- alpha-aware neighbourhood statistics, so hidden RGB outside cutout/transparent regions cannot bend
+  height, normals, AO, cavity or edgewear at visible borders;
+- source-emissive protection before albedo cleanup, preserving bright saturated weapon/energy emitters;
+- material-family height profiles for terrain, stone, metal, fabric, organic, character, weapon,
+  energy and generic surfaces;
+- optional signed curvature as a separate sidecar;
+- Quality Lab previews for Albedo, Coarse Height, Mid Height, Micro Height, merged Height, Normal,
+  Roughness, AO and the remaining PBR helpers;
+- production pipeline metadata version 2 in every material sidecar;
+- validation of pipeline order, band statistics, merge centering, surface ranges, curvature
+  consistency, normal length/facing, normal tilt, PBR calibration and alpha-safe reconstruction;
+- parallax-ready height authoring metadata without forcing parallax at runtime;
+- material QA output in the quality report so aggressive relief can be reviewed instead of silently
+  shipped.
+
+The intermediate Coarse/Mid/Micro maps are preview/QA products. Final texture packs keep the final
+renderer sidecars only, avoiding unnecessary pack growth.
+
+Curvature remains optional in the UI. Turning it off skips the sidecar and is recorded in
+`material.json`, while Height, Normal, AO and Roughness continue to be generated identically.
+
