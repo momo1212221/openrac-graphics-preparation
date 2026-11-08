@@ -16,15 +16,63 @@ function edgeMismatch(map){
   return n?sum/n:0;
 }
 
+function validateHeightPipeline(maps){
+  const pipeline=maps?.heightPipeline;
+  const issues=[];
+  if(!pipeline)return {ok:false,issues:["missing-height-pipeline"],version:null};
+
+  if(pipeline.version!==2)issues.push("height-pipeline-version");
+  const expected=[
+    "upscaled-diffuse","albedo-cleanup","coarse-height","mid-height","micro-height",
+    "height-merge","normal-from-height","ao-roughness",
+    ...(pipeline.curvatureEnabled?["curvature"]:[])
+  ];
+  if(!Array.isArray(pipeline.order)||pipeline.order.length!==expected.length||
+     pipeline.order.some((stage,i)=>stage!==expected[i]))issues.push("height-pipeline-order");
+
+  for(const band of ["coarse","mid","micro"]){
+    const row=pipeline.bands?.[band];
+    if(!row||![row.meanAbs,row.min,row.max].every(Number.isFinite))issues.push("height-"+band+"-stats");
+  }
+
+  const merged=pipeline.merged;
+  if(!merged||![merged.meanHeight,merged.reliefRange].every(Number.isFinite)){
+    issues.push("height-merge-stats");
+  }else{
+    if(merged.meanHeight<.35||merged.meanHeight>.65)issues.push("height-mean-bias");
+    if(merged.reliefRange<0||merged.reliefRange>.90)issues.push("height-relief-range");
+  }
+
+  const surface=pipeline.surface;
+  if(!surface||![surface.meanAo,surface.meanRoughness].every(Number.isFinite)){
+    issues.push("height-surface-stats");
+  }else{
+    if(surface.meanAo<.33||surface.meanAo>1.001)issues.push("height-ao-range");
+    if(surface.meanRoughness<.035||surface.meanRoughness>.985)issues.push("height-roughness-range");
+  }
+
+  if(Boolean(maps?.curvature)!==Boolean(pipeline.curvatureEnabled))issues.push("curvature-stage-mismatch");
+  if(pipeline.curvatureEnabled&&surface?.meanCurvature!==null&&!Number.isFinite(surface?.meanCurvature))
+    issues.push("curvature-stats");
+  if(!Number.isFinite(pipeline.emissiveProtectionPixels)||pipeline.emissiveProtectionPixels<0)
+    issues.push("emissive-protection-stats");
+
+  return {ok:issues.length===0,issues,version:pipeline.version,expectedOrder:expected};
+}
+
 export function validateMaterialMaps(maps){
   const issues=[];
   const pbrValidation=maps?.pbrValidation||null;
   const albedoValidation=maps?.albedoValidation||null;
+  const heightPipelineValidation=validateHeightPipeline(maps);
   if(pbrValidation?.ok===false){
     for(const issue of pbrValidation.issues||[])issues.push("pbr-"+issue);
   }
   if(albedoValidation?.ok===false){
     for(const issue of albedoValidation.issues||[])issues.push("albedo-"+issue);
+  }
+  if(heightPipelineValidation.ok===false){
+    for(const issue of heightPipelineValidation.issues)issues.push(issue);
   }
   let normalError=0,normalCount=0,normalBackward=0,normalTiltSum=0,normalFlat=0,normalSteep=0;
   const normalTilts=[];
@@ -108,6 +156,7 @@ export function validateMaterialMaps(maps){
     albedoValidation,
     albedoDelight:maps?.albedoDelight||null,
     heightPipeline:maps?.heightPipeline||null,
+    heightPipelineValidation,
     seamScores:seams,
     worstSeam:Number(Math.max(0,...Object.values(seams)).toFixed(2)),
   };
