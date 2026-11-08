@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import * as ort from "../vendor/ort.wasm.bundle.min.mjs";
 import {restoreSourceDetail} from "./detail.js";
-import {CORE, MODEL_INPUT, PAD, SCALE, fixedRgbTile} from "./ai-tile.js";
+import {CORE, MODEL_INPUT, PAD, SCALE, fillFixedRgbTile} from "./ai-tile.js";
 
 let sessionPromise;
 let wasmPromise;
@@ -56,7 +56,11 @@ async function modelBytes() {
 async function session() {
   if (!sessionPromise) {
     sessionPromise = Promise.all([runtimeBytes(), modelBytes()]).then(async ([wasm, model]) => {
-      ort.env.wasm.numThreads = 1;
+      // 0 lets ONNX Runtime choose the fastest safe thread count for this WebView.
+      // It automatically falls back to one thread if SharedArrayBuffer / cross-origin
+      // isolation is unavailable. The previous forced value of 1 disabled all WASM
+      // multithreading even on machines that support it.
+      ort.env.wasm.numThreads = 0;
       ort.env.wasm.proxy = false;
       ort.env.wasm.wasmBinary = wasm;
       return ort.InferenceSession.create(model, {
@@ -70,42 +74,50 @@ async function session() {
   return sessionPromise;
 }
 
-function tensorImageData(tensor) {
+function outputShape(tensor) {
   const dims = tensor.dims.map(Number);
-  if (dims.length !== 4 || dims[0] !== 1 || dims[1] !== 3) throw new Error("unexpected Real-ESRGAN output shape");
-  const height = dims[2], width = dims[3], plane = width * height;
-  const out = new ImageData(width, height);
-  for (let i = 0; i < plane; i++) {
-    out.data[i * 4] = Math.max(0, Math.min(255, Math.round(tensor.data[i] * 255)));
-    out.data[i * 4 + 1] = Math.max(0, Math.min(255, Math.round(tensor.data[plane + i] * 255)));
-    out.data[i * 4 + 2] = Math.max(0, Math.min(255, Math.round(tensor.data[plane * 2 + i] * 255)));
-    out.data[i * 4 + 3] = 255;
+  if (dims.length !== 4 || dims[0] !== 1 || dims[1] !== 3) {
+    throw new Error("unexpected Real-ESRGAN output shape");
+  }
+  return {height:dims[2], width:dims[3]};
+}
+
+function croppedTensorImageData(tensor, coreW, coreH) {
+  const {width, height} = outputShape(tensor);
+  const expected = MODEL_INPUT * SCALE;
+  if (width !== expected || height !== expected) {
+    throw new Error(`unexpected Real-ESRGAN output size ${width}x${height}; expected ${expected}x${expected}`);
+  }
+
+  const cropX = PAD * SCALE;
+  const cropY = PAD * SCALE;
+  const cropW = coreW * SCALE;
+  const cropH = coreH * SCALE;
+  const plane = width * height;
+  const out = new ImageData(cropW, cropH);
+  const dst = out.data;
+  const src = tensor.data;
+
+  // Convert only the useful 112x112 core (4x) instead of materialising the complete
+  // padded 128x128 model output into a temporary canvas for every tile.
+  let at = 0;
+  for (let y = 0; y < cropH; y++) {
+    let sourceAt = (cropY + y) * width + cropX;
+    for (let x = 0; x < cropW; x++, sourceAt++, at += 4) {
+      dst[at] = Math.max(0, Math.min(255, Math.round(src[sourceAt] * 255)));
+      dst[at + 1] = Math.max(0, Math.min(255, Math.round(src[plane + sourceAt] * 255)));
+      dst[at + 2] = Math.max(0, Math.min(255, Math.round(src[plane * 2 + sourceAt] * 255)));
+      dst[at + 3] = 255;
+    }
   }
   return out;
 }
 
-async function runTile(sourceData, sourceX, sourceY, coreW, coreH, aiSession) {
-  const values = fixedRgbTile(sourceData, sourceX, sourceY);
-  const input = new ort.Tensor("float32", values, [1, 3, MODEL_INPUT, MODEL_INPUT]);
+async function runTile(sourceData, sourceX, sourceY, coreW, coreH, aiSession, inputValues) {
+  fillFixedRgbTile(sourceData, sourceX, sourceY, inputValues);
+  const input = new ort.Tensor("float32", inputValues, [1, 3, MODEL_INPUT, MODEL_INPUT]);
   const outputs = await aiSession.run({[aiSession.inputNames[0]]: input});
-  const outputData = tensorImageData(outputs[aiSession.outputNames[0]]);
-
-  const expected = MODEL_INPUT * SCALE;
-  if (outputData.width !== expected || outputData.height !== expected) {
-    throw new Error(`unexpected Real-ESRGAN output size ${outputData.width}x${outputData.height}; expected ${expected}x${expected}`);
-  }
-
-  const rendered = document.createElement("canvas");
-  rendered.width = outputData.width;
-  rendered.height = outputData.height;
-  rendered.getContext("2d").putImageData(outputData, 0, 0);
-  return {
-    rendered,
-    cropX: PAD * SCALE,
-    cropY: PAD * SCALE,
-    cropW: coreW * SCALE,
-    cropH: coreH * SCALE,
-  };
+  return croppedTensorImageData(outputs[aiSession.outputNames[0]], coreW, coreH);
 }
 
 export async function resetAiSession() {
@@ -135,7 +147,13 @@ export async function warmAi() {
     }
     preflightDone = true;
   }
-  return {model: "Real-ESRGAN x4plus ONNX", backend: "ONNX Runtime Web/WASM · fixed 128×128 tiles · fail-safe"};
+
+  const threads = Number(ort.env.wasm.numThreads) || 1;
+  return {
+    model: "Real-ESRGAN x4plus ONNX",
+    backend: `ONNX Runtime Web/WASM · ${threads} thread${threads === 1 ? "" : "s"} · fixed 128×128 tiles · optimized`,
+    threads,
+  };
 }
 
 export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) {
@@ -156,6 +174,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     output.height = source.height * SCALE;
     const outputCtx = output.getContext("2d", {alpha: true, willReadFrequently: true});
     const aiSession = await session();
+    const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
 
     const tilesX = Math.ceil(source.width / CORE);
     const tilesY = Math.ceil(source.height / CORE);
@@ -166,14 +185,15 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       for (let x = 0; x < source.width; x += CORE) {
         const coreW = Math.min(CORE, source.width - x);
         const coreH = Math.min(CORE, source.height - y);
-        const tile = await runTile(sourceData, x, y, coreW, coreH, aiSession);
-        outputCtx.drawImage(
-          tile.rendered,
-          tile.cropX, tile.cropY, tile.cropW, tile.cropH,
-          x * SCALE, y * SCALE, tile.cropW, tile.cropH,
-        );
+        const tile = await runTile(sourceData, x, y, coreW, coreH, aiSession, inputValues);
+        outputCtx.putImageData(tile, x * SCALE, y * SCALE);
         onProgress(++done, total);
-        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        // Yield often enough for progress/repaint, but not after every inference.
+        // Four tiles keeps the UI responsive while avoiding hundreds of event-loop hops.
+        if (done === total || done % 4 === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
       }
     }
 

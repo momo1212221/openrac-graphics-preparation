@@ -7,14 +7,16 @@ export const CORE = MODEL_INPUT - PAD * 2;
 const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
 
 /**
- * Build the exact fixed-size RGB tensor input expected by the pinned Real-ESRGAN x4plus ONNX model.
+ * Fill a reusable fixed-size RGB tensor input for the pinned Real-ESRGAN x4plus ONNX model.
  * Pixels outside the source texture are edge-clamped instead of shrinking the model input.
  */
-export function fixedRgbTile(sourceData, sourceX, sourceY) {
+export function fillFixedRgbTile(sourceData, sourceX, sourceY, values) {
   const {width, height, data} = sourceData;
   if (!width || !height) throw new Error("empty source texture");
   const plane = MODEL_INPUT * MODEL_INPUT;
-  const values = new Float32Array(plane * 3);
+  if (!(values instanceof Float32Array) || values.length !== plane * 3) {
+    throw new TypeError(`tile buffer must be Float32Array(${plane * 3})`);
+  }
 
   for (let ty = 0; ty < MODEL_INPUT; ty++) {
     const sy = clamp(sourceY - PAD + ty, 0, height - 1);
@@ -28,4 +30,16 @@ export function fixedRgbTile(sourceData, sourceX, sourceY) {
     }
   }
   return values;
+}
+
+/**
+ * Compatibility helper for tests and callers that do not keep a reusable tensor buffer.
+ */
+export function fixedRgbTile(sourceData, sourceX, sourceY) {
+  return fillFixedRgbTile(
+    sourceData,
+    sourceX,
+    sourceY,
+    new Float32Array(3 * MODEL_INPUT * MODEL_INPUT),
+  );
 }

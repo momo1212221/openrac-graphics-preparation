@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {CORE, MODEL_INPUT, PAD, fixedRgbTile} from '../src/ai-tile.js';
+import {CORE, MODEL_INPUT, PAD, fillFixedRgbTile, fixedRgbTile} from '../src/ai-tile.js';
 
 function source(width,height) {
   const data=new Uint8ClampedArray(width*height*4);
@@ -32,4 +32,13 @@ test('out-of-bounds tile padding clamps to the nearest real source pixel',()=>{
   assert.equal(Math.round(last[p]*255),31);
   assert.equal(Math.round(last[plane+p]*255),31);
   assert.equal(Math.round(last[plane*2+p]*255),62);
+});
+
+test('tile builder can reuse one caller-owned Float32Array',()=>{
+  const src=source(16,16);
+  const buffer=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+  const first=fillFixedRgbTile(src,0,0,buffer);
+  const second=fillFixedRgbTile(src,8,8,buffer);
+  assert.equal(first,buffer);
+  assert.equal(second,buffer);
 });

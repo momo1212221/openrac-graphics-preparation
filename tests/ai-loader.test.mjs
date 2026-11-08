@@ -10,6 +10,15 @@ test('AI loader avoids nested dynamic module imports in the OpenRAC WebView',()=
   assert.match(code,/import \* as ort from "\.\.\/vendor\/ort\.wasm\.bundle\.min\.mjs"/);
   assert.doesNotMatch(code,/import\s*\(/);
   assert.match(code,/ort\.env\.wasm\.wasmBinary\s*=\s*wasm/);
-  assert.match(code,/numThreads\s*=\s*1/);
+  assert.match(code,/numThreads\s*=\s*0/);
+  assert.doesNotMatch(code,/numThreads\s*=\s*1/);
   assert.match(code,/proxy\s*=\s*false/);
+});
+
+test('AI runtime reuses one tensor input buffer and avoids a canvas per tile',()=>{
+  const code=readFileSync(root+'src/ai-runtime.js','utf8');
+  assert.match(code,/const inputValues = new Float32Array\(3 \* MODEL_INPUT \* MODEL_INPUT\)/);
+  assert.match(code,/fillFixedRgbTile\(/);
+  assert.match(code,/outputCtx\.putImageData\(tile,/);
+  assert.doesNotMatch(code,/rendered = document\.createElement\("canvas"\)/);
 });
