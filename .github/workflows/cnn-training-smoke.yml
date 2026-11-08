@@ -39,3 +39,11 @@ jobs:
 
       - name: Run specialized CNN smoke test
         run: python tests/cnn_training_smoke.py
+
+      - name: Upload CNN training smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnn-training-smoke-report
+          path: cnn-training-smoke-report.json
+          if-no-files-found: warn
