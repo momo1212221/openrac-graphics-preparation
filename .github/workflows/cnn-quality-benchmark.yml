@@ -1,0 +1,57 @@
+name: cnn-quality-benchmark
+
+on:
+  push:
+    branches:
+      - "test/cnn-quality-benchmark-20261108"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install benchmark runtime
+        run: python -m pip install "numpy>=2.0,<3" "onnxruntime>=1.20,<2" "Pillow>=10.4,<12"
+
+      - name: Download pinned CNN models
+        run: |
+          mkdir -p models
+          curl -L --fail --retry 5 --output models/realesrgan-x4plus.onnx \
+            "https://huggingface.co/qualcomm/Real-ESRGAN-x4plus/resolve/725b1db7360e0befb85be5ca9924d8c1e9b1b229/Real-ESRGAN-x4plus.onnx"
+          echo "a64fb7ec8780e6e67a99cf380067961a0aab618c934171240eea2724217fd304  models/realesrgan-x4plus.onnx" | sha256sum -c -
+          curl -L --fail --retry 5 --output models/realesrgan-general-x4v3.onnx \
+            "https://huggingface.co/qualcomm/Real-ESRGAN-General-x4v3/resolve/fe119b62b7cb27c3fa5fd3d992122f8e5a3a52c4/Real-ESRGAN-General-x4v3.onnx"
+          echo "bea98dff749104082449888501454b85a05ace135c89249599caec7ef2dace23  models/realesrgan-general-x4v3.onnx" | sha256sum -c -
+
+      - name: Existing fusion unit tests
+        run: node --test tests/cnn-fusion.test.mjs tests/quality-metrics.test.mjs tests/p0-quality.test.mjs
+
+      - name: Real CNN quality benchmark
+        run: |
+          python tools/training/cnn_quality_benchmark.py \
+            models/realesrgan-x4plus.onnx \
+            models/realesrgan-general-x4v3.onnx \
+            --output cnn-quality-report.json \
+            --preview-dir cnn-quality-previews
+
+      - name: Upload benchmark report and previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnn-quality-benchmark
+          path: |
+            cnn-quality-report.json
+            cnn-quality-previews
+          if-no-files-found: error
