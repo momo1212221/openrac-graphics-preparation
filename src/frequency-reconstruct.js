@@ -18,6 +18,7 @@ export function buildFrequencyBands(imageData){
   const fine=new Float32Array(width*height*3);
   const mid=new Float32Array(width*height*3);
   const coarse=new Float32Array(width*height*3);
+  const broad=new Float32Array(width*height*3);
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
     const a=data[idx(width,x,y,3)];
     if(a<16)continue;
@@ -27,12 +28,14 @@ export function buildFrequencyBands(imageData){
       const m1=boxMean(data,width,height,x,y,1,c);
       const m2=boxMean(data,width,height,x,y,2,c);
       const m4=boxMean(data,width,height,x,y,4,c);
+      const m8=boxMean(data,width,height,x,y,8,c);
       fine[base+c]=center-m1;
       mid[base+c]=m1-m2;
       coarse[base+c]=m2-m4;
+      broad[base+c]=m4-m8;
     }
   }
-  return {fine,mid,coarse,width,height};
+  return {fine,mid,coarse,broad,width,height};
 }
 
 function bilinear(field,w,h,x,y,c){
@@ -43,16 +46,18 @@ function bilinear(field,w,h,x,y,c){
   return (at(x0,y0)*(1-fx)+at(x1,y0)*fx)*(1-fy)+(at(x0,y1)*(1-fx)+at(x1,y1)*fx)*fy;
 }
 
-export function applyFrequencyBands(sourceBands,outputData,{fine=.5,mid=.2,coarse=.08,ceiling=30}={}){
+export function applyFrequencyBands(sourceBands,outputData,{fine=.5,mid=.2,coarse=.08,broad=.03,ceiling=30}={}){
   const {width:sw,height:sh}=sourceBands,{width:ow,height:oh,data}=outputData;
   const sx=ow/sw,sy=oh/sh;
+  const broadBand=sourceBands.broad||new Float32Array(sw*sh*3);
   for(let y=0;y<oh;y++)for(let x=0;x<ow;x++){
     const oi=(y*ow+x)*4;if(data[oi+3]<16)continue;
     const px=(x+.5)/sx-.5,py=(y+.5)/sy-.5;
     for(let c=0;c<3;c++){
       let d=bilinear(sourceBands.fine,sw,sh,px,py,c)*fine+
         bilinear(sourceBands.mid,sw,sh,px,py,c)*mid+
-        bilinear(sourceBands.coarse,sw,sh,px,py,c)*coarse;
+        bilinear(sourceBands.coarse,sw,sh,px,py,c)*coarse+
+        bilinear(broadBand,sw,sh,px,py,c)*broad;
       d=Math.max(-ceiling,Math.min(ceiling,d));
       data[oi+c]=clamp8(data[oi+c]+d);
     }
