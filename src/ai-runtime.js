@@ -8,6 +8,7 @@ import {classifyTexture} from "./texture-classify.js";
 import {classifyMaterial} from "./material-classify.js";
 import {fuseCnnOutputs} from "./cnn-fusion.js";
 import {lockSourceChroma, qualityMetrics} from "./quality-metrics.js";
+import {detectTextureWrap} from "./seam.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -251,8 +252,8 @@ function croppedTensorImageData(tensor, coreW, coreH, geometry) {
   return out;
 }
 
-async function runTile(sourceData, sourceX, sourceY, coreW, coreH, runtime, inputValues, geometry) {
-  fillFixedRgbTile(sourceData, sourceX, sourceY, inputValues, geometry.pad);
+async function runTile(sourceData, sourceX, sourceY, coreW, coreH, runtime, inputValues, geometry, wrap) {
+  fillFixedRgbTile(sourceData, sourceX, sourceY, inputValues, geometry.pad, wrap);
   const input = new runtime.ort.Tensor("float32", inputValues, [1, 3, MODEL_INPUT, MODEL_INPUT]);
   const outputs = await runtime.session.run({[runtime.session.inputNames[0]]: input});
   return croppedTensorImageData(outputs[runtime.session.outputNames[0]], coreW, coreH, geometry);
@@ -399,6 +400,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       : classifyMaterial(options.texturePaths || options.texturePath || "", sourceData, textureClass);
     const material = materialInfo.material;
     const effectiveQuality = textureClass === "ui" ? "standard" : detailQuality;
+    const wrap = detectTextureWrap(sourceData,{textureClass,material});
 
     const trivial = trivialTexture(sourceData);
     if (trivial.trivial) {
@@ -472,10 +474,10 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       for (const x of xs) {
         const coreW = Math.min(geometry.core, source.width - x);
         const coreH = Math.min(geometry.core, source.height - y);
-        let tile = await runTile(sourceData, x, y, coreW, coreH, runtime, inputValues, geometry);
+        let tile = await runTile(sourceData, x, y, coreW, coreH, runtime, inputValues, geometry, wrap);
         if(detailRuntime){
           try{
-            const detailTile=await runTile(sourceData,x,y,coreW,coreH,detailRuntime,detailInputValues,geometry);
+            const detailTile=await runTile(sourceData,x,y,coreW,coreH,detailRuntime,detailInputValues,geometry,wrap);
             const fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
             tile=fused.image;
             cnnAgreementSum+=fused.agreement;cnnAgreementTiles++;detailPixels+=fused.detailPixels;
@@ -525,6 +527,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       backend:runtime.backend,
       textureClass,
       material,
+      wrap,
       detailQuality:effectiveQuality,
       detailCnnUsed:!!detailRuntime,
       detailPixels,

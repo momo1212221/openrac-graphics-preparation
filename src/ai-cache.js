@@ -2,7 +2,7 @@
 const DB_NAME = "openrac-graphics-preparation-ai-cache";
 const DB_VERSION = 1;
 const STORE = "textures";
-const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v3|dual-cnn-v1|quality-guard-v1";
+const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v3|dual-cnn-v1|quality-guard-v1|seam-wrap-v1";
 let dbPromise;
 let sessionDisabled = false;
 let writesSinceTrim = 0;
@@ -107,6 +107,7 @@ export async function cacheGet(key) {
       metrics: row.metrics || null,
       classification: row.classification || null,
       materialInfo: row.materialInfo || null,
+      wrap: row.wrap || null,
     };
   } catch {
     sessionDisabled = true;
@@ -165,6 +166,7 @@ export async function cachePut(key, result, maxBytes) {
     metrics:result.metrics||null,
     classification:result.classification||null,
     materialInfo:result.materialInfo||null,
+    wrap:result.wrap||null,
     lastUsed:Date.now(),
     created:Date.now(),
   };

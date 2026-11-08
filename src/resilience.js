@@ -32,6 +32,7 @@ export async function prepareTextureFailSafe(source, {
         textureClass: result.textureClass ?? null,
         detailQuality: result.detailQuality ?? null,
         material: result.material ?? null,
+        wrap: result.wrap ?? null,
         detailCnnUsed: result.detailCnnUsed === true,
         detailPixels: Number(result.detailPixels) || 0,
         metrics: result.metrics ?? null,

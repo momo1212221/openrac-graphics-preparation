@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.10.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.10.2 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.10.1.zip`.
+2. Install `graphics-preparation-0.10.2.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -201,3 +201,11 @@ renderer lookup while retaining backwards compatibility with ordinary texture pa
   without lowering the conservative threshold for ordinary diffuse textures.
 - Quality Lab class/material overrides now propagate into the full batch export and its cache key,
   so preview and final pack use the same routing.
+
+
+## Seam-aware CNN context (0.10.2)
+
+Repeating world textures now compare opposite source edges with their local interior gradients.
+When an edge is plausibly periodic, CNN padding wraps to the opposite side instead of clamping the
+border pixel. This gives x4plus and the detail CNN real material context across texture boundaries,
+reducing reconstructed seams without sharpening or modifying non-repeating UI/technical maps.

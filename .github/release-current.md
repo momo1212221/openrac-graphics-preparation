@@ -1,6 +1,9 @@
-Graphics preparation 0.10.1 fixes the first material-sidecar build.
+Graphics preparation 0.10.2 adds seam-aware CNN context.
 
-- Energy emissive detection now combines perceptual luminance with a material-gated peak-channel signal, so saturated orange/red/blue energy can emit without making ordinary diffuse textures glow.
-- Full-pack processing now carries Quality Lab texture-class/material overrides into AI options and cache identity.
-- Preview and batch therefore use identical manual routing.
-- Keeps optional material sidecars Off by default for current stock-launcher compatibility.
+- Detects plausible horizontal/vertical repetition from opposite-edge error versus local edge gradients.
+- Repeating world textures use wrapped source context at CNN boundaries instead of edge clamp.
+- Sky textures get a conservative horizontal-repeat allowance.
+- UI, normal and mask textures never auto-wrap.
+- Both x4plus and the second detail CNN receive the same wrap-aware context.
+- Persistent cache pipeline identity is bumped so old clamp-context outputs are not reused.
+- Wrap diagnostics are retained in AI result/cache metadata.

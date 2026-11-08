@@ -9,6 +9,10 @@ export const TILE_QUALITY = Object.freeze({
 });
 
 const clamp = (value, lo, hi) => Math.max(lo, Math.min(hi, value));
+const coordinate=(value,size,wrap)=>{
+  if(!wrap)return clamp(value,0,size-1);
+  return ((value%size)+size)%size;
+};
 
 export function tileGeometry(quality = "high", textureClass = "diffuse") {
   // UI should keep the established look instead of inventing extra structure.
@@ -22,7 +26,7 @@ export function tileGeometry(quality = "high", textureClass = "diffuse") {
  * Fill a reusable fixed-size RGB tensor input for the pinned Real-ESRGAN model.
  * Padding is quality-dependent but the ONNX input remains exactly 128x128.
  */
-export function fillFixedRgbTile(sourceData, sourceX, sourceY, values, pad = 8) {
+export function fillFixedRgbTile(sourceData, sourceX, sourceY, values, pad = 8, wrap = {x:false,y:false}) {
   const {width, height, data} = sourceData;
   if (!width || !height) throw new Error("empty source texture");
   const plane = MODEL_INPUT * MODEL_INPUT;
@@ -34,9 +38,9 @@ export function fillFixedRgbTile(sourceData, sourceX, sourceY, values, pad = 8) 
   }
 
   for (let ty = 0; ty < MODEL_INPUT; ty++) {
-    const sy = clamp(sourceY - pad + ty, 0, height - 1);
+    const sy = coordinate(sourceY - pad + ty, height, wrap.y === true);
     for (let tx = 0; tx < MODEL_INPUT; tx++) {
-      const sx = clamp(sourceX - pad + tx, 0, width - 1);
+      const sx = coordinate(sourceX - pad + tx, width, wrap.x === true);
       const sourceAt = (sy * width + sx) * 4;
       const tileAt = ty * MODEL_INPUT + tx;
       values[tileAt] = data[sourceAt] / 255;
@@ -47,13 +51,14 @@ export function fillFixedRgbTile(sourceData, sourceX, sourceY, values, pad = 8) 
   return values;
 }
 
-export function fixedRgbTile(sourceData, sourceX, sourceY, pad = 8) {
+export function fixedRgbTile(sourceData, sourceX, sourceY, pad = 8, wrap = {x:false,y:false}) {
   return fillFixedRgbTile(
     sourceData,
     sourceX,
     sourceY,
     new Float32Array(3 * MODEL_INPUT * MODEL_INPUT),
     pad,
+    wrap,
   );
 }
 
