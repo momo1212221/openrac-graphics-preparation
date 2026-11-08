@@ -7,9 +7,9 @@ export const PROFILE = {
 };
 
 export const DETAIL_QUALITY = {
-  standard: {fine:1.00, mid:0.00, coarse:0.00, broad:0.00, sharpenScale:1.00},
-  high: {fine:1.10, mid:0.22, coarse:0.06, broad:0.015, sharpenScale:0.35},
-  max: {fine:1.18, mid:0.34, coarse:0.12, broad:0.045, sharpenScale:0.00},
+  standard: {fine:1.00, mid:0.00, coarse:0.00, broad:0.00, directional:0.00, sharpenScale:1.00},
+  high: {fine:1.10, mid:0.22, coarse:0.06, broad:0.015, directional:0.12, sharpenScale:0.35},
+  max: {fine:1.18, mid:0.34, coarse:0.12, broad:0.045, directional:0.24, sharpenScale:0.00},
 };
 
 const MATERIAL_BANDS = Object.freeze({
@@ -125,6 +125,7 @@ export function restoreSourceDetail(sourceData, outputData, mode, preserveMicrod
       mid:profile.residual*quality.mid*classGain*materialBands.mid,
       coarse:profile.residual*quality.coarse*classGain*materialBands.coarse,
       broad:profile.residual*quality.broad*classGain*materialBands.broad,
+      directional:profile.residual*quality.directional*classGain,
       ceiling:quality===DETAIL_QUALITY.max?34:28,
     });
   }
