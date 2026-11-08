@@ -76,8 +76,12 @@ export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAg
   const cov=sumSO/Math.max(1,n)-ms*mo;
   const c1=6.5025,c2=58.5225;
   const ssim=((2*ms*mo+c1)*(2*cov+c2))/((ms*ms+mo*mo+c1)*(vs+vo+c2));
+  const rejected=clamp(Number(cnnRejectedRatio)||0,0,1);
+  const confidence=clamp(Number(cnnConfidence)||0,0,1);
+  const agreement=clamp(Number(cnnAgreement)||0,0,1);
   const hallucinationScore=clamp(
-    (1-cnnAgreement)*30+(1-cnnConfidence)*24+clamp(cnnRejectedRatio,0,1)*30+Math.max(0,edgeGain-1.8)*12+meanColor*.7+histogramDrift*.5,
+    (1-agreement)*30+(1-confidence)*24+rejected*30+
+    Math.max(0,edgeGain-1.8)*12+meanColor*.7+histogramDrift*.5,
     0,100
   );
   let seamScore=0,seamN=0;
@@ -94,7 +98,7 @@ export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAg
   seamScore=seamN?seamScore/seamN:0;
   const score=clamp(
     100-meanColor*.45-meanLuma*.14-meanAlpha*.20-histogramDrift*.12-alphaCoverageDiff*.25-
-    Math.max(0,.55-cnnAgreement)*32-Math.max(0,.45-cnnConfidence)*38-
+    Math.max(0,.55-agreement)*30-Math.max(0,.45-confidence)*34-rejected*18-
     Math.max(0,edgeGain-2.8)*8-Math.max(0,hallucinationScore-55)*.18,
     0,100
   );
@@ -107,8 +111,9 @@ export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAg
     histogramDrift:Number(histogramDrift.toFixed(2)),
     edgeGain:Number(edgeGain.toFixed(2)),
     microdetailGain:Number(Math.max(0,edgeGain-1).toFixed(2)),
-    cnnAgreement:Number(cnnAgreement.toFixed(3)),\n    cnnConfidence:Number(cnnConfidence.toFixed(3)),\n    cnnRejectedRatio:Number(clamp(cnnRejectedRatio,0,1).toFixed(3)),
-    cnnConfidence:Number(cnnConfidence.toFixed(3)),
+    cnnAgreement:Number(agreement.toFixed(3)),
+    cnnConfidence:Number(confidence.toFixed(3)),
+    cnnRejectedRatio:Number(rejected.toFixed(3)),
     ssim:Number(clamp(ssim,-1,1).toFixed(4)),
     hallucinationScore:Number(hallucinationScore.toFixed(1)),
     seamScore:Number(seamScore.toFixed(2)),
