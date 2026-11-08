@@ -522,6 +522,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     const metrics=qualityMetrics(sourceData,outData,{
       cnnAgreement:cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1,
     });
+    if(wrap.x||wrap.y)metrics.expectSeamless=true;
     const failures=detectOutputFailures(sourceData,outData,metrics);
     outputCtx.putImageData(outData, 0, 0);
     return {
@@ -593,6 +594,7 @@ export async function upscaleAiMasterPng(buffer,options={},onProgress=()=>{}){
     const finalBytes=await resizePng(master.bytes,dims.width*4,dims.height*4,{smoothing:true});
     const [sourceData,finalData]=await Promise.all([imageDataFromPng(buffer),imageDataFromPng(finalBytes)]);
     const metrics=qualityMetrics(sourceData,finalData,{cnnAgreement:master.metrics?.cnnAgreement??1});
+    if(master.wrap?.x||master.wrap?.y)metrics.expectSeamless=true;
     const failures=detectOutputFailures(sourceData,finalData,metrics);
     return {
       ...master,
