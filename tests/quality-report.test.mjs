@@ -28,3 +28,15 @@ test('fallback outputs are retained even without a score',()=>{
   assert.equal(report.failureCount,1);
   assert.equal(report.worst.length,0);
 });
+
+
+test('quality report includes compact material-sidecar validation',()=>{
+ const report=buildQualityReport([],{materialMaps:[{
+   hash:'m',path:'m.png',material:'metal',
+   quality:{ok:false,issues:['normal-length'],meanNormalLengthError:.12,backwardNormalPercent:0,worstSeam:18,scalarStats:{roughness:{min:.2,max:.8,mean:.5}},seamScores:{normal:18}}
+ }]});
+ assert.equal(report.materialMaps.length,1);
+ assert.equal(report.materialMaps[0].ok,false);
+ assert.deepEqual(report.materialMaps[0].issues,['normal-length']);
+ assert.equal(report.materialMaps[0].worstSeam,18);
+});
