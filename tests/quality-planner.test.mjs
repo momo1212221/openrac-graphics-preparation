@@ -13,6 +13,14 @@ test('global explicit quality bypasses automatic planning',()=>{
 });
 
 test('measured fidelity can promote or demote the second pass',()=>{
-  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'weapon',metrics:{score:90,cnnAgreement:.9,colorDrift:5,edgeGain:1.2}},'high'),'max');
-  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'stone',metrics:{score:60,cnnAgreement:.3,colorDrift:5,edgeGain:1.2}},'max'),'standard');
+  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'weapon',metrics:{score:90,cnnAgreement:.9,colorDrift:5,edgeGain:1.2,ssim:.9,alphaCoverageDiff:0,hallucinationScore:10}},'high'),'max');
+  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'stone',metrics:{score:60,cnnAgreement:.3,colorDrift:5,edgeGain:1.2,ssim:.9,alphaCoverageDiff:0,hallucinationScore:10}},'max'),'standard');
+});
+
+test('structural and hallucination risk blocks aggressive detail',()=>{
+  const base={textureClass:'diffuse',material:'weapon',metrics:{score:90,cnnAgreement:.9,colorDrift:4,edgeGain:1.2,ssim:.9,alphaCoverageDiff:0,hallucinationScore:10}};
+  assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,hallucinationScore:70}},'max'),'standard');
+  assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,ssim:.4}},'high'),'standard');
+  assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,alphaCoverageDiff:8}},'high'),'standard');
+  assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,hallucinationScore:45}},'high'),'high');
 });
