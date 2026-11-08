@@ -100,3 +100,19 @@ test('regional confidence metrics stay high for identical stable output',()=>{
   assert.equal(out.detailPixels,0);
   assert.equal(out.lowConfidencePixels,0);
 });
+
+
+test('fragile material novelty budgets remain effective after residual saturation',()=>{
+  const base=img(7,7,100),detail=img(7,7,100);
+  const center=(3*7+3)*4;
+  base.data.set([125,125,125,255],center);
+  detail.data.set([245,245,245,255],center);
+  const stone=fuseCnnOutputs(base,detail,{quality:'max',material:'stone'});
+  const character=fuseCnnOutputs(base,detail,{quality:'max',material:'character'});
+  const glass=fuseCnnOutputs(base,detail,{quality:'max',material:'glass'});
+  const energy=fuseCnnOutputs(base,detail,{quality:'max',material:'energy'});
+  const delta=(out)=>Math.abs(out.image.data[center]-base.data[center]);
+  assert.ok(delta(character)<delta(stone));
+  assert.ok(delta(glass)<delta(character));
+  assert.ok(delta(energy)<=delta(glass));
+});

@@ -157,10 +157,17 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
         if(Math.abs(detailDelta)<1)continue;
         const residualAgreement=clamp01(1-Math.abs(detailDelta)/
           Math.max(8,Math.abs(detailResidual)+Math.abs(baseResidual)));
-        const noveltyGate=(.20+.80*residualAgreement)*profile.noveltyScale;
+        const noveltyGate=.20+.80*residualAgreement;
         const supported=detailDelta*noveltyGate*modelSafety[p];
         const limited=Math.max(-impulseLimit,Math.min(impulseLimit,supported));
-        out.data[i+ch]=clamp8(base.data[i+ch]+limited*gain*confidence);
+        // Apply the material novelty budget after the first clamp. Otherwise a large model
+        // residual can saturate before the material scale is applied, making fragile-material
+        // profiles ineffective exactly where their protection is needed most.
+        const materialLimited=Math.max(
+          -impulseLimit,
+          Math.min(impulseLimit,limited*profile.noveltyScale),
+        );
+        out.data[i+ch]=clamp8(base.data[i+ch]+materialLimited*gain*confidence);
         used=true;
       }
       if(used)detailPixels++;
