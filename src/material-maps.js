@@ -30,6 +30,12 @@ function fieldAt(field,w,h,x,y){
   x=Math.max(0,Math.min(w-1,x));y=Math.max(0,Math.min(h-1,y));
   return field[y*w+x];
 }
+
+function heightAtVisible(field,source,w,h,x,y,fallback){
+  const xx=Math.max(0,Math.min(w-1,x)),yy=Math.max(0,Math.min(h-1,y));
+  const p=yy*w+xx;
+  return source.data[p*4+3]>=16?field[p]:fallback;
+}
 function localMean(field,w,h,x,y,r=2){
   let sum=0,n=0;
   for(let yy=Math.max(0,y-r);yy<=Math.min(h-1,y+r);yy++)
@@ -134,16 +140,20 @@ export function deriveMaterialMaps(image,material="generic",options={}){
     // Cavity follows the final height rather than raw diffuse brightness.
     const hCenter=merged.heightField[p];
     const hMean=(
-      fieldAt(merged.heightField,w,h,x-1,y)+fieldAt(merged.heightField,w,h,x+1,y)+
-      fieldAt(merged.heightField,w,h,x,y-1)+fieldAt(merged.heightField,w,h,x,y+1)
+      heightAtVisible(merged.heightField,albedo,w,h,x-1,y,hCenter)+
+      heightAtVisible(merged.heightField,albedo,w,h,x+1,y,hCenter)+
+      heightAtVisible(merged.heightField,albedo,w,h,x,y-1,hCenter)+
+      heightAtVisible(merged.heightField,albedo,w,h,x,y+1,hCenter)
     )*.25;
     const cavity=Math.max(0,hMean-hCenter);
     const cavityValue=clamp8(Math.min(1,cavity*5.0)*255);
     cavityMap.data[i]=cavityMap.data[i+1]=cavityMap.data[i+2]=cavityValue;cavityMap.data[i+3]=sourceAlpha;
 
     const lap=Math.abs(
-      fieldAt(merged.heightField,w,h,x-1,y)+fieldAt(merged.heightField,w,h,x+1,y)+
-      fieldAt(merged.heightField,w,h,x,y-1)+fieldAt(merged.heightField,w,h,x,y+1)-hCenter*4
+      heightAtVisible(merged.heightField,albedo,w,h,x-1,y,hCenter)+
+      heightAtVisible(merged.heightField,albedo,w,h,x+1,y,hCenter)+
+      heightAtVisible(merged.heightField,albedo,w,h,x,y-1,hCenter)+
+      heightAtVisible(merged.heightField,albedo,w,h,x,y+1,hCenter)-hCenter*4
     );
 
     const metalPrior=material==="metal"?.92:material==="weapon"?.62:material==="energy"?.18:.04;
