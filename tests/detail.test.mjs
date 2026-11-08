@@ -13,6 +13,8 @@ test('High/Max add structure while reducing old output sharpening',()=>{
   assert.equal(DETAIL_QUALITY.high.sharpenScale,0.5);
   assert.equal(DETAIL_QUALITY.max.sharpenScale,0);
   assert.ok(DETAIL_QUALITY.max.fine>DETAIL_QUALITY.high.fine);
+  assert.ok(DETAIL_QUALITY.max.mid>DETAIL_QUALITY.high.mid);
+  assert.ok(DETAIL_QUALITY.max.coarse>DETAIL_QUALITY.high.coarse);
   assert.ok(DETAIL_QUALITY.high.fine>DETAIL_QUALITY.standard.fine);
 });
 
