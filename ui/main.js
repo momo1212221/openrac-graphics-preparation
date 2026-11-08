@@ -13,7 +13,8 @@ import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
-import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
+import {QUALITY_POLICY_VERSION,chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
+import {applyQualifiedDowngrade,qualityRecoveryProfiles,qualifiedTier} from "../src/quality-recovery.js";
 import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
 import {specializedRegistryIdentity} from "../src/specialized-models.js";
 import {buildQualityReport} from "../src/quality-report.js";
@@ -210,6 +211,9 @@ async function createPack({ai}) {
     failureRejected:0,
     specializedCnnRuns:0,
     specializedCnnRejected:0,
+    qualityDowngraded:0,
+    qualityRecoveryAttempts:0,
+    qualityRecovered:0,
     qualityRows:[],
     materialQualityRows:[],
   };
@@ -317,6 +321,7 @@ async function createPack({ai}) {
           detailCnn: state.detailCnn,
           sourceColorLock: state.sourceColorLock,
           qualityGuard: state.qualityGuard,
+          qualityPolicyVersion: QUALITY_POLICY_VERSION,
           master8x: state.master8x,
           specializedFingerprint,
           textureClassOverride: override.textureClass || null,
@@ -396,11 +401,28 @@ async function createPack({ai}) {
         });
 
         if (
+          state.qualityGuard && prepared.strategy === "ai" && !prepared.skipped &&
+          prepared.metrics?.score !== undefined
+        ) {
+          const downgrade=applyQualifiedDowngrade(prepared);
+          if(downgrade.changed){
+            prepared={...prepared,...downgrade.result};
+            stats.qualityDowngraded++;
+            stats.warnings.push({
+              hashes:group.members.map((member)=>member.hash),
+              strategy:"quality-tier-downgraded",
+              from:downgrade.from,to:downgrade.to,metrics:prepared.metrics,
+            });
+          }
+        }
+
+        if (
           state.detailQuality === "auto" && !override.quality &&
           prepared.strategy === "ai" && !prepared.skipped
         ) {
-          const refinedQuality = refinedDetailQuality(prepared, effectiveDetailQuality);
-          if (refinedQuality !== effectiveDetailQuality) {
+          const currentDetailQuality = prepared.detailQuality || effectiveDetailQuality;
+          const refinedQuality = refinedDetailQuality(prepared, currentDetailQuality);
+          if (refinedQuality !== currentDetailQuality) {
             try {
               const refined = await upscaleAiMasterPng(source, {
                 mode: state.aiMode,
@@ -423,7 +445,7 @@ async function createPack({ai}) {
                 stats.warnings.push({
                   hashes:group.members.map((member)=>member.hash),
                   strategy:refinedQuality === "max" ? "quality-promoted" : "quality-refined",
-                  from:effectiveDetailQuality,to:refinedQuality,metrics:refined.metrics,
+                  from:currentDetailQuality,to:refinedQuality,metrics:refined.metrics,
                 });
               }
             } catch {}
@@ -434,39 +456,38 @@ async function createPack({ai}) {
           state.qualityGuard && prepared.strategy === "ai" && !prepared.cached && !prepared.skipped &&
           prepared.metrics?.score !== undefined && evaluateQuality(prepared.metrics, prepared).retry
         ) {
-          try {
-            const conservative = await upscaleAiMasterPng(source, {
-              mode: state.aiMode,
-              detailQuality: prepared.detailQuality === "max" ? "high" : "standard",
-              detailCnn: false,
-              sourceColorLock: true,
-              master8x: false,
-              preserveMicrodetail: state.preserveMicrodetail,
-              preserveStars: state.preserveStars,
-              backend: state.aiBackend,
-              texturePaths,
-              textureClassOverride: cacheOptions.textureClassOverride,
-              materialOverride: cacheOptions.materialOverride,
-            });
-            if (chooseBetterQuality(prepared, conservative) === conservative) {
-              prepared.bytes = conservative.bytes;
-              prepared.stars = conservative.stars;
-              prepared.microdetails = conservative.microdetails;
-              prepared.backend = conservative.backend;
-              prepared.textureClass = conservative.textureClass;
-              prepared.material = conservative.material;
-              prepared.detailQuality = conservative.detailQuality;
-              prepared.detailCnnUsed = false;
-              prepared.detailPixels = 0;
-              prepared.metrics = conservative.metrics;
-              prepared.classification = conservative.classification;
-              prepared.materialInfo = conservative.materialInfo;
-              prepared.failures = conservative.failures;
-              prepared.internalMaster = conservative.internalMaster;
-              prepared.masterScale = conservative.masterScale;
-              stats.warnings.push({hashes:group.members.map(m=>m.hash),strategy:"quality-recovered",metrics:conservative.metrics});
-            }
-          } catch {}
+          const profiles=qualityRecoveryProfiles(prepared,state);
+          for(const profile of profiles){
+            try{
+              stats.qualityRecoveryAttempts++;
+              const recovered=await upscaleAiMasterPng(source,{
+                ...profile,
+                backend:state.aiBackend,
+                texturePaths,
+                textureClassOverride:cacheOptions.textureClassOverride,
+                materialOverride:cacheOptions.materialOverride,
+              });
+              const tier=qualifiedTier(recovered,"standard");
+              if(!tier)continue;
+              prepared={
+                ...prepared,...recovered,
+                detailQuality:tier,
+                strategy:"ai",
+                attempts:prepared.attempts,
+                errors:prepared.errors,
+                cached:false,
+                qualityRecoveredFrom:prepared.detailQuality,
+              };
+              stats.qualityRecovered++;
+              stats.warnings.push({
+                hashes:group.members.map((member)=>member.hash),
+                strategy:"quality-recovered",
+                profile,
+                metrics:recovered.metrics,
+              });
+              break;
+            }catch{}
+          }
         }
 
         if (state.qualityGuard && prepared.metrics?.score!==undefined) {
