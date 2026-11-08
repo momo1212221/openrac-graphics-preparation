@@ -3,7 +3,20 @@ name: cnn-quality-benchmark
 on:
   push:
     branches:
-      - "test/cnn-quality-benchmark-20261108"
+      - main
+    paths:
+      - "src/cnn-fusion.js"
+      - "src/material-classify.js"
+      - "tools/training/cnn_quality_benchmark.py"
+      - "tools/training/fuse_benchmark_outputs.mjs"
+      - ".github/workflows/cnn-quality-benchmark.yml"
+  pull_request:
+    paths:
+      - "src/cnn-fusion.js"
+      - "src/material-classify.js"
+      - "tools/training/cnn_quality_benchmark.py"
+      - "tools/training/fuse_benchmark_outputs.mjs"
+      - ".github/workflows/cnn-quality-benchmark.yml"
   workflow_dispatch: {}
 
 permissions:
