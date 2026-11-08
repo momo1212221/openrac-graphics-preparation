@@ -17,4 +17,6 @@ test('Quality Lab exposes material-map preview and per-hash quality selection',(
  assert.match(code,/generateMaterialMapPngs/);
  assert.match(code,/\["normal","roughness","height","ao","emissive"\]/);
  assert.match(code,/\["no-ai","No AI"\]/);
+ assert.match(code,/evaluateQuality/);
+ assert.match(code,/\["Verdict",policy\.verdict\]/);
 });
