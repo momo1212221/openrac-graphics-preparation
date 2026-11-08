@@ -66,6 +66,9 @@ class DetailCNN(nn.Module):
         self.head=nn.Conv2d(3,c,3,1,1)
         self.body=nn.Sequential(*[Block(c) for _ in range(blocks)])
         self.tail=nn.Conv2d(c,3,3,1,1)
+        # Identity start: the specialized CNN must earn every residual it adds.
+        nn.init.zeros_(self.tail.weight)
+        nn.init.zeros_(self.tail.bias)
 
     def forward(self,x):
         return torch.clamp(x+self.tail(self.body(self.head(x)))*.25,0,1)
@@ -77,13 +80,13 @@ def seed_everything(seed:int):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-def fidelity_loss(out,target,l1):
+def fidelity_loss(out,target,l1,gradient_weight=.35):
     gx=lambda z:z[:,:,:,1:]-z[:,:,:,:-1]
     gy=lambda z:z[:,:,1:,:]-z[:,:,:-1,:]
     colour=l1(out,target)
     grad_x=l1(gx(out),gx(target))
     grad_y=l1(gy(out),gy(target))
-    return colour+.18*grad_x+.18*grad_y,colour,grad_x,grad_y
+    return colour+gradient_weight*grad_x+gradient_weight*grad_y,colour,grad_x,grad_y
 
 def source_balanced_sampler(ds:Pairs,seed:int):
     counts=Counter(str(r.get("source_sha256") or r.get("source") or r.get("id")) for r in ds.rows)
@@ -110,28 +113,54 @@ def make_loader(ds,batch,workers,shuffle,seed,balance=False):
         generator=generator,
     )
 
-def evaluate(model,loader,device,l1):
+def evaluate(model,loader,device,l1,gradient_weight=.35):
     if not len(loader.dataset):
         return None
     model.eval()
     total=colour=grad_x=grad_y=0.0
+    base_colour=base_grad_x=base_grad_y=0.0
     seen=0
     with torch.no_grad():
         for inp,target in loader:
             inp,target=inp.to(device),target.to(device)
             out=model(inp)
-            loss,c,gx,gy=fidelity_loss(out,target,l1)
+            loss,c,gx,gy=fidelity_loss(out,target,l1,gradient_weight)
+            _,bc,bgx,bgy=fidelity_loss(inp,target,l1,gradient_weight)
             n=inp.shape[0]
             total+=float(loss)*n
             colour+=float(c)*n
             grad_x+=float(gx)*n
             grad_y+=float(gy)*n
+            base_colour+=float(bc)*n
+            base_grad_x+=float(bgx)*n
+            base_grad_y+=float(bgy)*n
             seen+=n
+    denom=max(1,seen)
+    colour/=denom
+    grad_x/=denom
+    grad_y/=denom
+    base_colour/=denom
+    base_grad_x/=denom
+    base_grad_y/=denom
+    gradient=(grad_x+grad_y)*.5
+    baseline_gradient=(base_grad_x+base_grad_y)*.5
+    colour_ratio=colour/max(base_colour,1e-12)
+    gradient_ratio=gradient/max(baseline_gradient,1e-12)
+    selection_score=max(colour_ratio,gradient_ratio)
+    colour_improvement=(base_colour-colour)/max(base_colour,1e-12)
+    gradient_improvement=(baseline_gradient-gradient)/max(baseline_gradient,1e-12)
     return {
-        "loss":total/max(1,seen),
-        "colour_l1":colour/max(1,seen),
-        "gradient_x_l1":grad_x/max(1,seen),
-        "gradient_y_l1":grad_y/max(1,seen),
+        "loss":total/denom,
+        "colour_l1":colour,
+        "gradient_x_l1":grad_x,
+        "gradient_y_l1":grad_y,
+        "baseline_colour_l1":base_colour,
+        "baseline_gradient_x_l1":base_grad_x,
+        "baseline_gradient_y_l1":base_grad_y,
+        "colour_improvement":colour_improvement,
+        "gradient_improvement":gradient_improvement,
+        "selection_score":selection_score,
+        "release_gate_pass":colour_improvement>0 and gradient_improvement>0,
         "pairs":seen,
     }
 
@@ -155,7 +184,7 @@ def save_checkpoint(path:Path,model,opt,epoch,best_val,bad_epochs,args):
         "epoch":epoch,
         "model":model.state_dict(),
         "optimizer":opt.state_dict(),
-        "best_validation_loss":best_val,
+        "best_validation_score":best_val,
         "bad_epochs":bad_epochs,
         "material":args.material,
         "seed":args.seed,
@@ -171,6 +200,8 @@ def main():
     ap.add_argument("--epochs",type=int,default=20)
     ap.add_argument("--batch",type=int,default=16)
     ap.add_argument("--lr",type=float,default=2e-4)
+    ap.add_argument("--gradient-weight",type=float,default=.35,
+                    help="Weight for horizontal/vertical gradient fidelity in the training loss.")
     ap.add_argument("--device",default="auto")
     ap.add_argument("--workers",type=int,default=2)
     ap.add_argument("--seed",type=int,default=1337)
@@ -183,8 +214,8 @@ def main():
     ap.add_argument("--checkpoint",type=Path,default=None)
     args=ap.parse_args()
 
-    if args.epochs<=0 or args.batch<=0 or args.lr<=0:
-        raise SystemExit("--epochs, --batch and --lr must be positive")
+    if args.epochs<=0 or args.batch<=0 or args.lr<=0 or args.gradient_weight<0:
+        raise SystemExit("--epochs, --batch and --lr must be positive; --gradient-weight must be non-negative")
     seed_everything(args.seed)
 
     device=(
@@ -222,13 +253,25 @@ def main():
             raise SystemExit(f"checkpoint does not exist: {checkpoint_path}")
         checkpoint=load_checkpoint(checkpoint_path,model,opt,args.material)
         start_epoch=int(checkpoint.get("epoch",0))
-        best_val=float(checkpoint.get("best_validation_loss",math.inf))
+        best_val=float(checkpoint.get("best_validation_score",checkpoint.get("best_validation_loss",math.inf)))
         bad_epochs=int(checkpoint.get("bad_epochs",0))
         print(json.dumps({
             "resume":True,
             "checkpoint":str(checkpoint_path),
             "next_epoch":start_epoch+1,
-            "best_validation_loss":best_val,
+            "best_validation_score":best_val,
+        }))
+    elif validation_loader:
+        initial_validation=evaluate(
+            model,validation_loader,device,l1,args.gradient_weight
+        )
+        best_val=initial_validation["selection_score"]
+        best_path.parent.mkdir(parents=True,exist_ok=True)
+        torch.save(model.state_dict(),best_path)
+        print(json.dumps({
+            "identity_baseline":True,
+            "validation":initial_validation,
+            "best_validation_score":best_val,
         }))
 
     for epoch in range(start_epoch,args.epochs):
@@ -238,7 +281,7 @@ def main():
         for inp,target in train_loader:
             inp,target=inp.to(device),target.to(device)
             out=model(inp)
-            loss,c,gx,gy=fidelity_loss(out,target,l1)
+            loss,c,gx,gy=fidelity_loss(out,target,l1,args.gradient_weight)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(),1.0)
@@ -250,8 +293,10 @@ def main():
             grad_y+=float(gy.detach())*n
             seen+=n
 
-        validation=evaluate(model,validation_loader,device,l1) if validation_loader else None
-        monitor=validation["loss"] if validation else total/max(1,seen)
+        validation=evaluate(
+            model,validation_loader,device,l1,args.gradient_weight
+        ) if validation_loader else None
+        monitor=validation["selection_score"] if validation else total/max(1,seen)
         scheduler.step(monitor)
 
         improved=monitor<best_val-1e-7
@@ -274,12 +319,13 @@ def main():
             "train_gradient_x_l1":grad_x/max(1,seen),
             "train_gradient_y_l1":grad_y/max(1,seen),
             "validation":validation,
-            "best_validation_loss":best_val,
+            "best_validation_score":best_val,
             "bad_epochs":bad_epochs,
             "lr":opt.param_groups[0]["lr"],
             "device":device,
             "source_balanced":not args.no_source_balance,
             "augment":args.augment,
+            "gradient_weight":args.gradient_weight,
             "checkpoint":str(checkpoint_path),
         }
         print(json.dumps(row))
