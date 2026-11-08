@@ -15,6 +15,7 @@ import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
 import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
 import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
+import {buildQualityReport} from "../src/quality-report.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -166,6 +167,7 @@ async function createPack({ai}) {
     materialMapSets:0,
     master8xRuns:0,
     failureRejected:0,
+    qualityRows:[],
   };
 
   try {
@@ -438,6 +440,21 @@ async function createPack({ai}) {
           stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
 
         }
+        for (const member of group.members) {
+          stats.qualityRows.push({
+            hash:member.hash,
+            path:member.path,
+            strategy:prepared.strategy,
+            textureClass:prepared.textureClass,
+            material:prepared.material,
+            detailQuality:prepared.detailQuality,
+            backend:prepared.backend,
+            masterScale:prepared.masterScale,
+            cached:prepared.cached,
+            metrics:prepared.metrics,
+            failures:prepared.failures,
+          });
+        }
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
         stats.stars += prepared.stars;
         stats.microdetails += prepared.microdetails;
@@ -549,6 +566,11 @@ async function createPack({ai}) {
       internal_8x_masters: stats.master8xRuns,
       failure_rejected: stats.failureRejected,
     };
+    if (ai) {
+      const qualityReport=buildQualityReport(stats.qualityRows,{limit:20});
+      manifest.resilience.quality_report="quality-report.json";
+      await zip.add("quality-report.json", encoder.encode(JSON.stringify(qualityReport,null,2)+"\n"));
+    }
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
     progress(1, 1, "Texture pack ready");
