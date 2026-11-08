@@ -11,7 +11,7 @@ const image=(w,h,fn)=>{
 test('derived maps keep dimensions and valid tangent normals',()=>{
  const src=image(5,5,(x,y)=>[80+x*20,70+y*15,60,255]);
  const maps=deriveMaterialMaps(src,'stone');
- for(const name of ['normal','roughness','height','ao','emissive']){
+ for(const name of ['normal','roughness','height','ao','emissive','specular','metallic','cavity','curvature','edgewear']){
    assert.equal(maps[name].width,5);assert.equal(maps[name].height,5);
    assert.equal(maps[name].data.length,5*5*4);
  }
@@ -31,4 +31,11 @@ test('material map generation policy stays off for current stock launcher by def
  assert.equal(shouldGenerateMaterialMaps('diffuse','stone','off'),false);
  assert.equal(shouldGenerateMaterialMaps('diffuse','stone','key'),true);
  assert.equal(shouldGenerateMaterialMaps('ui','generic','all'),false);
+});
+
+test('metal and weapon materials produce stronger metallic/specular priors',()=>{
+ const src=image(3,3,()=>[120,120,125,255]);
+ const metal=deriveMaterialMaps(src,'metal'),generic=deriveMaterialMaps(src,'generic');
+ assert.ok(metal.metallic.data[0]>generic.metallic.data[0]);
+ assert.ok(metal.specular.data[0]>generic.specular.data[0]);
 });

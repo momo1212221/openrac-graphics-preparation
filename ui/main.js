@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {request} from "./bridge.js";
 import {ModController} from "../src/controller.js";
-import {resetAiSession, warmAi, upscaleAiPng} from "../src/ai-runtime.js";
+import {resetAiSession, warmAi, upscaleAiMasterPng} from "../src/ai-runtime.js";
 import {prepareTextureFailSafe, readFailSafe} from "../src/resilience.js";
 import {textureFiles, texturePackManifest, outputName, packPath} from "../src/texture-pack.js";
 import {upscalePng} from "../src/upscale.js";
@@ -44,6 +44,7 @@ let state = {
   detailCnn: true,
   sourceColorLock: true,
   qualityGuard: true,
+  master8x: true,
   materialMaps: "off",
 };
 
@@ -163,6 +164,8 @@ async function createPack({ai}) {
     qualityScoreSum:0,
     qualityScoreCount:0,
     materialMapSets:0,
+    master8xRuns:0,
+    failureRejected:0,
   };
 
   try {
@@ -247,6 +250,7 @@ async function createPack({ai}) {
           detailCnn: state.detailCnn,
           sourceColorLock: state.sourceColorLock,
           qualityGuard: state.qualityGuard,
+          master8x: state.master8x,
           textureClassOverride: override.textureClass || null,
           materialOverride: override.material || null,
         };
@@ -272,6 +276,9 @@ async function createPack({ai}) {
               metrics: hit.metrics,
               classification: hit.classification,
               materialInfo: hit.materialInfo,
+              failures: hit.failures,
+              masterScale: hit.masterScale,
+              internalMaster: hit.internalMaster,
               errors: [],
               cached: true,
             };
@@ -296,7 +303,7 @@ async function createPack({ai}) {
         }
 
         if (!prepared) prepared = await prepareTextureFailSafe(source, {
-          ai: () => upscaleAiPng(source, {
+          ai: () => upscaleAiMasterPng(source, {
             mode: state.aiMode,
             preserveMicrodetail: state.preserveMicrodetail,
             preserveStars: state.preserveStars,
@@ -304,6 +311,7 @@ async function createPack({ai}) {
             detailQuality: effectiveDetailQuality,
             detailCnn: state.detailCnn,
             sourceColorLock: state.sourceColorLock,
+            master8x: state.master8x,
             texturePaths,
             textureClassOverride: cacheOptions.textureClassOverride,
             materialOverride: cacheOptions.materialOverride,
@@ -323,11 +331,12 @@ async function createPack({ai}) {
           const refinedQuality = refinedDetailQuality(prepared, effectiveDetailQuality);
           if (refinedQuality !== effectiveDetailQuality) {
             try {
-              const refined = await upscaleAiPng(source, {
+              const refined = await upscaleAiMasterPng(source, {
                 mode: state.aiMode,
                 detailQuality: refinedQuality,
                 detailCnn: state.detailCnn,
                 sourceColorLock: state.sourceColorLock,
+                master8x: state.master8x,
                 preserveMicrodetail: state.preserveMicrodetail,
                 preserveStars: state.preserveStars,
                 backend: state.aiBackend,
@@ -355,11 +364,12 @@ async function createPack({ai}) {
           prepared.metrics?.score !== undefined && evaluateQuality(prepared.metrics, prepared).retry
         ) {
           try {
-            const conservative = await upscaleAiPng(source, {
+            const conservative = await upscaleAiMasterPng(source, {
               mode: state.aiMode,
               detailQuality: prepared.detailQuality === "max" ? "high" : "standard",
               detailCnn: false,
               sourceColorLock: true,
+              master8x: false,
               preserveMicrodetail: state.preserveMicrodetail,
               preserveStars: state.preserveStars,
               backend: state.aiBackend,
@@ -380,6 +390,9 @@ async function createPack({ai}) {
               prepared.metrics = conservative.metrics;
               prepared.classification = conservative.classification;
               prepared.materialInfo = conservative.materialInfo;
+              prepared.failures = conservative.failures;
+              prepared.internalMaster = conservative.internalMaster;
+              prepared.masterScale = conservative.masterScale;
               stats.warnings.push({hashes:group.members.map(m=>m.hash),strategy:"quality-recovered",metrics:conservative.metrics});
             }
           } catch {}
@@ -387,7 +400,7 @@ async function createPack({ai}) {
 
         if (state.qualityGuard && prepared.metrics?.score!==undefined) {
           const policy=evaluateQuality(prepared.metrics,prepared);
-          if(policy.fallback && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped){
+          if((policy.fallback || prepared.failures?.ok===false) && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped){
             prepared.bytes=await upscalePng(source,4,true);
             prepared.strategy="fallback";
             prepared.backend="quality-guard-fallback";
@@ -395,7 +408,8 @@ async function createPack({ai}) {
             prepared.skipReason="quality-reject";
             prepared.detailCnnUsed=false;
             prepared.detailPixels=0;
-            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-rejected",metrics:prepared.metrics,policy});
+            stats.failureRejected++;
+            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-rejected",metrics:prepared.metrics,policy,failures:prepared.failures});
           }else if(policy.verdict!=="pass"){
             stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-warning",metrics:prepared.metrics,policy});
           }
@@ -418,6 +432,7 @@ async function createPack({ai}) {
         if (prepared.textureClass && prepared.textureClass in stats.classes) stats.classes[prepared.textureClass] += copies;
         if(prepared.material)stats.materials[prepared.material]=(stats.materials[prepared.material]||0)+copies;
         if(prepared.detailCnnUsed)stats.detailCnnRuns++;
+        if(prepared.internalMaster)stats.master8xRuns++;
         stats.detailPixels+=prepared.detailPixels||0;
         if(prepared.metrics?.score!==undefined){
           stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
@@ -462,9 +477,14 @@ async function createPack({ai}) {
             await zip.add(root+"height.png", generatedMaps.height);
             await zip.add(root+"ao.png", generatedMaps.ao);
             await zip.add(root+"emissive.png", generatedMaps.emissive);
+            await zip.add(root+"specular.png", generatedMaps.specular);
+            await zip.add(root+"metallic.png", generatedMaps.metallic);
+            await zip.add(root+"cavity.png", generatedMaps.cavity);
+            await zip.add(root+"curvature.png", generatedMaps.curvature);
+            await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.10.5",
+              generator:"Graphics preparation 0.11.0",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
@@ -526,6 +546,8 @@ async function createPack({ai}) {
       average_quality_score: stats.qualityScoreCount ? Number((stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)) : null,
       material_map_sets: stats.materialMapSets,
       material_maps_mode: state.materialMaps,
+      internal_8x_masters: stats.master8xRuns,
+      failure_rejected: stats.failureRejected,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -552,6 +574,8 @@ async function createPack({ai}) {
         stats.detailCnnRuns ? `detail CNN used on ${stats.detailCnnRuns} unique sources · ${stats.detailPixels} agreement-gated detail pixels` : "",
         stats.qualityScoreCount ? `average quality score ${(stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)}/100` : "",
         stats.materialMapSets ? `${stats.materialMapSets} material sidecar sets generated` : "",
+        stats.master8xRuns ? `${stats.master8xRuns} important assets used selective 8× internal masters` : "",
+        stats.failureRejected ? `${stats.failureRejected} outputs were rejected by automatic failure detection` : "",
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
@@ -639,6 +663,15 @@ function render() {
     state.sourceColorLock=value;await savePrefs();render();
   }));
   general.append(colorLock.row);
+
+  const master8x = settingRow(
+    "Selective 8× internal master",
+    "Important Max-detail character, weapon, boss and key terrain assets reconstruct at 8× internally, then downsample to the normal 4× texture pack.",
+  );
+  master8x.control.append(toggle(state.master8x, "Selective 8× master", async(value)=>{
+    state.master8x=value;await savePrefs();render();
+  }));
+  general.append(master8x.row);
 
   const guard = settingRow(
     "Quality guard",
@@ -818,7 +851,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.10.5 · adaptive standard-launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.11.0 · adaptive standard-launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -835,6 +868,7 @@ async function start() {
       detailCnn: saved.detailCnn !== false,
       sourceColorLock: saved.sourceColorLock !== false,
       qualityGuard: saved.qualityGuard !== false,
+      master8x: saved.master8x !== false,
       materialMaps: ["off","key","all"].includes(saved.materialMaps) ? saved.materialMaps : "off",
     };
   }

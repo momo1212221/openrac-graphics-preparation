@@ -17,8 +17,16 @@ test('per-texture quality override controls batch detail quality and No-AI bypas
 test('Quality Lab exposes material-map preview and per-hash quality selection',()=>{
  const code=readFileSync(root+'ui/quality-lab.js','utf8');
  assert.match(code,/generateMaterialMapPngs/);
- assert.match(code,/\["normal","roughness","height","ao","emissive"\]/);
+ assert.match(code,/\["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"\]/);
  assert.match(code,/\["no-ai","No AI"\]/);
  assert.match(code,/evaluateQuality/);
  assert.match(code,/\["Verdict",policy\.verdict\]/);
+});
+
+test('batch path exposes selective 8x master and failure rejection',()=>{
+ const code=readFileSync(root+'ui/main.js','utf8');
+ assert.match(code,/upscaleAiMasterPng/);
+ assert.match(code,/master8x/);
+ assert.match(code,/failureRejected/);
+ assert.match(code,/internal_8x_masters/);
 });

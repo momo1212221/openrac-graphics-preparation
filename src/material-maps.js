@@ -40,7 +40,7 @@ function localMean(field,w,h,x,y,r=2){
 export function deriveMaterialMaps(image,material="generic"){
   const {width:w,height:h,data}=image;
   const lum=luminanceField(image);
-  const height=rgba(w,h),normal=rgba(w,h,[128,128,255,255]),roughness=rgba(w,h),ao=rgba(w,h),emissive=rgba(w,h,[0,0,0,255]);
+  const height=rgba(w,h),normal=rgba(w,h,[128,128,255,255]),roughness=rgba(w,h),ao=rgba(w,h),emissive=rgba(w,h,[0,0,0,255]),specular=rgba(w,h),metallic=rgba(w,h),cavityMap=rgba(w,h),curvature=rgba(w,h),edgewear=rgba(w,h);
   const baseR=ROUGHNESS[material]??ROUGHNESS.generic;
   const normalStrength=NORMAL_STRENGTH[material]??1;
   let emissivePixels=0;
@@ -75,6 +75,23 @@ export function deriveMaterialMaps(image,material="generic"){
     const a8=clamp8(av*255);
     ao.data[i]=ao.data[i+1]=ao.data[i+2]=a8;ao.data[i+3]=sourceAlpha;
 
+    const cavityValue=clamp8(Math.min(1,Math.max(0,(mean-center)*3.2))*255);
+    cavityMap.data[i]=cavityMap.data[i+1]=cavityMap.data[i+2]=cavityValue;cavityMap.data[i+3]=sourceAlpha;
+    const lap=Math.abs(
+      fieldAt(lum,w,h,x-1,y)+fieldAt(lum,w,h,x+1,y)+fieldAt(lum,w,h,x,y-1)+fieldAt(lum,w,h,x,y+1)-center*4
+    );
+    const curvatureValue=clamp8(Math.min(1,lap*2.5)*255);
+    curvature.data[i]=curvature.data[i+1]=curvature.data[i+2]=curvatureValue;curvature.data[i+3]=sourceAlpha;
+
+    const metalPrior=material==="metal"?.92:material==="weapon"?.62:material==="energy"?.18:.04;
+    const metallicValue=clamp8(metalPrior*255);
+    metallic.data[i]=metallic.data[i+1]=metallic.data[i+2]=metallicValue;metallic.data[i+3]=sourceAlpha;
+    const specPrior=material==="glass"?.92:material==="metal"?.78:material==="weapon"?.66:material==="energy"?.72:.28;
+    const specValue=clamp8(Math.min(1,specPrior+localDetail*.12)*255);
+    specular.data[i]=specular.data[i+1]=specular.data[i+2]=specValue;specular.data[i+3]=sourceAlpha;
+    const edgeValue=clamp8(Math.min(1,lap*1.8+Math.max(0,center-mean)*1.2)*255);
+    edgewear.data[i]=edgewear.data[i+1]=edgewear.data[i+2]=edgeValue;edgewear.data[i+3]=sourceAlpha;
+
     const r=data[i],g=data[i+1],b=data[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);
     const sat=mx?((mx-mn)/mx):0;
     const threshold=material==="energy"?.48:material==="weapon"?.78:.86;
@@ -93,7 +110,7 @@ export function deriveMaterialMaps(image,material="generic"){
     emissive.data[i+3]=sourceAlpha;
   }
 
-  return {height,normal,roughness,ao,emissive,emissivePixels};
+  return {height,normal,roughness,ao,emissive,specular,metallic,cavity:cavityMap,curvature,edgewear,emissivePixels};
 }
 
 const imageFromBytes=async(bytes)=>{
@@ -117,7 +134,7 @@ export async function generateMaterialMapPngs(bytes,material="generic"){
     const source=ctx.getImageData(0,0,canvas.width,canvas.height);
     const maps=deriveMaterialMaps(source,material);
     const out={emissivePixels:maps.emissivePixels};
-    for(const name of ["normal","roughness","height","ao","emissive"])out[name]=await encode(maps[name]);
+    for(const name of ["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"])out[name]=await encode(maps[name]);
     return out;
   }finally{if(typeof image.close==="function")image.close()}
 }

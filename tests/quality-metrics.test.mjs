@@ -13,3 +13,14 @@ test('quality score rewards faithful colour and CNN agreement',()=>{
   const src=image(2,2,100,80,60),good=image(8,8,100,80,60),bad=image(8,8,20,220,240);
   assert.ok(qualityMetrics(src,good,{cnnAgreement:1}).score>qualityMetrics(src,bad,{cnnAgreement:.2}).score);
 });
+
+test('extended metrics expose structural histogram alpha and hallucination signals',()=>{
+  const src=image(3,3,100,90,80),good=image(12,12,100,90,80),bad=image(12,12,250,10,240);
+  const a=qualityMetrics(src,good,{cnnAgreement:1});
+  const b=qualityMetrics(src,bad,{cnnAgreement:.1});
+  assert.ok(a.ssim>b.ssim);
+  assert.ok(b.histogramDrift>=a.histogramDrift);
+  assert.ok(b.hallucinationScore>a.hallucinationScore);
+  assert.equal(a.alphaCoverageDiff,0);
+  assert.ok('seamScore' in a);
+});

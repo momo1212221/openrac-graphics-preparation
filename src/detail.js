@@ -1,3 +1,4 @@
+import {applyFrequencyBands,buildFrequencyBands} from "./frequency-reconstruct.js";
 // SPDX-License-Identifier: GPL-3.0-or-later
 export const PROFILE = {
   faithful: {residual:0.28, sharpen:0.04},
@@ -6,9 +7,9 @@ export const PROFILE = {
 };
 
 export const DETAIL_QUALITY = {
-  standard: {fine:1.00, mid:0.00, sharpenScale:1.00},
-  high: {fine:1.18, mid:0.12, sharpenScale:0.50},
-  max: {fine:1.34, mid:0.22, sharpenScale:0.00},
+  standard: {fine:1.00, mid:0.00, coarse:0.00, sharpenScale:1.00},
+  high: {fine:1.10, mid:0.22, coarse:0.06, sharpenScale:0.35},
+  max: {fine:1.18, mid:0.34, coarse:0.12, sharpenScale:0.00},
 };
 
 const CLASS_GAIN = {
@@ -94,38 +95,20 @@ export function restoreSourceDetail(sourceData, outputData, mode, preserveMicrod
   let stars=0,microdetails=0;
 
   if(preserveMicrodetail&&classGain>0){
-    const fine=new Float32Array(srcWidth*srcHeight*3);
-    const mid=quality.mid>0?new Float32Array(srcWidth*srcHeight*3):null;
-
+    const bands=buildFrequencyBands(sourceData);
     for(let y=0;y<srcHeight;y++)for(let x=0;x<srcWidth;x++){
       const si=at(srcWidth,x,y);
       if(source[si+3]<16)continue;
-      const mean1=meanRadius(source,srcWidth,srcHeight,x,y,1);
-      const mean2=mid?meanRadius(source,srcWidth,srcHeight,x,y,2):null;
       const base=(y*srcWidth+x)*3;
-      const centerLuma=luma(source[si],source[si+1],source[si+2]);
-      const fineContrast=centerLuma-mean1.luma;
-      if(Math.abs(fineContrast)>=18)microdetails++;
-      for(let c=0;c<3;c++){
-        fine[base+c]=(source[si+c]-mean1.rgb[c])*profile.residual*quality.fine*classGain;
-        if(mid)mid[base+c]=(mean1.rgb[c]-mean2.rgb[c])*profile.residual*quality.mid*classGain;
-      }
+      const energy=(Math.abs(bands.fine[base])+Math.abs(bands.fine[base+1])+Math.abs(bands.fine[base+2]))/3;
+      if(energy>=18)microdetails++;
     }
-
-    const scaleX=outWidth/srcWidth, scaleY=outHeight/srcHeight;
-    for(let y=0;y<outHeight;y++){
-      const sy=(y+0.5)/scaleY-0.5;
-      for(let x=0;x<outWidth;x++){
-        const sx=(x+0.5)/scaleX-0.5;
-        const oi=at(outWidth,x,y);
-        if(output[oi+3]<16)continue;
-        for(let c=0;c<3;c++){
-          let residual=bilinearField(fine,srcWidth,srcHeight,sx,sy,c);
-          if(mid)residual+=bilinearField(mid,srcWidth,srcHeight,sx,sy,c);
-          output[oi+c]=clamp8(output[oi+c]+residual);
-        }
-      }
-    }
+    applyFrequencyBands(bands,outputData,{
+      fine:profile.residual*quality.fine*classGain,
+      mid:profile.residual*quality.mid*classGain,
+      coarse:profile.residual*quality.coarse*classGain,
+      ceiling:quality===DETAIL_QUALITY.max?34:28,
+    });
   }
 
   if(preserveStars&&textureClass!=="normal"&&textureClass!=="mask"){
