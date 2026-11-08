@@ -37,6 +37,33 @@ function localMean(field,w,h,x,y,r=2){
   return n?sum/n:field[y*w+x];
 }
 
+function deriveEmissiveFromSource(image,material){
+  const {width:w,height:h,data}=image;
+  const sourceLum=luminanceField(image);
+  const emissive=rgba(w,h,[0,0,0,255]);
+  let emissivePixels=0;
+  for(let p=0;p<w*h;p++){
+    const i=p*4,alpha=data[i+3];
+    emissive.data[i+3]=alpha;
+    if(alpha<16)continue;
+    const r=data[i],g=data[i+1],b=data[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+    const sat=mx?((mx-mn)/mx):0;
+    const threshold=material==="energy"?.48:material==="weapon"?.78:.86;
+    const peak=mx/255;
+    const brightness=material==="energy"
+      ? Math.max(sourceLum[p],peak*.72)
+      : material==="weapon" ? Math.max(sourceLum[p],peak*.28+sourceLum[p]*.72) : sourceLum[p];
+    const e=Math.max(0,(brightness-threshold)/(1-threshold))*Math.max(.15,sat);
+    if(e>.02){
+      emissive.data[i]=clamp8(r*e);
+      emissive.data[i+1]=clamp8(g*e);
+      emissive.data[i+2]=clamp8(b*e);
+      emissivePixels++;
+    }
+  }
+  return {emissive,emissivePixels};
+}
+
 /**
  * Production material pipeline:
  *   Upscaled Diffuse
@@ -55,8 +82,12 @@ export function deriveMaterialMaps(image,material="generic",options={}){
   const includeCurvature=options.curvature!==false;
   const {width:w,height:h,data}=image;
 
-  // Stage 1: remove bounded low-frequency lighting bias before any geometry reconstruction.
-  const albedoResult=deriveAlbedoSidecar(image,null,material);
+  // Detect emission first so de-lighting cannot flatten intentional lamps, plasma or weapon LEDs.
+  const {emissive,emissivePixels}=deriveEmissiveFromSource(image,material);
+
+  // Stage 1: remove bounded low-frequency lighting bias before any geometry reconstruction,
+  // while protecting the source-derived emissive mask.
+  const albedoResult=deriveAlbedoSidecar(image,emissive,material);
   const albedo=albedoResult.image;
   const albedoValidation=validateAlbedoSidecar(albedoResult);
 
@@ -79,19 +110,17 @@ export function deriveMaterialMaps(image,material="generic",options={}){
   const curvature=surface.curvature;
 
   // Remaining PBR helpers operate after the height pipeline.
-  const emissive=rgba(w,h,[0,0,0,255]);
   const specular=rgba(w,h);
   const metallic=rgba(w,h);
   const cavityMap=rgba(w,h);
   const edgewear=rgba(w,h);
   const lum=luminanceField(albedo);
-  let emissivePixels=0;
 
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const p=y*w+x,i=p*4;
     const sourceAlpha=data[i+3];
     if(sourceAlpha<16){
-      for(const map of [emissive,specular,metallic,cavityMap,edgewear]){
+      for(const map of [specular,metallic,cavityMap,edgewear]){
         map.data[i+3]=sourceAlpha;
       }
       continue;
@@ -127,21 +156,7 @@ export function deriveMaterialMaps(image,material="generic",options={}){
     const edgeValue=clamp8(Math.min(1,lap*4.2+Math.max(0,hCenter-hMean)*2.0)*255);
     edgewear.data[i]=edgewear.data[i+1]=edgewear.data[i+2]=edgeValue;edgewear.data[i+3]=sourceAlpha;
 
-    // Emissive remains colour-aware and uses the original upscaled diffuse colour so cleanup does
-    // not desaturate intentionally luminous material.
-    const r=data[i],g=data[i+1],b=data[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);
-    const sat=mx?((mx-mn)/mx):0;
-    const threshold=material==="energy"?.48:material==="weapon"?.78:.86;
-    const peak=mx/255;
-    const brightness=material==="energy"
-      ? Math.max(center,peak*.72)
-      : material==="weapon" ? Math.max(center,peak*.28+center*.72) : center;
-    const e=Math.max(0,(brightness-threshold)/(1-threshold))*Math.max(.15,sat);
-    if(e>.02){
-      emissive.data[i]=clamp8(r*e);emissive.data[i+1]=clamp8(g*e);emissive.data[i+2]=clamp8(b*e);
-      emissivePixels++;
-    }
-    emissive.data[i+3]=sourceAlpha;
+
   }
 
   const maps={
