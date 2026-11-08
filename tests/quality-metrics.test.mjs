@@ -35,3 +35,13 @@ test('CNN confidence and rejection ratio raise hallucination risk',()=>{
   assert.equal(suspect.cnnConfidence,.2);
   assert.equal(suspect.cnnRejectedRatio,.8);
 });
+
+
+test('structural CNN confidence contributes to hallucination risk',()=>{
+  const src=image(2,2,100,100,100),out=image(8,8,100,100,100);
+  const high=qualityMetrics(src,out,{cnnAgreement:.9,cnnConfidence:.9});
+  const low=qualityMetrics(src,out,{cnnAgreement:.9,cnnConfidence:.1});
+  assert.ok(low.hallucinationScore>high.hallucinationScore);
+  assert.ok(low.score<high.score);
+  assert.equal(low.cnnConfidence,.1);
+});
