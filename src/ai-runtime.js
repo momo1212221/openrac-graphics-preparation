@@ -524,9 +524,11 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     if(sourceColorLock && textureClass!=="normal" && textureClass!=="mask"){
       lockSourceChroma(sourceData,outData,effectiveQuality==="max"?.82:.70);
     }
+    const cnnRejectedRatio=consideredDetailPixels?rejectedDetailPixels/consideredDetailPixels:0;
     const metrics=qualityMetrics(sourceData,outData,{
       cnnAgreement:cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1,
       cnnConfidence:cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1,
+      cnnRejectedRatio,
     });
     if(wrap.x||wrap.y)metrics.expectSeamless=true;
     const failures=detectOutputFailures(sourceData,outData,metrics);
@@ -542,6 +544,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       detailCnnUsed:!!detailRuntime,
       detailPixels,
       rejectedDetailPixels,
+      consideredDetailPixels,
+      cnnRejectedRatio,
       cnnConfidence:cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1,
       metrics,
       failures,
@@ -604,6 +608,7 @@ export async function upscaleAiMasterPng(buffer,options={},onProgress=()=>{}){
     const metrics=qualityMetrics(sourceData,finalData,{
       cnnAgreement:master.metrics?.cnnAgreement??1,
       cnnConfidence:master.metrics?.cnnConfidence??master.cnnConfidence??1,
+      cnnRejectedRatio:master.metrics?.cnnRejectedRatio??master.cnnRejectedRatio??0,
     });
     if(master.wrap?.x||master.wrap?.y)metrics.expectSeamless=true;
     const failures=detectOutputFailures(sourceData,finalData,metrics);
