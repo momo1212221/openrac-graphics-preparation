@@ -1,9 +1,9 @@
-Graphics preparation 0.17.0 unifies the graphics authoring tool and native runtime into one OpenRAC mod.
+Graphics preparation 0.17.1 fixes the OpenRAC launcher store-key failure in long-running AI exports.
 
-- One ZIP now contains the tool UI, AI/WASM runtime, models, particle asset and native effects runtime.
-- Native libraries are built and merged for Linux x86_64/AArch64, macOS x86_64/ARM64 and Windows x86_64.
-- The root mod is now a standard OpenRAC native 1.14 mod with its existing launcher tool page.
-- Exported Sparks/Smoke/Mist/Glow/Energy/Rain/Heat Haze packs require graphics-preparation >=0.17.0 instead of a second graphics-effects-runtime install.
-- The old Graphics Effects Runtime 0.1.x release remains available only for backwards compatibility with older Graphics preparation versions.
-- Placement remains deliberate and validated: real placements.json instance snapping, manual X/Y/Z, migration, orphan cleanup and export blocking for invalid placement.
-- Standard/High/Max image-quality gates remain 90/94/97.
+- Fixes **"a bad key"** appearing after the duplicate scan and before the AI texture loop.
+- The AI resume journal no longer uses a colon in its persistent store key.
+- Pack ids are sanitized to OpenRAC's documented `[a-z0-9_-]` key alphabet and the complete key is capped at 64 characters.
+- `ModController.storeGet/storeSet` now validate that same launcher contract locally, preventing future invalid keys from reaching the bridge.
+- Tests cover colon/dot removal, lowercasing, the 64-character limit and rejection of invalid store keys.
+- Persistent IndexedDB AI texture results are separate from the run journal, so cached completed textures remain reusable after the hotfix.
+- The one-package native runtime, AI/material pipeline, 90/94/97 quality gates and effects integration from 0.17.0 remain unchanged.
