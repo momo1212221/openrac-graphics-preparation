@@ -2,7 +2,7 @@
   "format": 2,
   "id": "graphics-effects-runtime",
   "name": "Graphics Effects Runtime",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "Moritz Wallinger",
   "description": "Runtime for particle, glow and haze effects authored by Graphics preparation. Uses only the official OpenRAC mod API.",
   "license": "GPL-3.0-or-later",

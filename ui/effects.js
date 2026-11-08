@@ -209,7 +209,7 @@ export class EffectsEditor {
     exportRuntime.onclick=async()=>{
       try{
         const saved=await exportEffectsMod(this.controller,this.info,this.state,this.levels);
-        this.setMessage(saved?`Saved ${saved}. Install it through Mods → Add a mod. Runtime particles also need Graphics Effects Runtime 0.1.1; point/spot lights use Enhanced graphics directly.`:"Save cancelled.");
+        this.setMessage(saved?`Saved ${saved}. Install it through Mods → Add a mod. Runtime particles also need Graphics Effects Runtime 0.1.2; point/spot lights use Enhanced graphics directly.`:"Save cancelled.");
       }catch(e){this.setMessage(e instanceof Error?e.message:String(e),true)}
     };
     particles.append(exportRuntime);

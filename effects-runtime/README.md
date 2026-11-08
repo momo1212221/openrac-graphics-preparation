@@ -24,3 +24,11 @@ Particles are capped at 192 live props to stay below OpenRAC's shared 256-prop l
 - rejects unknown presets and malformed level numbers;
 - clamps external position/colour values to finite runtime-safe ranges;
 - remains compatible with the standard OpenRAC 1.14 mod API and launcher.
+
+
+## 0.1.2
+
+- removes active particle props explicitly when the loaded level changes;
+- clears authored heat haze when leaving gameplay;
+- applies each emitter's Gravity value as real per-frame acceleration instead of a one-time velocity offset;
+- keeps the 0.1.1 parser/input hardening and all standard OpenRAC 1.14 platform builds.

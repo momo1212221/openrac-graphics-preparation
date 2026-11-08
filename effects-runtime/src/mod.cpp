@@ -40,6 +40,7 @@ struct Particle {
     float life = 1;
     float size = 0.1f;
     float grow = 0;
+    float gravity = 0;
     std::uint32_t blend = OPENRAC_PROP_ADD;
 };
 
@@ -140,7 +141,8 @@ public:
     void frame() {
         const int level = m_mod.loaded_level();
         if (level != m_level) {
-            m_particles.clear();
+            clear_particles();
+            if (level < 0) m_mod.haze_set({});
             m_level = level;
             for (auto& e : m_emitters) e.spawn = 0;
         }
@@ -158,6 +160,13 @@ public:
     }
 
 private:
+    void clear_particles() {
+        for (auto& p : m_particles) {
+            if (p.prop >= 0) m_mod.prop_remove(p.prop);
+        }
+        m_particles.clear();
+    }
+
     float random01() {
         m_rng ^= m_rng << 13;
         m_rng ^= m_rng >> 17;
@@ -193,6 +202,7 @@ private:
                 p.position = e.position;
                 p.life = e.life;
                 p.size = e.size;
+                p.gravity = e.gravity;
                 p.tint = {e.colour[0], e.colour[1], e.colour[2], e.alpha};
                 p.blend = (e.preset == "smoke" || e.preset == "mist" || e.preset == "rain")
                     ? OPENRAC_PROP_ALPHA : OPENRAC_PROP_ADD;
@@ -215,7 +225,6 @@ private:
                     p.velocity = {signed_random() * e.spread, signed_random() * e.spread,
                                   e.speed * (0.35f + random01())};
                 }
-                p.velocity[2] += e.gravity * 0.02f;
                 p.prop = m_mod.prop_create("assets/particle.glb");
                 if (p.prop >= 0) m_particles.push_back(p);
             }
@@ -228,7 +237,7 @@ private:
             p.position[0] += p.velocity[0] * dt;
             p.position[1] += p.velocity[1] * dt;
             p.position[2] += p.velocity[2] * dt;
-            p.velocity[2] -= 3.5f * dt;
+            p.velocity[2] += p.gravity * dt;
             const float t = std::clamp(p.age / p.life, 0.0f, 1.0f);
             const float size = std::max(0.001f, p.size + p.grow * p.age);
             const float alpha = p.tint[3] * (1.0f - t);
@@ -271,4 +280,4 @@ void load(openrac::Mod& mod) {
 
 } // namespace
 
-OPENRAC_MOD_CPP("graphics-effects-runtime", "0.1.1", load)
+OPENRAC_MOD_CPP("graphics-effects-runtime", "0.1.2", load)
