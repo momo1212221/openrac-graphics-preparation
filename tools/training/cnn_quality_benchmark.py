@@ -188,6 +188,11 @@ def metrics(pred: np.ndarray, target: np.ndarray) -> dict:
     }
 
 
+def quantize_runtime_rgb(rgb: np.ndarray) -> np.ndarray:
+    """Match the browser ImageData/Uint8ClampedArray domain used by cnn-fusion.js."""
+    return np.clip(np.rint(rgb*255),0,255).astype(np.uint8).astype(np.float32)/255.0
+
+
 def rgba_bytes(rgb: np.ndarray) -> bytes:
     u=np.clip(np.rint(rgb*255),0,255).astype(np.uint8)
     alpha=np.full((u.shape[0],u.shape[1],1),255,dtype=np.uint8)
@@ -249,12 +254,17 @@ def main() -> None:
             target=make_reference(kind,out_h,out_w)
             lr=resize_rgb(target,(bw,bh),Image.Resampling.LANCZOS)
             bicubic=resize_rgb(lr,(out_w,out_h),Image.Resampling.BICUBIC)
-            base,base_raw=run_model(base_session,lr)
-            detail,detail_raw=run_model(detail_session,lr)
+            base_float,base_raw=run_model(base_session,lr)
+            detail_float,detail_raw=run_model(detail_session,lr)
+            # cnn-fusion.js consumes ImageData, so both CNN outputs are 8-bit before fusion.
+            # Measure the authoritative x4plus baseline in that same domain; otherwise the
+            # benchmark incorrectly counts Float32 -> RGBA8 conversion as fusion regression.
+            base=quantize_runtime_rgb(base_float)
+            detail=quantize_runtime_rgb(detail_float)
             fused,fusion=fuse_exact(runner,base,detail,kind,work)
 
             rows={
-                "bicubic":metrics(bicubic,target),
+                "bicubic":metrics(quantize_runtime_rgb(bicubic),target),
                 "x4plus":metrics(base,target),
                 "general_x4v3":metrics(detail,target),
                 "fused":metrics(fused,target),
