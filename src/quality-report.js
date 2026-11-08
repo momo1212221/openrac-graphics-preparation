@@ -23,6 +23,7 @@ const compact=(row)=>({
   specializedCnnUsed:row.specializedCnnUsed===true,
   specializedRejected:row.specializedRejected===true,
   specializedModelSha:row.specializedModelSha||null,
+  alphaEdges:row.alphaEdges||null,
   metrics:row.metrics||null,
   failures:Array.isArray(row.failures?.issues)?row.failures.issues:[],
 });
@@ -40,7 +41,7 @@ export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
   const maxCount=scores.filter((score)=>score>=97).length;
   return {
     version:2,
-    generatedBy:"Graphics preparation 0.12.2",
+    generatedBy:"Graphics preparation 0.13.0",
     evaluated:normalized.length,
     scored:scored.length,
     averageScore:average==null?null:Number(average.toFixed(2)),
