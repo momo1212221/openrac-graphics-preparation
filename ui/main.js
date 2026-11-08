@@ -324,6 +324,7 @@ async function createPack({ai}) {
         : `${groupIndex + 1}/${workGroups.length} · ${primary.hash}`;
       let source = null;
       let readError = null;
+      let groupSampleRate = ai;
 
       for (const member of group.members) {
         try {
@@ -399,7 +400,8 @@ async function createPack({ai}) {
               errors: [],
               cached: true,
             };
-            progress(groupIndex + 1, workGroups.length, `Cache hit · ${baseLabel}`, {sampleRate:false});
+            groupSampleRate=false;
+            progress((groupIndex + .82) / workGroups.length, 1, `Cache hit · ${baseLabel} · preparing sidecars/output`, {sampleRate:false});
           } else {
             stats.cacheMisses++;
           }
@@ -433,7 +435,7 @@ async function createPack({ai}) {
             textureClassOverride: cacheOptions.textureClassOverride,
             materialOverride: cacheOptions.materialOverride,
           }, (tile, totalTiles) => {
-            const fraction = (groupIndex + tile / totalTiles) / workGroups.length;
+            const fraction = (groupIndex + (tile / totalTiles) * .82) / workGroups.length;
             progress(fraction, 1, `AI · ${baseLabel} · tile ${tile}/${totalTiles}`);
           }),
           resetAi: resetAiSession,
@@ -614,6 +616,7 @@ async function createPack({ai}) {
           shouldGenerateMaterialMaps(prepared.textureClass, prepared.material, state.materialMaps)
         ) {
           try {
+            progress((groupIndex + .86) / workGroups.length, 1, `Material maps · ${baseLabel}`, {sampleRate:false});
             generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic", {curvature:state.materialCurvature});
             stats.materialMapSets += group.members.length;
             for(const member of group.members){
@@ -645,6 +648,7 @@ async function createPack({ai}) {
           shouldGenerateMipmaps(prepared.textureClass, prepared.material, state.mipmaps)
         ) {
           try {
+            progress((groupIndex + .92) / workGroups.length, 1, `Mipmaps · ${baseLabel}`, {sampleRate:false});
             generatedMips = await generateMipChain(prepared.bytes,{maxLevels:6,minSize:1});
             stats.mipmapSets += group.members.length;
             stats.mipmapLevels += generatedMips.levels.length * group.members.length;
@@ -656,6 +660,7 @@ async function createPack({ai}) {
             });
           }
         }
+        progress((groupIndex + .96) / workGroups.length, 1, `Writing pack · ${baseLabel}`, {sampleRate:false});
         for (const member of group.members) {
           await zip.add(packPath(member), prepared.bytes);
           if (generatedMips) {
@@ -709,6 +714,7 @@ async function createPack({ai}) {
           }
           included++;
         }
+        groupSampleRate=groupSampleRate && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped;
       } else {
         let prepared;
         try {
@@ -729,6 +735,7 @@ async function createPack({ai}) {
         }
       }
       if (ai) {
+        progress(groupIndex + 1, workGroups.length, `Complete · ${baseLabel}`, {sampleRate:groupSampleRate});
         await checkpointCurrentRun(group.members.map((member)=>member.hash));
         await pauseAtSafeBoundary(baseLabel);
       }
