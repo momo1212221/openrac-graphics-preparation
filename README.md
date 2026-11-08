@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.5.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.5.2 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.5.1.zip`.
+2. Install `graphics-preparation-0.5.2.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -32,8 +32,8 @@ but does not let it install or enable another mod automatically.
 
 ## AI implementation
 
-Real-ESRGAN runs locally in the mod's iframe through ONNX Runtime Web/WASM. Version 0.5.1 uses the bundled ORT ESM build and passes the WASM binary directly, avoiding the nested dynamic module import that fails in macOS OpenRAC WebViews. Input is processed in
-overlapping 96x96 source tiles so large PS2 textures do not require one enormous inference buffer.
+Real-ESRGAN runs locally in the mod's iframe through ONNX Runtime Web/WASM. Version 0.5.2 uses the bundled ORT ESM build and passes the WASM binary directly, avoiding the nested dynamic module import that fails in macOS OpenRAC WebViews. Version 0.5.2 also pads every inference tile to the model's fixed 128x128 input shape, including small and edge textures. Input is processed in
+fixed 128x128 model inputs with a 112x112 useful core so large PS2 textures do not require one enormous inference buffer.
 After the 4x neural pass, the code restores source alpha and applies the fork's post-processing:
 
 - Faithful: residual 0.28, sharpen 0.04

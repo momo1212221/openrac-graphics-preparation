@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import * as ort from "../vendor/ort.wasm.bundle.min.mjs";
 import {restoreSourceDetail} from "./detail.js";
+import {CORE, MODEL_INPUT, PAD, SCALE, fixedRgbTile} from "./ai-tile.js";
 
-const SCALE = 4;
-const TILE = 96;
-const PAD = 8;
 let sessionPromise;
 let wasmPromise;
 let modelPromise;
@@ -58,8 +56,6 @@ async function modelBytes() {
 async function session() {
   if (!sessionPromise) {
     sessionPromise = Promise.all([runtimeBytes(), modelBytes()]).then(async ([wasm, model]) => {
-      // The stock OpenRAC page is a custom-scheme WebView. Keep ORT single-threaded and give it
-      // the WASM bytes directly: no nested module import, worker bootstrap or external URL is needed.
       ort.env.wasm.numThreads = 1;
       ort.env.wasm.proxy = false;
       ort.env.wasm.wasmBinary = wasm;
@@ -72,18 +68,6 @@ async function session() {
     });
   }
   return sessionPromise;
-}
-
-function imageDataTensor(imageData) {
-  const {width, height, data} = imageData;
-  const plane = width * height;
-  const values = new Float32Array(plane * 3);
-  for (let i = 0; i < plane; i++) {
-    values[i] = data[i * 4] / 255;
-    values[plane + i] = data[i * 4 + 1] / 255;
-    values[plane * 2 + i] = data[i * 4 + 2] / 255;
-  }
-  return new ort.Tensor("float32", values, [1, 3, height, width]);
 }
 
 function tensorImageData(tensor) {
@@ -100,22 +84,16 @@ function tensorImageData(tensor) {
   return out;
 }
 
-async function runTile(sourceCanvas, sourceX, sourceY, coreW, coreH, aiSession) {
-  const readX = Math.max(0, sourceX - PAD);
-  const readY = Math.max(0, sourceY - PAD);
-  const readRight = Math.min(sourceCanvas.width, sourceX + coreW + PAD);
-  const readBottom = Math.min(sourceCanvas.height, sourceY + coreH + PAD);
-  const readW = readRight - readX;
-  const readH = readBottom - readY;
-
-  const tile = document.createElement("canvas");
-  tile.width = readW;
-  tile.height = readH;
-  const tileCtx = tile.getContext("2d", {alpha: true, willReadFrequently: true});
-  tileCtx.drawImage(sourceCanvas, readX, readY, readW, readH, 0, 0, readW, readH);
-  const input = imageDataTensor(tileCtx.getImageData(0, 0, readW, readH));
+async function runTile(sourceData, sourceX, sourceY, coreW, coreH, aiSession) {
+  const values = fixedRgbTile(sourceData, sourceX, sourceY);
+  const input = new ort.Tensor("float32", values, [1, 3, MODEL_INPUT, MODEL_INPUT]);
   const outputs = await aiSession.run({[aiSession.inputNames[0]]: input});
   const outputData = tensorImageData(outputs[aiSession.outputNames[0]]);
+
+  const expected = MODEL_INPUT * SCALE;
+  if (outputData.width !== expected || outputData.height !== expected) {
+    throw new Error(`unexpected Real-ESRGAN output size ${outputData.width}x${outputData.height}; expected ${expected}x${expected}`);
+  }
 
   const rendered = document.createElement("canvas");
   rendered.width = outputData.width;
@@ -123,8 +101,8 @@ async function runTile(sourceCanvas, sourceX, sourceY, coreW, coreH, aiSession) 
   rendered.getContext("2d").putImageData(outputData, 0, 0);
   return {
     rendered,
-    cropX: (sourceX - readX) * SCALE,
-    cropY: (sourceY - readY) * SCALE,
+    cropX: PAD * SCALE,
+    cropY: PAD * SCALE,
     cropW: coreW * SCALE,
     cropH: coreH * SCALE,
   };
@@ -132,7 +110,7 @@ async function runTile(sourceCanvas, sourceX, sourceY, coreW, coreH, aiSession) 
 
 export async function warmAi() {
   await session();
-  return {model: "Real-ESRGAN x4plus ONNX", backend: "ONNX Runtime Web/WASM · embedded module"};
+  return {model: "Real-ESRGAN x4plus ONNX", backend: "ONNX Runtime Web/WASM · fixed 128×128 tiles"};
 }
 
 export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) {
@@ -154,16 +132,16 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     const outputCtx = output.getContext("2d", {alpha: true, willReadFrequently: true});
     const aiSession = await session();
 
-    const tilesX = Math.ceil(source.width / TILE);
-    const tilesY = Math.ceil(source.height / TILE);
+    const tilesX = Math.ceil(source.width / CORE);
+    const tilesY = Math.ceil(source.height / CORE);
     const total = tilesX * tilesY;
     let done = 0;
 
-    for (let y = 0; y < source.height; y += TILE) {
-      for (let x = 0; x < source.width; x += TILE) {
-        const coreW = Math.min(TILE, source.width - x);
-        const coreH = Math.min(TILE, source.height - y);
-        const tile = await runTile(source, x, y, coreW, coreH, aiSession);
+    for (let y = 0; y < source.height; y += CORE) {
+      for (let x = 0; x < source.width; x += CORE) {
+        const coreW = Math.min(CORE, source.width - x);
+        const coreH = Math.min(CORE, source.height - y);
+        const tile = await runTile(sourceData, x, y, coreW, coreH, aiSession);
         outputCtx.drawImage(
           tile.rendered,
           tile.cropX, tile.cropY, tile.cropW, tile.cropH,
