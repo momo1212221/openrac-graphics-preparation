@@ -29,6 +29,13 @@ test('training tools compile and keep release validation separate from runtime p
   assert.match(datasetTool,/split_for\(source_sha\)/);
   assert.match(datasetTool,/duplicate_sources_skipped/);
   assert.match(datasetTool,/dataset-summary\.json/);
+  assert.match(datasetTool,/--base-model/);
+  assert.match(datasetTool,/BaseCnnReconstructor/);
+  assert.match(datasetTool,/base_model_sha256/);
+
+  const validator=readFileSync(root+'tools/training/validate_detail.py','utf8');
+  assert.match(validator,/dataset_input_pipeline/);
+  assert.match(validator,/base_model_sha256/);
 
   const trainer=readFileSync(root+'tools/training/train_detail.py','utf8');
   assert.match(trainer,/--resume/);
