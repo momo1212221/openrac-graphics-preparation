@@ -57,8 +57,14 @@ python tools/training/train_detail.py training-data training-output/detail-metal
   --material metal --epochs 30 --augment
 ```
 
-Training is fidelity-oriented: RGB L1 plus horizontal/vertical gradient consistency. There is no
-GAN/adversarial loss.
+Training is fidelity-oriented: RGB L1 plus horizontal/vertical gradient consistency and a small
+Laplacian/high-frequency fidelity term. There is no GAN/adversarial or perceptual hallucination
+loss.
+
+Architecture v2 uses a deterministic 1/1/2/1/2/1/3/1 dilation cycle across residual blocks. This
+increases material context without changing input/output resolution or the identity-start safety
+property. Architecture-v1 checkpoints are intentionally rejected by `--resume` so an old model
+cannot silently continue training under different convolution semantics.
 
 The trainer supports:
 
@@ -112,9 +118,10 @@ degraded input in RGB L1 and gradient L1. The report records:
 - aggregate before/after errors;
 - the worst retained examples for inspection.
 
-A model becomes `release_candidate: true` only when both requested improvement thresholds are met.
-Thresholds can be made stricter with `--min-l1-improvement` and
-`--min-gradient-improvement`.
+A model becomes `release_candidate: true` only when RGB L1, gradient L1 and Laplacian L1 all beat
+their requested improvement thresholds. Thresholds can be made stricter with
+`--min-l1-improvement`, `--min-gradient-improvement` and
+`--min-laplacian-improvement`.
 
 ## 6. Inspect visually
 
@@ -158,8 +165,8 @@ python tools/training/train_detail.py training-data models/detail-stone-candidat
 ```
 
 The separate held-out validator is still authoritative for promotion. A candidate is never promoted
-unless `validate_detail.py` reports positive RGB L1 and gradient L1 improvement and marks
-`release_candidate: true`.
+unless `validate_detail.py` reports positive RGB L1, gradient L1 and Laplacian L1 improvement and
+marks `release_candidate: true`.
 
 ## Recommended real training sequence
 
@@ -170,4 +177,4 @@ unless `validate_detail.py` reports positive RGB L1 and gradient L1 improvement 
 4. Train with augmentation and source-balanced sampling.
 5. Validate the exported ONNX model on held-out sources.
 6. Inspect representative outputs in Quality Lab before promotion.
-7. Promote only the SHA-validated model that passes both fidelity metrics.
+7. Promote only the SHA-validated model that passes all three fidelity metrics.
