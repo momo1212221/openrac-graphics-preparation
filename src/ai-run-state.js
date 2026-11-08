@@ -3,10 +3,17 @@ import {QUALITY_POLICY_VERSION} from "./quality-policy.js";
 const VERSION=1;
 export const RUN_PIPELINE=`ai-resume-v2|policy-${QUALITY_POLICY_VERSION}`;
 
-const clean=(v)=>String(v??"").replace(/[^a-z0-9._-]+/gi,"-").toLowerCase();
+const STORE_KEY_MAX=64;
+const STORE_KEY_PREFIX=`texture-preparation-ai-run-v${VERSION}-`;
+const clean=(v)=>String(v??"")
+  .replace(/[^a-z0-9_-]+/gi,"-")
+  .replace(/^-+|-+$/g,"")
+  .toLowerCase();
 
 export function aiRunStoreKey(packId){
-  return `texture-preparation-ai-run-v${VERSION}:${clean(packId||"openrac")}`;
+  const available=Math.max(1,STORE_KEY_MAX-STORE_KEY_PREFIX.length);
+  const suffix=(clean(packId||"openrac")||"openrac").slice(0,available);
+  return `${STORE_KEY_PREFIX}${suffix}`;
 }
 
 export function aiRunSignature(state={}){
