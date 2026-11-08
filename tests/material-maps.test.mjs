@@ -12,7 +12,7 @@ const image=(w,h,fn)=>{
 test('derived maps keep dimensions and valid tangent normals',()=>{
  const src=image(5,5,(x,y)=>[80+x*20,70+y*15,60,255]);
  const maps=deriveMaterialMaps(src,'stone');
- for(const name of ['normal','roughness','height','ao','emissive','specular','metallic','cavity','curvature','edgewear']){
+ for(const name of ['albedo','normal','roughness','height','ao','emissive','specular','metallic','cavity','curvature','edgewear']){
    assert.equal(maps[name].width,5);assert.equal(maps[name].height,5);
    assert.equal(maps[name].data.length,5*5*4);
  }
@@ -74,4 +74,14 @@ test('material map derivation includes PBR calibration',()=>{
  const metal=deriveMaterialMaps(src,'metal');
  assert.equal(metal.pbrValidation.ok,true);
  assert.ok(metal.pbrCalibration.meanMetallic>=.7);
+});
+
+
+test('material maps include conservative lighting-neutralized albedo',()=>{
+ const src=image(32,16,(x)=>x<16?[65,60,55,255]:[150,140,130,255]);
+ const maps=deriveMaterialMaps(src,'stone');
+ assert.equal(maps.albedo.width,32);
+ assert.equal(maps.albedo.height,16);
+ assert.equal(maps.albedoValidation.ok,true);
+ assert.ok(maps.albedoDelight.adjustedPixels>0);
 });
