@@ -120,3 +120,16 @@ test('fragile material novelty budgets remain effective after residual saturatio
   assert.ok(fragile.every((value)=>value<=stoneDelta));
   assert.ok(fragile.some((value)=>value<stoneDelta));
 });
+
+
+test('fragile benchmark materials keep x4plus authoritative in generic CNN fusion',()=>{
+  const base=img(7,7,100),detail=img(7,7,100);
+  const center=(3*7+3)*4;
+  base.data.set([180,180,180,255],center);
+  detail.data.set([220,220,220,255],center);
+  for(const material of ['character','weapon','energy','glass','sky']){
+    const out=fuseCnnOutputs(base,detail,{quality:'max',material});
+    assert.deepEqual([...out.image.data],[...base.data],material);
+    assert.equal(out.detailPixels,0,material);
+  }
+});

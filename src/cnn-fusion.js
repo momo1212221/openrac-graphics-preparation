@@ -20,11 +20,11 @@ const MATERIAL_PROFILE=Object.freeze({
   metal:{minConfidence:.14,modelOnlyAllowance:.52,noveltyScale:.92},
   fabric:{minConfidence:.11,modelOnlyAllowance:.72,noveltyScale:1.02},
   organic:{minConfidence:.15,modelOnlyAllowance:.48,noveltyScale:.86},
-  character:{minConfidence:.18,modelOnlyAllowance:.34,noveltyScale:.36},
-  weapon:{minConfidence:.14,modelOnlyAllowance:.56,noveltyScale:.85},
-  energy:{minConfidence:.18,modelOnlyAllowance:.30,noveltyScale:.07},
-  glass:{minConfidence:.22,modelOnlyAllowance:.18,noveltyScale:.20},
-  sky:{minConfidence:.20,modelOnlyAllowance:.24,noveltyScale:.16},
+  character:{minConfidence:.18,modelOnlyAllowance:.34,noveltyScale:0},
+  weapon:{minConfidence:.14,modelOnlyAllowance:.56,noveltyScale:0},
+  energy:{minConfidence:.18,modelOnlyAllowance:.30,noveltyScale:0},
+  glass:{minConfidence:.22,modelOnlyAllowance:.18,noveltyScale:0},
+  sky:{minConfidence:.20,modelOnlyAllowance:.24,noveltyScale:0},
   ui:{minConfidence:.28,modelOnlyAllowance:.10,noveltyScale:.30},
   normal:{minConfidence:1,modelOnlyAllowance:0,noveltyScale:0},
   mask:{minConfidence:1,modelOnlyAllowance:0,noveltyScale:0},
@@ -167,6 +167,7 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
           -impulseLimit,
           Math.min(impulseLimit,limited*profile.noveltyScale),
         );
+        if(Math.abs(materialLimited)<1e-6)continue;
         out.data[i+ch]=clamp8(base.data[i+ch]+materialLimited*gain*confidence);
         used=true;
       }
