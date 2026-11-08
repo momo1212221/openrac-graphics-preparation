@@ -9,6 +9,7 @@ import {ZipStream} from "../src/zip.js";
 import {EffectsEditor} from "./effects.js";
 import {buildDuplicatePlan} from "../src/dedup.js";
 import {cacheGet, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, trimCache} from "../src/ai-cache.js";
+import {pathTextureScope} from "../src/texture-classify.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -33,6 +34,7 @@ let state = {
   aiBackend: "auto",
   persistentCache: true,
   cacheBudgetMb: 2048,
+  detailQuality: "high",
 };
 
 const el = (tag, text, cls) => {
@@ -141,6 +143,7 @@ async function createPack({ai}) {
     smartSkipped: 0,
     aiElapsedMs: 0,
     aiTiles: 0,
+    classes: {diffuse:0,ui:0,sky:0,normal:0,mask:0},
   };
 
   try {
@@ -212,10 +215,13 @@ async function createPack({ai}) {
       }
 
       if (ai) {
+        const texturePaths = group.members.map((member)=>member.path);
         const cacheOptions = {
           mode: state.aiMode,
+          detailQuality: state.detailQuality,
           preserveMicrodetail: state.preserveMicrodetail,
           preserveStars: state.preserveStars,
+          textureScope: pathTextureScope(texturePaths),
         };
         let key = null;
         let prepared = null;
@@ -247,6 +253,8 @@ async function createPack({ai}) {
             preserveMicrodetail: state.preserveMicrodetail,
             preserveStars: state.preserveStars,
             backend: state.aiBackend,
+            detailQuality: state.detailQuality,
+            texturePaths,
           }, (tile, totalTiles) => {
             const fraction = (groupIndex + tile / totalTiles) / workGroups.length;
             progress(fraction, 1, `AI · ${baseLabel} · tile ${tile}/${totalTiles}`);
@@ -269,6 +277,7 @@ async function createPack({ai}) {
         const copies = group.members.length;
         stats[prepared.strategy] += copies;
         if (prepared.strategy === "ai" && prepared.skipped) stats.smartSkipped += copies;
+        if (prepared.textureClass && prepared.textureClass in stats.classes) stats.classes[prepared.textureClass] += copies;
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
         stats.stars += prepared.stars;
         stats.microdetails += prepared.microdetails;
@@ -310,7 +319,7 @@ async function createPack({ai}) {
     }
 
     const manifest = texturePackManifest(info, included, ai
-      ? {ai: true, mode: state.aiMode}
+      ? {ai: true, mode: state.aiMode, detailQuality: state.detailQuality}
       : {scale: state.scale, edgePreserving: state.edgePreserving});
     manifest.resilience = {
       version: 1,
@@ -331,6 +340,8 @@ async function createPack({ai}) {
       smart_skipped: stats.smartSkipped,
       ai_elapsed_ms: Math.round(stats.aiElapsedMs),
       ai_tiles: stats.aiTiles,
+      texture_classes: stats.classes,
+      detail_quality: state.detailQuality,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -353,6 +364,7 @@ async function createPack({ai}) {
         stats.smartSkipped ? `${stats.smartSkipped} transparent/uniform outputs bypassed Real-ESRGAN losslessly` : "",
         stats.cacheWrites ? `${stats.cacheWrites} new AI results cached for future runs` : "",
         stats.aiRuns && stats.aiElapsedMs ? `AI compute ${(stats.aiElapsedMs / 1000).toFixed(1)}s · ${(stats.aiElapsedMs / stats.aiRuns).toFixed(0)}ms per unique source · ${stats.aiTiles} tiles` : "",
+        `classes: ${stats.classes.diffuse} diffuse · ${stats.classes.ui} UI · ${stats.classes.sky} sky · ${stats.classes.normal} normal · ${stats.classes.mask} mask`,
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
@@ -406,6 +418,21 @@ function render() {
     ["enhanced", "Maximum detail"],
   ], state.aiMode, async (value) => { state.aiMode = value; await savePrefs(); }));
   general.append(profile.row);
+
+  const detailRow = settingRow(
+    "Detail reconstruction",
+    "Adds source-derived material structure and CNN context, not extra sharpening. High is the new recommended mode.",
+  );
+  detailRow.control.append(select([
+    ["standard", "Current look · fastest"],
+    ["high", "High detail · recommended"],
+    ["max", "Max detail · most context"],
+  ], state.detailQuality, async (value) => {
+    state.detailQuality = value;
+    await savePrefs();
+    render();
+  }));
+  general.append(detailRow.row);
 
   const acceleration = settingRow(
     "AI acceleration",
@@ -476,6 +503,7 @@ function render() {
   for (const [title, description, badge] of [
     ["Preflight", "Runs one fixed 128×128 inference before opening the output pack.", "On"],
     ["Exact duplicate check", "Same-size candidates are fingerprinted and confirmed byte-for-byte; identical PNGs are upscaled only once.", "On"],
+    ["Adaptive texture classes", "UI stays conservative; normal/mask maps use technical-safe upscaling; world/sky textures use CNN detail reconstruction.", "On"],
     ["Lossless trivial bypass", "Fully transparent and exactly uniform textures skip Real-ESRGAN and are enlarged directly.", "On"],
     ["Per-texture retry", "If ONNX fails, the session is released and rebuilt once.", "1 retry"],
     ["Automatic fallback", "If AI still fails, that texture uses deterministic 4× scaling.", "4×"],
@@ -542,7 +570,7 @@ function render() {
   };
   body.append(clearCacheButton);
   body.append(el("p",
-    "Real-ESRGAN always receives fixed 128×128 inputs. A 112×112 core is used with 8 pixels of edge-clamped context. Large textures are processed tile-by-tile and the UI yields between tiles/textures.",
+    "Real-ESRGAN always receives fixed 128×128 inputs. Current look uses 8px context; High uses 16px with overlap; Max uses 24px with stronger overlap. Overlaps are feather-blended instead of hard-overwritten.",
     "muted advanced-note"));
   advanced.append(body); content.append(advanced);
 
@@ -556,7 +584,7 @@ async function start() {
   effectsEditor = new EffectsEditor(controller, info, setMessage);
   await effectsEditor.start();
   document.addEventListener("graphics-effects-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.7.3 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.8.0 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -569,6 +597,7 @@ async function start() {
       aiBackend: ["auto","webgpu","wasm"].includes(saved.aiBackend) ? saved.aiBackend : "auto",
       persistentCache: saved.persistentCache !== false,
       cacheBudgetMb: [512,1024,2048,4096].includes(Number(saved.cacheBudgetMb)) ? Number(saved.cacheBudgetMb) : 2048,
+      detailQuality: ["standard","high","max"].includes(saved.detailQuality) ? saved.detailQuality : "high",
     };
   }
   if (state.persistentCache) {

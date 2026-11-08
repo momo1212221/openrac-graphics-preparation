@@ -2,8 +2,9 @@
 import * as ortWasm from "../vendor/ort.wasm.bundle.min.mjs";
 import * as ortGpu from "../vendor/ort.webgpu.bundle.min.mjs";
 import {restoreSourceDetail} from "./detail.js";
-import {CORE, MODEL_INPUT, PAD, SCALE, fillFixedRgbTile} from "./ai-tile.js";
+import {MODEL_INPUT, SCALE, blendTile, fillFixedRgbTile, tileGeometry} from "./ai-tile.js";
 import {trivialTexture} from "./ai-analyze.js";
+import {classifyTexture} from "./texture-classify.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -178,15 +179,15 @@ function outputShape(tensor) {
   return {height:dims[2], width:dims[3]};
 }
 
-function croppedTensorImageData(tensor, coreW, coreH) {
+function croppedTensorImageData(tensor, coreW, coreH, geometry) {
   const {width, height} = outputShape(tensor);
   const expected = MODEL_INPUT * SCALE;
   if (width !== expected || height !== expected) {
     throw new Error(`unexpected Real-ESRGAN output size ${width}x${height}; expected ${expected}x${expected}`);
   }
 
-  const cropX = PAD * SCALE;
-  const cropY = PAD * SCALE;
+  const cropX = geometry.pad * SCALE;
+  const cropY = geometry.pad * SCALE;
   const cropW = coreW * SCALE;
   const cropH = coreH * SCALE;
   const plane = width * height;
@@ -207,11 +208,11 @@ function croppedTensorImageData(tensor, coreW, coreH) {
   return out;
 }
 
-async function runTile(sourceData, sourceX, sourceY, coreW, coreH, runtime, inputValues) {
-  fillFixedRgbTile(sourceData, sourceX, sourceY, inputValues);
+async function runTile(sourceData, sourceX, sourceY, coreW, coreH, runtime, inputValues, geometry) {
+  fillFixedRgbTile(sourceData, sourceX, sourceY, inputValues, geometry.pad);
   const input = new runtime.ort.Tensor("float32", inputValues, [1, 3, MODEL_INPUT, MODEL_INPUT]);
   const outputs = await runtime.session.run({[runtime.session.inputNames[0]]: input});
-  return croppedTensorImageData(outputs[runtime.session.outputNames[0]], coreW, coreH);
+  return croppedTensorImageData(outputs[runtime.session.outputNames[0]], coreW, coreH, geometry);
 }
 
 async function releasePromise(promise) {
@@ -324,6 +325,7 @@ export async function warmAi(preference = "auto") {
 
 export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) {
   const mode = ["faithful", "balanced", "enhanced"].includes(options.mode) ? options.mode : "balanced";
+  const detailQuality = ["standard","high","max"].includes(options.detailQuality) ? options.detailQuality : "high";
   const preserveMicrodetail = options.preserveMicrodetail !== false;
   const preserveStars = options.preserveStars !== false;
   const backend = ["auto", "webgpu", "wasm"].includes(options.backend) ? options.backend : "auto";
@@ -343,6 +345,10 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     output.height = source.height * SCALE;
     const outputCtx = output.getContext("2d", {alpha:true, willReadFrequently:true});
 
+    const classification = classifyTexture(options.texturePaths || options.texturePath || "", sourceData);
+    const textureClass = classification.kind;
+    const effectiveQuality = textureClass === "ui" ? "standard" : detailQuality;
+
     const trivial = trivialTexture(sourceData);
     if (trivial.trivial) {
       outputCtx.imageSmoothingEnabled = false;
@@ -355,30 +361,71 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
         backend:"trivial",
         skipped:true,
         skipReason:trivial.reason,
+        textureClass,
+        detailQuality:effectiveQuality,
         elapsedMs:performance.now()-started,
         tiles:0,
       };
     }
 
+    if (textureClass === "normal" || textureClass === "mask") {
+      outputCtx.imageSmoothingEnabled = true;
+      outputCtx.imageSmoothingQuality = "high";
+      outputCtx.drawImage(source,0,0,output.width,output.height);
+      if (textureClass === "normal") {
+        const technical = outputCtx.getImageData(0,0,output.width,output.height);
+        for (let i=0;i<technical.data.length;i+=4) {
+          let nx=technical.data[i]/127.5-1;
+          let ny=technical.data[i+1]/127.5-1;
+          let nz=technical.data[i+2]/127.5-1;
+          const length=Math.hypot(nx,ny,nz)||1;
+          nx/=length;ny/=length;nz/=length;
+          technical.data[i]=Math.round((nx+1)*127.5);
+          technical.data[i+1]=Math.round((ny+1)*127.5);
+          technical.data[i+2]=Math.round((nz+1)*127.5);
+        }
+        outputCtx.putImageData(technical,0,0);
+      }
+      return {
+        bytes:await canvasPng(output),
+        stars:0,
+        microdetails:0,
+        backend:"technical",
+        skipped:true,
+        skipReason:textureClass,
+        textureClass,
+        detailQuality:"technical",
+        elapsedMs:performance.now()-started,
+        tiles:0,
+      };
+    }
+
+    const geometry = tileGeometry(effectiveQuality, textureClass);
     const runtime = await acquireSession(backend);
     const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
-    const tilesX = Math.ceil(source.width / CORE);
-    const tilesY = Math.ceil(source.height / CORE);
-    const total = tilesX * tilesY;
+    const outputData = new ImageData(output.width, output.height);
+    const weights = new Uint16Array(output.width * output.height);
+    const xs=[]; for(let x=0;x<source.width;x+=geometry.step)xs.push(x);
+    const ys=[]; for(let y=0;y<source.height;y+=geometry.step)ys.push(y);
+    const total = xs.length * ys.length;
     let done = 0;
 
-    for (let y = 0; y < source.height; y += CORE) {
-      for (let x = 0; x < source.width; x += CORE) {
-        const coreW = Math.min(CORE, source.width - x);
-        const coreH = Math.min(CORE, source.height - y);
-        const tile = await runTile(sourceData, x, y, coreW, coreH, runtime, inputValues);
-        outputCtx.putImageData(tile, x * SCALE, y * SCALE);
-        onProgress(++done, total);
-        if (done === total || done % 4 === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
+    for (const y of ys) {
+      for (const x of xs) {
+        const coreW = Math.min(geometry.core, source.width - x);
+        const coreH = Math.min(geometry.core, source.height - y);
+        const tile = await runTile(sourceData, x, y, coreW, coreH, runtime, inputValues, geometry);
+        blendTile(outputData, weights, tile, x*SCALE, y*SCALE, {
+          overlap:geometry.overlap,
+          sourceX:x,sourceY:y,
+          sourceWidth:source.width,sourceHeight:source.height,
+          coreW,coreH,
+        });
+        onProgress(++done,total);
+        if(done===total||done%4===0)await new Promise((resolve)=>setTimeout(resolve,0));
       }
     }
+    outputCtx.putImageData(outputData,0,0);
 
     const alpha = document.createElement("canvas");
     alpha.width = output.width;
@@ -393,12 +440,17 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     outputCtx.restore();
 
     const outData = outputCtx.getImageData(0, 0, output.width, output.height);
-    const stats = restoreSourceDetail(sourceData, outData, mode, preserveMicrodetail, preserveStars);
+    const stats = restoreSourceDetail(sourceData, outData, mode, preserveMicrodetail, preserveStars, {
+      detailQuality: effectiveQuality,
+      textureClass,
+    });
     outputCtx.putImageData(outData, 0, 0);
     return {
       bytes:await canvasPng(output),
       ...stats,
       backend:runtime.backend,
+      textureClass,
+      detailQuality:effectiveQuality,
       elapsedMs:performance.now()-started,
       tiles:total,
     };

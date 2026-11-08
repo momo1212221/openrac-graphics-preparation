@@ -29,6 +29,8 @@ export async function prepareTextureFailSafe(source, {
         skipReason: result.skipReason ?? null,
         elapsedMs: Number(result.elapsedMs) || 0,
         tiles: Number(result.tiles) || 0,
+        textureClass: result.textureClass ?? null,
+        detailQuality: result.detailQuality ?? null,
         errors,
       };
     } catch (error) {

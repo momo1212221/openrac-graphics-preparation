@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.7.3 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.8.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.7.3.zip`.
+2. Install `graphics-preparation-0.8.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -129,3 +129,22 @@ back to WASM.
 
 The final summary records total AI compute time, average milliseconds per unique neural source and
 tile count. These timings make device/backend comparisons visible without external profiling tools.
+
+
+## High Detail CNN reconstruction (0.8.0)
+
+0.8 separates **detail** from **sharpness**. The default is now Balanced CNN + High Detail.
+
+- Standard keeps the prior 8px context / 112px core look.
+- High uses 16px source context, a 96px useful core and 8px overlap.
+- Max uses 24px source context, an 80px useful core and 16px overlap.
+- Overlapping neural tiles are feather-weighted together instead of hard-overwritten.
+- High cuts the old output-sharpen stage in half; Max disables that stage entirely.
+- Additional visible structure comes from a bilinearly reconstructed multi-scale residual field
+  derived from the original texture, not a stronger edge-sharpen filter.
+
+Textures are classified conservatively. Interface assets keep Standard context. Normal maps and
+technical masks bypass generative CNN reconstruction and use technical-safe 4x resizing; normal
+vectors are re-normalized afterwards. World diffuse and sky textures use the selected detail mode.
+The persistent cache key includes detail quality and coarse texture scope, so older/simpler outputs
+cannot be reused accidentally.
