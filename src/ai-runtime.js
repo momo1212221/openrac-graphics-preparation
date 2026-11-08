@@ -464,7 +464,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       : null;
     const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
     const detailInputValues = detailRuntime ? new Float32Array(3 * MODEL_INPUT * MODEL_INPUT) : null;
-    let cnnAgreementSum=0,cnnConfidenceSum=0,cnnAgreementTiles=0,detailPixels=0,rejectedDetailPixels=0;
+    let cnnAgreementSum=0,cnnConfidenceSum=0,cnnAgreementTiles=0,detailPixels=0,rejectedDetailPixels=0,consideredDetailPixels=0;
     const outputData = new ImageData(output.width, output.height);
     const weights = new Uint16Array(output.width * output.height);
     const xs=[]; for(let x=0;x<source.width;x+=geometry.step)xs.push(x);
@@ -486,7 +486,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
             cnnConfidenceSum+=fused.confidence??fused.agreement;
             cnnAgreementTiles++;
             detailPixels+=fused.detailPixels;
-            rejectedDetailPixels+=fused.rejectedPixels||0;
+            rejectedDetailPixels+=fused.rejectedPixels||0;\n            consideredDetailPixels+=fused.consideredPixels||0;
           }catch{
             // Detail CNN is optional; the x4plus result remains valid.
           }
