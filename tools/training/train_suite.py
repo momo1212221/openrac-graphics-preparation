@@ -50,6 +50,7 @@ def main():
     ap.add_argument("--validation-limit",type=int,default=500)
     ap.add_argument("--min-l1-improvement",type=float,default=0.0)
     ap.add_argument("--min-gradient-improvement",type=float,default=0.0)
+    ap.add_argument("--min-laplacian-improvement",type=float,default=0.0)
     args=ap.parse_args()
 
     materials=[m.strip() for m in args.materials.split(",") if m.strip()]
@@ -105,6 +106,7 @@ def main():
                 "--limit",str(args.validation_limit),
                 "--min-l1-improvement",str(args.min_l1_improvement),
                 "--min-gradient-improvement",str(args.min_gradient_improvement),
+                "--min-laplacian-improvement",str(args.min_laplacian_improvement),
                 "--output",validation,
             ],allowed=(0,2))
             report=json.loads(validation.read_text(encoding="utf-8"))
@@ -117,6 +119,7 @@ def main():
                 release_candidate=report.get("release_candidate") is True,
                 l1_improvement=report.get("l1_improvement"),
                 gradient_improvement=report.get("gradient_improvement"),
+                laplacian_improvement=report.get("laplacian_improvement"),
             )
         except subprocess.CalledProcessError as exc:
             row.update(status="failed",exit_code=exc.returncode)
@@ -129,7 +132,17 @@ def main():
         summary.append(row)
 
     out=args.output/"training-suite-summary.json"
-    out.write_text(json.dumps({"version":1,"models":summary},indent=2)+"\n",encoding="utf-8")
+    out.write_text(json.dumps({
+        "version":2,
+        "config":{
+            "gradient_weight":args.gradient_weight,
+            "laplacian_weight":args.laplacian_weight,
+            "min_l1_improvement":args.min_l1_improvement,
+            "min_gradient_improvement":args.min_gradient_improvement,
+            "min_laplacian_improvement":args.min_laplacian_improvement,
+        },
+        "models":summary,
+    },indent=2)+"\n",encoding="utf-8")
     print(json.dumps({"summary":str(out),"models":summary},indent=2))
 
 if __name__=="__main__":
