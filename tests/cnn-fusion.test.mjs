@@ -32,3 +32,12 @@ test('material impulse caps keep glass more conservative than stone',()=>{
   const glass=fuseCnnOutputs(base,detail,{quality:'max',material:'glass'}).image.data[(2*5+2)*4];
   assert.ok(stone>=glass);
 });
+
+test('fusion reports how much local CNN detail was rejected',()=>{
+  const a=img(3,3,100),b=img(3,3,240);
+  b.data.set([0,0,0,255],16);
+  const out=fuseCnnOutputs(a,b,{quality:'max',material:'stone'});
+  assert.equal(out.consideredPixels,9);
+  assert.ok(out.rejectedPixels>0);
+  assert.ok(out.rejectedPixels/out.consideredPixels>0);
+});
