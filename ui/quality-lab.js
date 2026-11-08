@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import {upscaleAiPng} from "../src/ai-runtime.js";
+import {upscaleAiMasterPng} from "../src/ai-runtime.js";
 import {readFailSafe} from "../src/resilience.js";
 import {upscalePng} from "../src/upscale.js";
 import {generateMaterialMapPngs} from "../src/material-maps.js";
@@ -45,9 +45,9 @@ export class QualityLab{
             bytes:await upscalePng(source,4,true),backend:"no-ai",textureClass:override.textureClass||"manual",
             material:override.material||"manual",detailQuality:"no-ai",detailPixels:0,metrics:null,
           }
-        : await upscaleAiPng(source,{
+        : await upscaleAiMasterPng(source,{
             mode:state.aiMode,detailQuality,detailCnn:state.detailCnn,
-            sourceColorLock:state.sourceColorLock,preserveMicrodetail:state.preserveMicrodetail,
+            sourceColorLock:state.sourceColorLock,master8x:state.master8x,preserveMicrodetail:state.preserveMicrodetail,
             preserveStars:state.preserveStars,backend:state.aiBackend,texturePaths:[texture.path],
             textureClassOverride:override.textureClass,materialOverride:override.material,
           });
@@ -56,9 +56,9 @@ export class QualityLab{
         const refinedQuality=refinedDetailQuality(result,detailQuality);
         if(refinedQuality!==detailQuality){
           try{
-            const refined=await upscaleAiPng(source,{
+            const refined=await upscaleAiMasterPng(source,{
               mode:state.aiMode,detailQuality:refinedQuality,detailCnn:state.detailCnn,
-              sourceColorLock:state.sourceColorLock,preserveMicrodetail:state.preserveMicrodetail,
+              sourceColorLock:state.sourceColorLock,master8x:state.master8x,preserveMicrodetail:state.preserveMicrodetail,
               preserveStars:state.preserveStars,backend:state.aiBackend,texturePaths:[texture.path],
               textureClassOverride:override.textureClass,materialOverride:override.material,
             });
@@ -140,8 +140,8 @@ export class QualityLab{
       const facts=el("div",undefined,"quality-facts");
       for(const [name,value] of [
         ["Class",r.textureClass],["Material",r.material],["Planned",this.preview.plannedQuality],["Used",r.detailQuality],["Quality",m.score!==undefined?`${m.score}/100`:"n/a"],
-        ["CNN agreement",m.cnnAgreement??"n/a"],["Colour drift",m.colorDrift??"n/a"],["Edge gain",m.edgeGain??"n/a"],
-        ["Verdict",policy.verdict],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
+        ["Master",r.internalMaster?"8× → 4×":"4×"],["CNN agreement",m.cnnAgreement??"n/a"],["SSIM",m.ssim??"n/a"],["Colour drift",m.colorDrift??"n/a"],["Histogram drift",m.histogramDrift??"n/a"],["Edge gain",m.edgeGain??"n/a"],["Hallucination",m.hallucinationScore??"n/a"],
+        ["Verdict",policy.verdict],["Failures",r.failures?.issues?.join(", ")||"none"],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
       section.append(facts);
     }
