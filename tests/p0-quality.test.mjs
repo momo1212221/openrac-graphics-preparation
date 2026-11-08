@@ -24,5 +24,6 @@ test('failure detector catches catastrophic and excessive outputs',()=>{
   assert.equal(r.ok,false);
   assert.ok(r.issues.includes('black-output'));
   assert.ok(r.issues.includes('over-detail'));
-  assert.ok(r.issues.includes('hallucination-risk'));\n  assert.ok(r.issues.includes('cnn-local-rejection'));
+  assert.ok(r.issues.includes('hallucination-risk'));
+  assert.ok(r.issues.includes('cnn-local-rejection'));
 });
