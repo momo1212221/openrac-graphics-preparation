@@ -113,6 +113,9 @@ export async function cacheGet(key) {
       failures: row.failures || null,
       masterScale:Number(row.masterScale)||4,
       internalMaster:row.internalMaster===true,
+      specializedCnnUsed:row.specializedCnnUsed===true,
+      specializedRejected:row.specializedRejected===true,
+      specializedModelSha:row.specializedModelSha||null,
     };
   } catch {
     sessionDisabled = true;
@@ -175,6 +178,9 @@ export async function cachePut(key, result, maxBytes) {
     failures:result.failures||null,
     masterScale:Number(result.masterScale)||4,
     internalMaster:result.internalMaster===true,
+    specializedCnnUsed:result.specializedCnnUsed===true,
+    specializedRejected:result.specializedRejected===true,
+    specializedModelSha:result.specializedModelSha||null,
     lastUsed:Date.now(),
     created:Date.now(),
   };
