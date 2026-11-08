@@ -241,7 +241,7 @@ test('lit relief preview visualizes the generated normal response without enteri
    const v=(x===11||y===13)?55:125+((x+y)%4)*8;
    return [v,v-5,v-10,255];
  });
- const maps=deriveMaterialMaps(src,'stone');
+ const maps=deriveMaterialMaps(src,'stone',{qaPreview:true});
  assert.ok(maps.reliefPreview);
  assert.equal(maps.reliefPreview.width,24);
  assert.equal(maps.reliefPreview.height,24);
@@ -254,4 +254,11 @@ test('lit relief preview visualizes the generated normal response without enteri
    )different++;
  }
  assert.ok(different>0);
+});
+
+
+test('batch material derivation skips the QA-only lit preview by default',()=>{
+ const src=image(12,12,(x,y)=>[100+x*4,95+y*3,90,255]);
+ const maps=deriveMaterialMaps(src,'stone');
+ assert.equal(maps.reliefPreview,undefined);
 });
