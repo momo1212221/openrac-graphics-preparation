@@ -11,7 +11,7 @@ import {lockSourceChroma, qualityMetrics} from "./quality-metrics.js";
 import {detectTextureWrap} from "./seam.js";
 import {detectOutputFailures} from "./failure-detect.js";
 import {resizePng,upscalePng} from "./upscale.js";
-import {specializedModelFor} from "./specialized-models.js";
+import {acceptSpecializedRefinement,specializedModelFor} from "./specialized-models.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -630,10 +630,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
           const candidateMetrics=qualityMetrics(sourceData,candidate,{
             cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,
           });
-          const safe=(candidateMetrics.score>=baseMetrics.score-1)
-            && (candidateMetrics.hallucinationScore<=baseMetrics.hallucinationScore+3)
-            && (candidateMetrics.colorDrift<=baseMetrics.colorDrift+2);
-          if(safe){
+          if(acceptSpecializedRefinement(baseMetrics,candidateMetrics)){
             outData=candidate;
             specializedCnnUsed=true;
             specializedModelSha=refined.runtime.sha256;
