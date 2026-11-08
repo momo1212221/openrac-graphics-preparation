@@ -4,7 +4,7 @@ import {automaticDetailQuality,refinedDetailQuality} from '../src/quality-planne
 
 const metrics=(score,extra={})=>({
   score,cnnAgreement:.9,cnnConfidence:.85,colorDrift:4,edgeGain:1.2,ssim:.94,
-  alphaCoverageDiff:0,hallucinationScore:8,cnnRejectedRatio:.05,...extra,
+  alphaCoverageDiff:0,hallucinationScore:8,cnnRejectedRatio:.05,cnnLowConfidenceRatio:.05,cnnConfidenceP10:.5,...extra,
 });
 
 test('automatic planner reserves max detail for important assets',()=>{
@@ -38,4 +38,12 @@ test('structural and hallucination risk blocks aggressive detail',()=>{
 test('high local rejection blocks max detail promotion',()=>{
   const result={textureClass:'diffuse',material:'weapon',metrics:metrics(98,{cnnRejectedRatio:.55})};
   assert.equal(refinedDetailQuality(result,'high'),'standard');
+});
+
+
+test('regional low confidence blocks max detail promotion',()=>{
+  const lowArea={textureClass:'diffuse',material:'weapon',metrics:metrics(98,{cnnLowConfidenceRatio:.7})};
+  const weakFloor={textureClass:'diffuse',material:'weapon',metrics:metrics(98,{cnnConfidenceP10:.05})};
+  assert.equal(refinedDetailQuality(lowArea,'high'),'standard');
+  assert.equal(refinedDetailQuality(weakFloor,'high'),'standard');
 });
