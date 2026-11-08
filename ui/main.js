@@ -390,6 +390,9 @@ async function createPack({ai}) {
               prepared.metrics = conservative.metrics;
               prepared.classification = conservative.classification;
               prepared.materialInfo = conservative.materialInfo;
+              prepared.failures = conservative.failures;
+              prepared.internalMaster = conservative.internalMaster;
+              prepared.masterScale = conservative.masterScale;
               stats.warnings.push({hashes:group.members.map(m=>m.hash),strategy:"quality-recovered",metrics:conservative.metrics});
             }
           } catch {}
