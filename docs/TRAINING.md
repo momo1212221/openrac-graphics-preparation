@@ -103,8 +103,8 @@ python tools/training/train_suite.py training-data training-output \
 ```
 
 This runs the supported material families one after another and validates each candidate. Materials
-with no training data or no held-out validation/test data are skipped instead of being silently
-promoted. Use `--resume` to continue existing per-material checkpoints.
+with no training data or no untouched **test** data are skipped instead of being silently promoted.
+The validation split remains available for epoch/model selection; it is not sufficient for release. Use `--resume` to continue existing per-material checkpoints.
 
 A `training-suite-summary.json` is written with the outcome and validation improvements for every
 material.
@@ -116,13 +116,16 @@ python tools/training/validate_detail.py training-data training-output/detail-me
   --material metal --output training-output/detail-metal.validation.json
 ```
 
-Validation uses only held-out validation/test sources. It compares the candidate against the
-degraded input in RGB L1 and gradient L1. The report records:
+Release validation uses the untouched **test split only** for the authoritative pass/fail metrics.
+The validation split is evaluated separately for diagnostics but never contributes to
+`release_candidate`. This avoids tuning a model against the same data used for its final release
+decision. The report compares the candidate against the degraded input in RGB L1, gradient L1 and
+Laplacian L1 and records:
 
 - exact model SHA-256 and byte size;
 - exact dataset manifest SHA-256;
 - training input pipeline and base-CNN SHA-256 when runtime-aligned inputs were used;
-- held-out split counts and unique source count;
+- held-out split counts plus separate validation/test sections and test-source count;
 - aggregate before/after errors;
 - the worst retained examples for inspection.
 
