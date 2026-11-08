@@ -16,6 +16,8 @@ test('High/Max add structure while reducing old output sharpening',()=>{
   assert.ok(DETAIL_QUALITY.max.mid>DETAIL_QUALITY.high.mid);
   assert.ok(DETAIL_QUALITY.max.coarse>DETAIL_QUALITY.high.coarse);
   assert.ok(DETAIL_QUALITY.high.fine>DETAIL_QUALITY.standard.fine);
+  assert.equal(DETAIL_QUALITY.standard.directional,0);
+  assert.ok(DETAIL_QUALITY.max.directional>DETAIL_QUALITY.high.directional);
 });
 
 test('base CNN profiles remain available',()=>{
