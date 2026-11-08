@@ -11,8 +11,9 @@ const safeNumber = (value, fallback = 0) => {
 const vec3 = (value, fallback) => Array.from({length:3}, (_,i)=>safeNumber(value?.[i], fallback[i]));
 const finiteVec3 = (value) => {
   if (!Array.isArray(value) || value.length < 3) return null;
-  const out = value.slice(0,3).map(Number);
-  return out.every(Number.isFinite) ? out : null;
+  const raw = value.slice(0,3);
+  if (!raw.every((item)=>typeof item === "number" && Number.isFinite(item))) return null;
+  return raw;
 };
 const clone = (value) => JSON.parse(JSON.stringify(value));
 export const EFFECTS_SCHEMA_VERSION = 2;
