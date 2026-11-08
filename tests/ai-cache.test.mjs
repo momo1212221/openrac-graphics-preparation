@@ -10,14 +10,14 @@ test('cache keys include source digest and all output-affecting detail options',
   const d=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'ui',preserveMicrodetail:true,preserveStars:true});
   const e=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'world',detailCnn:true,sourceColorLock:true,qualityGuard:true,preserveMicrodetail:true,preserveStars:true,specializedFingerprint:'a'.repeat(64)});
   const f=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'world',detailCnn:true,sourceColorLock:true,qualityGuard:true,preserveMicrodetail:true,preserveStars:true,specializedFingerprint:'b'.repeat(64)});
-  const g=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'world',detailCnn:true,sourceColorLock:true,qualityGuard:true,preserveMicrodetail:true,preserveStars:true,qualityPolicyVersion:'90-94-97-v2'});
+  const g=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'world',detailCnn:true,sourceColorLock:true,qualityGuard:true,preserveMicrodetail:true,preserveStars:true,qualityPolicyVersion:'90-94-97-v3-alpha'});
   const h=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'world',detailCnn:true,sourceColorLock:true,qualityGuard:true,preserveMicrodetail:true,preserveStars:true,qualityPolicyVersion:'old-policy'});
   assert.notEqual(a,b);
   assert.notEqual(a,c);
   assert.notEqual(a,d);
   assert.notEqual(e,f);
   assert.notEqual(g,h);
-  assert.match(g,/policy-90-94-97-v2/);
+  assert.match(g,/policy-90-94-97-v3-alpha/);
   assert.match(a,/realesrgan-x4plus/);
   assert.match(a,/high/);
   assert.match(a,/world/);
