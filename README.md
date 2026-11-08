@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.11.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.12.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.11.0.zip`.
+2. Install `graphics-preparation-0.12.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -211,7 +211,7 @@ border pixel. This gives x4plus and the detail CNN real material context across 
 reducing reconstructed seams without sharpening or modifying non-repeating UI/technical maps.
 
 
-## Quality Lab+ (0.11.0)
+## Quality Lab+ (0.12.0)
 
 Quality Lab now previews the derived Normal/Roughness/Height/AO/Emissive maps beside Original and AI
 output. Per texture hash, the user can override the reconstruction quality to Current, High, Max or
@@ -219,20 +219,33 @@ No AI. These overrides are also respected by the full batch export, so a logo or
 can stay conservative while weapons, terrain or hero materials run at maximum detail.
 
 
-## Adaptive quality policy (0.11.0)
+## Adaptive quality policy (0.12.0)
 
 Quality Guard now uses a shared policy instead of one fixed score cutoff. It considers aggregate score plus colour/luma drift, alpha drift, CNN agreement, edge amplification, texture class and material importance. Weak results are retried conservatively; critically bad uncached AI results are rejected and replaced by the deterministic 4x fallback. Quality Lab shows the verdict and recommended action before a full pack export.
 
 
-## Automatic per-texture detail planning (0.11.0)
+## Automatic per-texture detail planning (0.12.0)
 
 The global Detail reconstruction selector now includes **Auto**. Auto chooses a starting quality per texture from path scope, visual importance and source size: UI/technical maps stay conservative, important character/weapon assets may use Max, and ordinary world materials default to High. After the first neural pass, measured colour drift, edge gain, CNN agreement, material and class can trigger one refinement pass. Manual per-hash quality overrides always take precedence. Cache identity follows the quality actually written, so refined Max/High outputs cannot be restored under the wrong key.
 
 
-## P0 quality completion (0.11.0)
+## P0 quality completion (0.12.0)
 
-0.11.0 closes the main texture-quality workstream. Important Max-detail assets can use a selective 8× internal master: the source is expanded 2×, reconstructed by the local CNN stack to 8× original resolution, then high-quality downsampled to the normal 4× pack size. Unsupported/oversized cases fail open to the established 4× path.
+0.12.0 closes the main texture-quality workstream. Important Max-detail assets can use a selective 8× internal master: the source is expanded 2×, reconstructed by the local CNN stack to 8× original resolution, then high-quality downsampled to the normal 4× pack size. Unsupported/oversized cases fail open to the established 4× path.
 
 Source-detail restoration now uses three frequency bands (fine/mid/coarse) instead of a two-scale residual. Quality analysis adds approximate SSIM, histogram drift, alpha-coverage drift, seam score, microdetail gain and a hallucination-risk score. Automatic failure detection rejects catastrophic black/transparent/wrong-size/alpha-loss/over-detail/CNN-disagreement results before they enter the persistent cache.
 
 Material sidecars now include Normal, Roughness, Height, AO, Emissive, Specular, Metallic, Cavity, Curvature and Edge-Wear. Existing sidecar names remain unchanged; the additional files are additive for newer OpenRAC integrations.
+
+
+## Specialized material CNN runtime (0.12.0)
+
+Validated material-specific detail models can now refine Max-detail diffuse outputs after the general
+4× reconstruction. The runtime loads only models registered in `models/specialized-models.json`,
+verifies the downloaded ONNX bytes against the pinned SHA-256 before session creation, and routes by
+the existing material classifier.
+
+The specialized pass is deliberately fail-open. Missing registries/models, unsupported WebGPU,
+model-load/inference errors, or a refinement that worsens the quality guardrails keep the established
+general Real-ESRGAN result. Source alpha is preserved. Persistent cache identity includes the sorted
+specialized-model registry hashes, so changing a promoted model cannot silently reuse stale outputs.
