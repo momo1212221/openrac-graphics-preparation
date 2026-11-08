@@ -106,6 +106,19 @@ def luma(a: np.ndarray) -> np.ndarray:
     return a[...,0]*.299+a[...,1]*.587+a[...,2]*.114
 
 
+def global_ssim(pred: np.ndarray, target: np.ndarray) -> float:
+    p=luma(pred).astype(np.float64)
+    t=luma(target).astype(np.float64)
+    mp=float(p.mean()); mt=float(t.mean())
+    vp=float(((p-mp)**2).mean()); vt=float(((t-mt)**2).mean())
+    cov=float(((p-mp)*(t-mt)).mean())
+    c1=(.01**2); c2=(.03**2)
+    denom=(mp*mp+mt*mt+c1)*(vp+vt+c2)
+    if denom<=1e-15:
+        return 1.0 if np.allclose(p,t) else 0.0
+    return float(((2*mp*mt+c1)*(2*cov+c2))/denom)
+
+
 def metrics(pred: np.ndarray, target: np.ndarray) -> dict:
     diff=pred-target
     mse=float(np.mean(diff*diff))
@@ -122,6 +135,7 @@ def metrics(pred: np.ndarray, target: np.ndarray) -> dict:
     return {
         "mae_255":round(mae*255,4),
         "psnr_db":round(psnr,4),
+        "ssim":round(global_ssim(pred,target),6),
         "gradient_mae_255":round(grad_mae*255,4),
         "edge_energy_ratio":round(edge_ratio,4),
         "chroma_error_255":round(float(chroma)*255,4),
@@ -180,7 +194,7 @@ def main() -> None:
     out_h,out_w=bh*4,bw*4
     runner=Path(__file__).with_name("fuse_benchmark_outputs.mjs")
     cases=["stone","fabric","metal","organic","sky"]
-    report={"version":1,"input":[bw,bh],"output":[out_w,out_h],"cases":[]}
+    report={"version":2,"input":[bw,bh],"output":[out_w,out_h],"cases":[]}
     quality_wins={"base":0,"detail":0,"fused":0,"bicubic":0}
 
     with tempfile.TemporaryDirectory() as td:
@@ -212,6 +226,22 @@ def main() -> None:
             save_preview(prefix/"general-x4v3.png",detail)
             save_preview(prefix/"fused.png",fused)
 
+            base_metrics=rows["x4plus"]
+            fused_metrics=rows["fused"]
+            # The detail CNN is optional enrichment. It must never materially degrade the
+            # authoritative x4plus reconstruction just to increase apparent detail.
+            gradient_regression=fused_metrics["gradient_mae_255"]/max(base_metrics["gradient_mae_255"],1e-9)-1
+            mae_regression=fused_metrics["mae_255"]/max(base_metrics["mae_255"],1e-9)-1
+            ssim_regression=base_metrics["ssim"]-fused_metrics["ssim"]
+            case_gate={
+                "gradient_regression_le_3pct":gradient_regression<=.03,
+                "mae_regression_le_3pct":mae_regression<=.03,
+                "ssim_drop_le_0_01":ssim_regression<=.01,
+                "fusion_confidence_valid":0<=fusion["confidence"]<=1,
+                "fusion_agreement_valid":0<=fusion["agreement"]<=1,
+                "base_overshoot_le_5pct":base_raw["overshoot_ratio"]<=.05,
+                "detail_overshoot_le_5pct":detail_raw["overshoot_ratio"]<=.05,
+            }
             report["cases"].append({
                 "name":kind,
                 "metrics":rows,
@@ -219,6 +249,13 @@ def main() -> None:
                 "detail_raw":detail_raw,
                 "fusion":fusion,
                 "best_gradient_first":best,
+                "relative_to_x4plus":{
+                    "gradient_regression":round(gradient_regression,6),
+                    "mae_regression":round(mae_regression,6),
+                    "ssim_regression":round(ssim_regression,6),
+                },
+                "gate":case_gate,
+                "gate_ok":all(case_gate.values()),
             })
 
     report["wins"]=quality_wins
@@ -236,10 +273,29 @@ def main() -> None:
         "mean_rejected_ratio":round(float(np.mean([
             c["fusion"]["rejectedPixels"]/max(1,c["fusion"]["consideredPixels"]) for c in report["cases"]
         ])),4),
+        "mean_psnr_db":{
+            name:round(float(np.mean([c["metrics"][name]["psnr_db"] for c in report["cases"]])),4)
+            for name in ("bicubic","x4plus","general_x4v3","fused")
+        },
+        "mean_ssim":{
+            name:round(float(np.mean([c["metrics"][name]["ssim"] for c in report["cases"]])),6)
+            for name in ("bicubic","x4plus","general_x4v3","fused")
+        },
     }
-    report["ok"]=all(
+    base_mean_grad=report["summary"]["mean_gradient_mae_255"]["x4plus"]
+    fused_mean_grad=report["summary"]["mean_gradient_mae_255"]["fused"]
+    base_mean_mae=report["summary"]["mean_mae_255"]["x4plus"]
+    fused_mean_mae=report["summary"]["mean_mae_255"]["fused"]
+    base_mean_ssim=report["summary"]["mean_ssim"]["x4plus"]
+    fused_mean_ssim=report["summary"]["mean_ssim"]["fused"]
+    report["regression_gate"]={
+        "all_cases_pass":all(c["gate_ok"] for c in report["cases"]),
+        "mean_gradient_regression_le_2pct":fused_mean_grad<=base_mean_grad*1.02,
+        "mean_mae_regression_le_2pct":fused_mean_mae<=base_mean_mae*1.02,
+        "mean_ssim_drop_le_0_005":fused_mean_ssim>=base_mean_ssim-.005,
+    }
+    report["ok"]=all(report["regression_gate"].values()) and all(
         np.isfinite(c["base_raw"]["raw_min"]) and np.isfinite(c["detail_raw"]["raw_min"])
-        and 0<=c["fusion"]["confidence"]<=1 and 0<=c["fusion"]["agreement"]<=1
         for c in report["cases"]
     )
     args.output.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf-8")
