@@ -45,3 +45,12 @@ test('structural CNN confidence contributes to hallucination risk',()=>{
   assert.ok(low.score<high.score);
   assert.equal(low.cnnConfidence,.1);
 });
+
+
+test('PSNR is maximal for identical output and drops with error',()=>{
+ const src=image(2,2,100,90,80),same=image(8,8,100,90,80),bad=image(8,8,150,40,180);
+ const a=qualityMetrics(src,same),b=qualityMetrics(src,bad);
+ assert.equal(a.psnr,99);
+ assert.ok(b.psnr<a.psnr);
+ assert.ok(Number.isFinite(b.psnr));
+});
