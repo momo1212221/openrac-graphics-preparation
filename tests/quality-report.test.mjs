@@ -17,6 +17,15 @@ test('quality report ranks best/worst and keeps detected failures',()=>{
   assert.equal(report.failureCount,1);
   assert.deepEqual(report.failures[0].failures,['hallucination-risk']);
   assert.equal(report.averageScore,69);
+  assert.equal(report.tiers.standard.threshold,90);
+  assert.equal(report.tiers.standard.count,1);
+  assert.equal(report.tiers.standard.rate,33.33);
+  assert.equal(report.tiers.high.count,0);
+  assert.equal(report.tiers.max.count,0);
+  assert.equal(report.belowStandardCount,2);
+  assert.equal(report.percentiles.min,44);
+  assert.equal(report.percentiles.p50,72);
+  assert.equal(report.percentiles.max,91);
   assert.equal(report.best[0].specializedCnnUsed,true);
   assert.equal(report.best[0].specializedModelSha,'c'.repeat(64));
   assert.equal(report.failures[0].specializedRejected,true);
@@ -39,4 +48,19 @@ test('quality report includes compact material-sidecar validation',()=>{
  assert.equal(report.materialMaps[0].ok,false);
  assert.deepEqual(report.materialMaps[0].issues,['normal-length']);
  assert.equal(report.materialMaps[0].worstSeam,18);
+});
+
+
+test('quality report exposes 90/94/97 distribution and p99',()=>{
+  const report=buildQualityReport([
+    row('s90',90),row('h94',94),row('m97',97),row('m99',99),row('low',89),
+  ]);
+  assert.equal(report.tiers.standard.count,4);
+  assert.equal(report.tiers.standard.rate,80);
+  assert.equal(report.tiers.high.count,3);
+  assert.equal(report.tiers.high.rate,60);
+  assert.equal(report.tiers.max.count,2);
+  assert.equal(report.tiers.max.rate,40);
+  assert.equal(report.belowStandardCount,1);
+  assert.ok(report.percentiles.p99>98);
 });
