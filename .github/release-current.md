@@ -1,6 +1,7 @@
-Graphics preparation 0.12.1 completes specialized-CNN observability.
+Graphics preparation 0.12.2 completes quantitative texture and material-sidecar validation.
 
-- quality-report.json now records whether a specialized material CNN was accepted or rejected per texture.
-- Accepted rows include the exact pinned specialized model SHA-256.
-- Batch manifest and final summary keep aggregate accepted/rejected counts.
-- Retains the SHA-verified fail-open 0.12.0 specialized runtime and all 0.11.x quality safeguards.
+- Texture QA now records PSNR alongside SSIM, colour/histogram drift, edge gain, seam risk and hallucination risk.
+- Generated material maps are validated for tangent-normal length/facing, scalar-channel consistency and edge discontinuity.
+- Each Materials/<hash>/material.json contains its sidecar quality result.
+- quality-report.json aggregates material-map validation so problematic sidecars can be found without opening every material folder.
+- Retains SHA-verified specialized material CNN refinement and 0.12.1 per-model traceability.
