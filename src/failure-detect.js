@@ -15,6 +15,6 @@ export function detectOutputFailures(source,output,metrics={}){
   if(metrics.edgeGain>3.6)issues.push("over-detail");
   if(metrics.cnnAgreement!==undefined&&metrics.cnnAgreement<.2)issues.push("cnn-disagreement");
   if(metrics.hallucinationScore!==undefined&&metrics.hallucinationScore>70)issues.push("hallucination-risk");
-  if(metrics.seamScore!==undefined&&metrics.seamScore>35)issues.push("seam-risk");
+  if(metrics.expectSeamless===true&&metrics.seamScore!==undefined&&metrics.seamScore>35)issues.push("seam-risk");
   return {ok:issues.length===0,issues,visiblePixels:visible,opaquePixels:opaque};
 }
