@@ -195,7 +195,7 @@ def main() -> None:
     runner=Path(__file__).with_name("fuse_benchmark_outputs.mjs")
     cases=["stone","fabric","metal","organic","sky"]
     report={"version":2,"input":[bw,bh],"output":[out_w,out_h],"cases":[]}
-    quality_wins={"base":0,"detail":0,"fused":0,"bicubic":0}
+    quality_wins={"base":0,"detail":0,"fused":0,"fidelity_anchor":0,"bicubic":0}
 
     with tempfile.TemporaryDirectory() as td:
         work=Path(td)
@@ -206,12 +206,14 @@ def main() -> None:
             base,base_raw=run_model(base_session,lr)
             detail,detail_raw=run_model(detail_session,lr)
             fused,fusion=fuse_exact(runner,base,detail,kind,work)
+            fidelity_anchor,fidelity_fusion=fuse_exact(runner,detail,base,kind,work)
 
             rows={
                 "bicubic":metrics(bicubic,target),
                 "x4plus":metrics(base,target),
                 "general_x4v3":metrics(detail,target),
                 "fused":metrics(fused,target),
+                "fidelity_anchor":metrics(fidelity_anchor,target),
             }
             best=min(rows,key=lambda k:(rows[k]["gradient_mae_255"],rows[k]["mae_255"]))
             if best=="x4plus":quality_wins["base"]+=1
@@ -225,6 +227,7 @@ def main() -> None:
             save_preview(prefix/"x4plus.png",base)
             save_preview(prefix/"general-x4v3.png",detail)
             save_preview(prefix/"fused.png",fused)
+            save_preview(prefix/"fidelity-anchor.png",fidelity_anchor)
 
             base_metrics=rows["x4plus"]
             fused_metrics=rows["fused"]
@@ -248,6 +251,7 @@ def main() -> None:
                 "base_raw":base_raw,
                 "detail_raw":detail_raw,
                 "fusion":fusion,
+                "fidelity_anchor_fusion":fidelity_fusion,
                 "best_gradient_first":best,
                 "relative_to_x4plus":{
                     "gradient_regression":round(gradient_regression,6),
@@ -262,11 +266,11 @@ def main() -> None:
     report["summary"]={
         "mean_gradient_mae_255":{
             name:round(float(np.mean([c["metrics"][name]["gradient_mae_255"] for c in report["cases"]])),4)
-            for name in ("bicubic","x4plus","general_x4v3","fused")
+            for name in ("bicubic","x4plus","general_x4v3","fused","fidelity_anchor")
         },
         "mean_mae_255":{
             name:round(float(np.mean([c["metrics"][name]["mae_255"] for c in report["cases"]])),4)
-            for name in ("bicubic","x4plus","general_x4v3","fused")
+            for name in ("bicubic","x4plus","general_x4v3","fused","fidelity_anchor")
         },
         "mean_fusion_confidence":round(float(np.mean([c["fusion"]["confidence"] for c in report["cases"]])),4),
         "mean_fusion_agreement":round(float(np.mean([c["fusion"]["agreement"] for c in report["cases"]])),4),
@@ -275,11 +279,11 @@ def main() -> None:
         ])),4),
         "mean_psnr_db":{
             name:round(float(np.mean([c["metrics"][name]["psnr_db"] for c in report["cases"]])),4)
-            for name in ("bicubic","x4plus","general_x4v3","fused")
+            for name in ("bicubic","x4plus","general_x4v3","fused","fidelity_anchor")
         },
         "mean_ssim":{
             name:round(float(np.mean([c["metrics"][name]["ssim"] for c in report["cases"]])),6)
-            for name in ("bicubic","x4plus","general_x4v3","fused")
+            for name in ("bicubic","x4plus","general_x4v3","fused","fidelity_anchor")
         },
     }
     base_mean_grad=report["summary"]["mean_gradient_mae_255"]["x4plus"]
