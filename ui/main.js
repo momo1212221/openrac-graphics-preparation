@@ -538,6 +538,13 @@ async function createPack({ai}) {
           try {
             generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic");
             stats.materialMapSets += group.members.length;
+            if(generatedMaps.quality?.ok===false){
+              stats.warnings.push({
+                hashes:group.members.map((member)=>member.hash),
+                strategy:"material-map-quality",
+                quality:generatedMaps.quality,
+              });
+            }
           } catch (error) {
             stats.warnings.push({
               hashes:group.members.map((member)=>member.hash),
@@ -566,6 +573,7 @@ async function createPack({ai}) {
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
+              quality:generatedMaps.quality,
               sourceHash:member.hash,
             };
             await zip.add(root+"material.json", encoder.encode(JSON.stringify(meta,null,2)+"\n"));
