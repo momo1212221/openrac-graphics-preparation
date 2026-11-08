@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {
-  DEFAULT_EFFECTS, normalizeEffects, normalizeLight, normalizeAreaLight, normalizeParticle,
+  DEFAULT_EFFECTS, effectExportIssues, normalizeEffects, normalizeLight, normalizeAreaLight, normalizeParticle,
   loadLevels, readProbeProfile, exportBakerProfile, exportEffectsMod,
 } from "../src/effects-authoring.js";
 
@@ -31,7 +31,7 @@ const selectField=(label,value,rows,onchange)=>{
   wrap.append(node("span",label));
   const input=document.createElement("select");
   for(const [v,text] of rows){const o=document.createElement("option");o.value=v;o.textContent=text;input.append(o)}
-  input.value=value;input.onchange=()=>onchange(input.value);wrap.append(input);return wrap;
+  input.value=value;input.disabled=!rows.length;input.onchange=()=>onchange(input.value);wrap.append(input);return wrap;
 };
 
 export class EffectsEditor {
@@ -49,18 +49,19 @@ export class EffectsEditor {
     if(!this.levels.some(l=>l.dir===this.state.selectedLevel))this.state.selectedLevel=this.levels[0]?.dir||"";
     const level=this.currentLevel();
     if(!level?.objects.some(o=>o.key===this.state.selectedObject))this.state.selectedObject=level?.objects[0]?.key||"";
+    if(!level?.placements?.some(o=>o.key===this.state.selectedPlacement))this.state.selectedPlacement=level?.placements?.[0]?.key||"";
     this.profile=await readProbeProfile(this.controller,this.state.selectedLevel);
     await this.persist();
   }
   currentLevel(){return this.levels.find(l=>l.dir===this.state.selectedLevel)}
-  selectedPlacementObject(){
-    return this.currentLevel()?.objects?.find((o)=>o.key===this.state.selectedObject)||null;
+  selectedPlacementInstance(){
+    return this.currentLevel()?.placements?.find((row)=>row.key===this.state.selectedPlacement)||null;
   }
   async persist(){await this.controller.storeSet("effects-authoring-v1",this.state)}
-  async placeParticleAtObject(particle){
-    const anchor=this.selectedPlacementObject();
+  async placeParticleAtInstance(particle){
+    const anchor=this.selectedPlacementInstance();
     if(!anchor?.position){
-      this.setMessage("The selected exported object has no world position in its level manifest. Enter X/Y/Z manually for this effect.",true);
+      this.setMessage("No exported level instance is selected. Enter X/Y/Z manually or select an instance from placements.json.",true);
       return;
     }
     particle.position=[...anchor.position];
@@ -71,7 +72,12 @@ export class EffectsEditor {
     this.setMessage(`Placed ${particle.preset} at ${anchor.label} · X ${particle.position[0]} · Y ${particle.position[1]} · Z ${particle.position[2]}`);
   }
   async setParticlePosition(particle,position){
-    particle.position=[...position];
+    const next=Array.isArray(position)?position.slice(0,3).map(Number):[];
+    if(next.length!==3||!next.every(Number.isFinite)){
+      this.setMessage("Effect placement needs finite X/Y/Z coordinates.",true);
+      return;
+    }
+    particle.position=next;
     particle.placement="manual";
     particle.anchorObject="";
     await this.persist();
@@ -81,6 +87,7 @@ export class EffectsEditor {
     this.state.selectedLevel=dir;
     const level=this.currentLevel();
     if(!level?.objects.some(o=>o.key===this.state.selectedObject))this.state.selectedObject=level?.objects[0]?.key||"";
+    if(!level?.placements?.some(o=>o.key===this.state.selectedPlacement))this.state.selectedPlacement=level?.placements?.[0]?.key||"";
     this.profile=await readProbeProfile(this.controller,dir);
     await this.persist();
     document.dispatchEvent(new CustomEvent("graphics-effects-change"));
@@ -103,7 +110,7 @@ export class EffectsEditor {
       rain:{preset:"rain",colour:[0.6,0.75,1],alpha:0.55,rate:45,life:1.5,size:0.05,speed:12,spread:5,gravity:-14},
       "heat-haze":{preset:"heat-haze",colour:[1,1,1],alpha:0,rate:0,life:1,size:0,speed:0,spread:0,gravity:0,hazeRadius:3,hazeStrength:0.35},
     };
-    const anchor=this.selectedPlacementObject();
+    const anchor=this.selectedPlacementInstance();
     this.state.particles.push(normalizeParticle({
       level:this.state.selectedLevel,
       ...presets[preset],
@@ -151,21 +158,21 @@ export class EffectsEditor {
 
     const particles=node("section",undefined,"panel");
     particles.append(node("div","PARTICLES & EFFECTS","eyebrow"));
-    particles.append(node("p","Runtime effects use the official OpenRAC prop/haze API. Pick a preset, then place it at X/Y/Z or at an exported object position before export. No custom launcher is required.","muted"));
+    particles.append(node("p","Runtime effects use the official OpenRAC prop/haze API. Pick a preset, then place it at X/Y/Z or snap it to a real tie/shrub/moby instance loaded from the level's placements.json.","muted"));
     const placementTop=node("div",undefined,"effect-placement-toolbar");
-    const placementObjects=(level?.objects||[]).map((o)=>[o.key,o.position?o.label:`${o.label} · no position`]);
+    const placementRows=(level?.placements||[]).map((row)=>[row.key,row.label]);
     placementTop.append(selectField(
-      "Placement anchor",
-      this.state.selectedObject,
-      placementObjects,
-      async v=>{this.state.selectedObject=v;await this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"))},
+      "Level instance",
+      this.state.selectedPlacement,
+      placementRows,
+      async v=>{this.state.selectedPlacement=v;await this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"))},
     ));
-    const anchor=this.selectedPlacementObject();
+    const anchor=this.selectedPlacementInstance();
     placementTop.append(node(
       "p",
       anchor?.position
-        ? `Selected object position: X ${anchor.position[0]} · Y ${anchor.position[1]} · Z ${anchor.position[2]}`
-        : "Select an exported object with a world position, or enter X/Y/Z manually on the effect card.",
+        ? `Instance position: X ${anchor.position[0]} · Y ${anchor.position[1]} · Z ${anchor.position[2]}`
+        : "No placement instances were found for this exported level. Enter X/Y/Z manually.",
       anchor?.position?"placement-ready":"placement-note",
     ));
     particles.append(placementTop);
@@ -174,11 +181,17 @@ export class EffectsEditor {
       const b=node("button","+ "+label,"ghost");b.type="button";b.onclick=()=>this.addParticle(id);presets.append(b);
     }
     particles.append(presets,this.renderParticles());
+    const exportIssues=effectExportIssues(this.state,this.levels);
+    if(exportIssues.length){
+      particles.append(node("p",`Export blocked: ${exportIssues.length} placement/level issue${exportIssues.length===1?"":"s"} must be fixed first.`,"placement-warning"));
+    }
     const exportRuntime=node("button","Export runtime effects mod","primary effect-export");exportRuntime.type="button";
+    exportRuntime.disabled=exportIssues.length>0;
+    exportRuntime.title=exportIssues[0]||"Export placed runtime effects.";
     exportRuntime.onclick=async()=>{
       try{
         const saved=await exportEffectsMod(this.controller,this.info,this.state,this.levels);
-        this.setMessage(saved?`Saved ${saved}. Install it through Mods → Add a mod. Runtime particles also need Graphics Effects Runtime 0.1.0; point/spot lights use Enhanced graphics directly.`:"Save cancelled.");
+        this.setMessage(saved?`Saved ${saved}. Install it through Mods → Add a mod. Runtime particles also need Graphics Effects Runtime 0.1.1; point/spot lights use Enhanced graphics directly.`:"Save cancelled.");
       }catch(e){this.setMessage(e instanceof Error?e.message:String(e),true)}
     };
     particles.append(exportRuntime);
@@ -235,19 +248,24 @@ export class EffectsEditor {
       const placed=p.placement!=="unplaced";
       placementHead.append(node(
         "span",
-        placed?(p.placement==="object"?"Placed · object":"Placed · manual"):"Needs placement",
+        placed?(p.placement==="object"?"Placed · level instance":"Placed · manual"):"Needs placement",
         placed?"status-ok":"status-warn",
       ));
       placement.append(placementHead);
       placement.append(vecFields("World position",p.position,async v=>this.setParticlePosition(p,v)));
       const placementActions=node("div",undefined,"effect-actions wrap placement-actions");
-      const anchor=this.selectedPlacementObject();
-      const placeObject=node("button","Place at selected object","ghost");
+      const anchor=this.selectedPlacementInstance();
+      const placeObject=node("button","Place at selected level instance","ghost");
       placeObject.type="button";
       placeObject.disabled=!anchor?.position;
-      placeObject.title=anchor?.position?"Use the selected exported object's world position.":"Selected object has no exported world position.";
-      placeObject.onclick=()=>void this.placeParticleAtObject(p);
+      placeObject.title=anchor?.position?"Use the selected placements.json instance world position.":"No exported placement instance is selected.";
+      placeObject.onclick=()=>void this.placeParticleAtInstance(p);
       placementActions.append(placeObject);
+
+      const confirm=node("button","Confirm X/Y/Z","ghost");
+      confirm.type="button";
+      confirm.onclick=()=>void this.setParticlePosition(p,p.position);
+      placementActions.append(confirm);
 
       const copy=node("button","Copy position","ghost");
       copy.type="button";
@@ -276,7 +294,7 @@ export class EffectsEditor {
       placementActions.append(clear);
       placement.append(placementActions);
       if(p.placement==="object"&&p.anchorObject){
-        placement.append(node("p",`Anchor: ${p.anchorObject}. Position is stored as world coordinates in the exported runtime file.`,"placement-note"));
+        placement.append(node("p",`Source instance: ${p.anchorObject}. Its position is snapshotted as world coordinates in the exported runtime file; the effect does not follow a moving object.`,"placement-note"));
       }
       if(!placed){
         placement.append(node("p","This effect will not export until it has a valid placement.","placement-warning"));
