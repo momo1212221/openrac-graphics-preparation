@@ -4,7 +4,9 @@ export const SCALE = 4;
 
 export const TILE_QUALITY = Object.freeze({
   standard: Object.freeze({name:"standard", pad:8, core:112, overlap:0, step:112}),
+  highSmooth: Object.freeze({name:"high-smooth", pad:12, core:104, overlap:4, step:100}),
   high: Object.freeze({name:"high", pad:16, core:96, overlap:8, step:88}),
+  maxSmooth: Object.freeze({name:"max-smooth", pad:18, core:92, overlap:10, step:82}),
   max: Object.freeze({name:"max", pad:24, core:80, overlap:16, step:64}),
 });
 
@@ -121,4 +123,14 @@ export function blendTile(output, weights, tile, destX, destY, {
       weights[outPixel] = nextWeight;
     }
   }
+}
+
+
+export function adaptiveTileGeometry(quality="high",textureClass="diffuse",complexity=.5){
+  const base=tileGeometry(quality,textureClass);
+  if(base===TILE_QUALITY.standard)return base;
+  const score=Number.isFinite(Number(complexity))?Math.max(0,Math.min(1,Number(complexity))):.5;
+  if(quality==="max"&&score<.28)return TILE_QUALITY.maxSmooth;
+  if(quality==="high"&&score<.24)return TILE_QUALITY.highSmooth;
+  return base;
 }
