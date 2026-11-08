@@ -64,5 +64,5 @@ export function refinedDetailQuality(result={},initial="high"){
 }
 
 export function qualityLabel(value){
-  return value==="max"?"Max":value==="high"?"High":"Current";
+  return value==="max"?"Max":value==="high"?"High":"Standard";
 }
