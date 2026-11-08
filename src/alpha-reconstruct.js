@@ -83,7 +83,7 @@ export function reconstructAlphaEdges(source,output,{dilateRadius=3}={}){
   const profile=alphaProfile(source);
   if(!profile.hasTransparency){
     for(let i=3;i<output.data.length;i+=4)output.data[i]=255;
-    return {...profile,edgePixels:0,colorDilatedPixels:0,alphaBias:0,coverageBefore:1,coverageAfter:1};
+    return {...profile,edgePixels:0,colorDilatedPixels:0,alphaBias:0,coverageBefore:1,coverageAfter:1,coverageErrorPercent:0};
   }
 
   const sx=source.width/output.width,sy=source.height/output.height;
@@ -138,5 +138,6 @@ export function reconstructAlphaEdges(source,output,{dilateRadius=3}={}){
     alphaBias,
     coverageBefore:Number(coverageBefore.toFixed(4)),
     coverageAfter:Number(coverageAfter.toFixed(4)),
+    coverageErrorPercent:Number((Math.abs(coverageAfter-profile.coverage128)*100).toFixed(2)),
   };
 }
