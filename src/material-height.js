@@ -28,32 +28,50 @@ function luminance(image){
   return out;
 }
 
-function integral(field,w,h){
-  const stride=w+1;
-  const sum=new Float64Array((w+1)*(h+1));
-  for(let y=1;y<=h;y++){
-    let row=0;
-    for(let x=1;x<=w;x++){
-      row+=field[(y-1)*w+(x-1)];
-      sum[y*stride+x]=sum[(y-1)*stride+x]+row;
-    }
-  }
-  return {sum,stride};
+function visibilityMask(image){
+  const out=new Uint8Array(image.width*image.height);
+  for(let p=0;p<out.length;p++)out[p]=image.data[p*4+3]>=16?1:0;
+  return out;
 }
 
-function meanAt(ii,w,h,x,y,radius){
+function integral(field,w,h,mask=null){
+  const stride=w+1;
+  const sum=new Float64Array((w+1)*(h+1));
+  const count=new Uint32Array((w+1)*(h+1));
+  for(let y=1;y<=h;y++){
+    let row=0,rowCount=0;
+    for(let x=1;x<=w;x++){
+      const p=(y-1)*w+(x-1);
+      const visible=!mask||mask[p]!==0;
+      if(visible){row+=field[p];rowCount++}
+      sum[y*stride+x]=sum[(y-1)*stride+x]+row;
+      count[y*stride+x]=count[(y-1)*stride+x]+rowCount;
+    }
+  }
+  return {sum,count,stride};
+}
+
+function meanAt(ii,w,h,x,y,radius,fallback=.5){
   const x0=Math.max(0,x-radius),y0=Math.max(0,y-radius);
   const x1=Math.min(w-1,x+radius),y1=Math.min(h-1,y+radius);
   const s=ii.stride;
   const ax=x0,ay=y0,bx=x1+1,by=y1+1;
-  const sum=ii.sum[by*s+bx]-ii.sum[ay*s+bx]-ii.sum[by*s+ax]+ii.sum[ay*s+ax];
-  return sum/Math.max(1,(x1-x0+1)*(y1-y0+1));
+  const sample=(field)=>field[by*s+bx]-field[ay*s+bx]-field[by*s+ax]+field[ay*s+ax];
+  const n=sample(ii.count);
+  return n?sample(ii.sum)/n:fallback;
 }
 
 function fieldAt(field,w,h,x,y){
   const xx=Math.max(0,Math.min(w-1,x));
   const yy=Math.max(0,Math.min(h-1,y));
   return field[yy*w+xx];
+}
+
+function fieldAtVisible(field,mask,w,h,x,y,fallback){
+  const xx=Math.max(0,Math.min(w-1,x));
+  const yy=Math.max(0,Math.min(h-1,y));
+  const p=yy*w+xx;
+  return !mask||mask[p]?field[p]:fallback;
 }
 
 function scalarMap(field,source,mode="absolute",gain=1){
@@ -96,7 +114,8 @@ export function deriveHeightBands(albedo,material="generic"){
   const {width:w,height:h,data}=albedo;
   const profile=MATERIAL_HEIGHT_PROFILES[material]||MATERIAL_HEIGHT_PROFILES.generic;
   const lum=luminance(albedo);
-  const ii=integral(lum,w,h);
+  const mask=visibilityMask(albedo);
+  const ii=integral(lum,w,h,mask);
   const coarseField=new Float32Array(w*h);
   const midField=new Float32Array(w*h);
   const microField=new Float32Array(w*h);
@@ -105,9 +124,9 @@ export function deriveHeightBands(albedo,material="generic"){
     const p=y*w+x,i=p*4;
     if(data[i+3]<16)continue;
     const center=lum[p];
-    const local=meanAt(ii,w,h,x,y,1);
-    const midMean=meanAt(ii,w,h,x,y,profile.midRadius);
-    const coarseMean=meanAt(ii,w,h,x,y,profile.coarseRadius);
+    const local=meanAt(ii,w,h,x,y,1,center);
+    const midMean=meanAt(ii,w,h,x,y,profile.midRadius,local);
+    const coarseMean=meanAt(ii,w,h,x,y,profile.coarseRadius,midMean);
     microField[p]=center-local;
     midField[p]=local-midMean;
     coarseField[p]=midMean-coarseMean;
@@ -162,6 +181,7 @@ export function mergeHeightBands(albedo,bands,material="generic"){
 export function normalFromHeight(albedo,heightField,material="generic"){
   const {width:w,height:h,data}=albedo;
   const profile=MATERIAL_HEIGHT_PROFILES[material]||MATERIAL_HEIGHT_PROFILES.generic;
+  const mask=visibilityMask(albedo);
   const normalData=new Uint8ClampedArray(w*h*4);
 
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
@@ -171,9 +191,10 @@ export function normalFromHeight(albedo,heightField,material="generic"){
       continue;
     }
     // 3x3 Sobel derivative is less noisy than a two-sample central difference on upscaled textures.
-    const tl=fieldAt(heightField,w,h,x-1,y-1),tc=fieldAt(heightField,w,h,x,y-1),tr=fieldAt(heightField,w,h,x+1,y-1);
-    const ml=fieldAt(heightField,w,h,x-1,y),mr=fieldAt(heightField,w,h,x+1,y);
-    const bl=fieldAt(heightField,w,h,x-1,y+1),bc=fieldAt(heightField,w,h,x,y+1),br=fieldAt(heightField,w,h,x+1,y+1);
+    const center=heightField[p];
+    const tl=fieldAtVisible(heightField,mask,w,h,x-1,y-1,center),tc=fieldAtVisible(heightField,mask,w,h,x,y-1,center),tr=fieldAtVisible(heightField,mask,w,h,x+1,y-1,center);
+    const ml=fieldAtVisible(heightField,mask,w,h,x-1,y,center),mr=fieldAtVisible(heightField,mask,w,h,x+1,y,center);
+    const bl=fieldAtVisible(heightField,mask,w,h,x-1,y+1,center),bc=fieldAtVisible(heightField,mask,w,h,x,y+1,center),br=fieldAtVisible(heightField,mask,w,h,x+1,y+1,center);
     const dx=((tr+2*mr+br)-(tl+2*ml+bl))*.25*profile.normalStrength;
     const dy=((bl+2*bc+br)-(tl+2*tc+tr))*.25*profile.normalStrength;
     let nx=-dx,ny=-dy,nz=1;
@@ -193,7 +214,8 @@ export function normalFromHeight(albedo,heightField,material="generic"){
 export function deriveHeightSurfaceMaps(albedo,heightField,material="generic",roughnessBase=.58,{curvature=true}={}){
   const {width:w,height:h,data}=albedo;
   const profile=MATERIAL_HEIGHT_PROFILES[material]||MATERIAL_HEIGHT_PROFILES.generic;
-  const ii=integral(heightField,w,h);
+  const mask=visibilityMask(albedo);
+  const ii=integral(heightField,w,h,mask);
   const aoData=new Uint8ClampedArray(w*h*4);
   const roughData=new Uint8ClampedArray(w*h*4);
   const curvatureData=curvature?new Uint8ClampedArray(w*h*4):null;
@@ -209,13 +231,13 @@ export function deriveHeightSurfaceMaps(albedo,heightField,material="generic",ro
     }
 
     const center=heightField[p];
-    const nearMean=meanAt(ii,w,h,x,y,2);
-    const broadMean=meanAt(ii,w,h,x,y,profile.aoRadius);
+    const nearMean=meanAt(ii,w,h,x,y,2,center);
+    const broadMean=meanAt(ii,w,h,x,y,profile.aoRadius,nearMean);
     const cavity=Math.max(0,(nearMean-center)*.72+(broadMean-center)*.58);
     const ao=clamp(1-cavity*3.1,.34,1);
 
-    const dx=fieldAt(heightField,w,h,x+1,y)-fieldAt(heightField,w,h,x-1,y);
-    const dy=fieldAt(heightField,w,h,x,y+1)-fieldAt(heightField,w,h,x,y-1);
+    const dx=fieldAtVisible(heightField,mask,w,h,x+1,y,center)-fieldAtVisible(heightField,mask,w,h,x-1,y,center);
+    const dy=fieldAtVisible(heightField,mask,w,h,x,y+1,center)-fieldAtVisible(heightField,mask,w,h,x,y-1,center);
     const slope=clamp(Math.hypot(dx,dy)*4.5,0,1);
     const detail=clamp(Math.abs(center-nearMean)*5.5,0,1);
     const hard=["metal","weapon","glass"].includes(material);
@@ -227,8 +249,8 @@ export function deriveHeightSurfaceMaps(albedo,heightField,material="generic",ro
 
     if(curvatureData){
       const lap=(
-        fieldAt(heightField,w,h,x-1,y)+fieldAt(heightField,w,h,x+1,y)+
-        fieldAt(heightField,w,h,x,y-1)+fieldAt(heightField,w,h,x,y+1)-center*4
+        fieldAtVisible(heightField,mask,w,h,x-1,y,center)+fieldAtVisible(heightField,mask,w,h,x+1,y,center)+
+        fieldAtVisible(heightField,mask,w,h,x,y-1,center)+fieldAtVisible(heightField,mask,w,h,x,y+1,center)-center*4
       );
       // Signed curvature: concave below 0.5, convex above 0.5.
       const cv=clamp(.5+lap*3.2,.02,.98);
