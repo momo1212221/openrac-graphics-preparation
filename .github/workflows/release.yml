@@ -62,8 +62,12 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           root=Path("build/package/graphics_preparation_runtime")
-          for path in root.rglob("*.md"):
-              path.write_bytes(path.read_bytes().replace(b"\r\n",b"\n").replace(b"\r",b"\n"))
+          paths=[root/"openrac-mod.json"]
+          for pattern in ("README*","LICENSE*","COPYING*"):
+              paths.extend(root.glob(pattern))
+          for path in paths:
+              if path.is_file():
+                  path.write_bytes(path.read_bytes().replace(b"\r\n",b"\n").replace(b"\r",b"\n"))
           PY
       - name: Package platform
         shell: bash
