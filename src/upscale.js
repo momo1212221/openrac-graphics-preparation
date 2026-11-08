@@ -46,3 +46,22 @@ export async function upscalePng(buffer, scale, edgePreserving = true) {
     if (typeof image.close === "function") image.close();
   }
 }
+
+
+export async function resizePng(buffer,width,height,{smoothing=true}={}){
+  const image=await decode(buffer);
+  try{
+    if(!(width>0&&height>0))throw new RangeError("resize dimensions must be positive");
+    if(width>MAX_SIDE||height>MAX_SIDE||width*height>MAX_PIXELS)
+      throw new Error(`resized texture would be too large (${width}x${height})`);
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.round(width);canvas.height=Math.round(height);
+    const ctx=canvas.getContext("2d",{alpha:true});
+    if(!ctx)throw new Error("2D image processing is unavailable");
+    ctx.imageSmoothingEnabled=smoothing;
+    if(smoothing)ctx.imageSmoothingQuality="high";
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(image,0,0,canvas.width,canvas.height);
+    return new Uint8Array(await (await pngBlob(canvas)).arrayBuffer());
+  }finally{if(typeof image.close==="function")image.close();}
+}
