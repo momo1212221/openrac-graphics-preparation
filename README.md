@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.17.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.17.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.17.0.zip`.
+2. Install `graphics-preparation-0.17.1.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -417,3 +417,15 @@ Graphics preparation is now one installable OpenRAC mod instead of a tool plus a
 - Exported runtime-effect packs now require `graphics-preparation >= 0.17.0`; they no longer require `graphics-effects-runtime`.
 - The old `Graphics Effects Runtime 0.1.x` release remains only for compatibility with older 0.15/0.16 installations and is not needed by 0.17+.
 - Installing Graphics preparation once is enough for the editor and for authored Sparks, Smoke, Mist, Glow, Energy, Rain and Heat Haze.
+
+
+## Launcher store-key hotfix (0.17.1)
+
+0.17.1 fixes the **"a bad key"** failure that could stop a large AI export immediately after the
+duplicate scan. The persistent AI-run journal previously generated a key containing `:`, while the
+stock OpenRAC Mod Tool accepts only lowercase `[a-z0-9_-]` keys up to 64 characters.
+
+The resume journal now uses a launcher-safe, game-scoped key, sanitizes/truncates the pack id to the
+same contract and validates every `storeGet`/`storeSet` key locally before it reaches the launcher.
+The IndexedDB AI result cache is independent of this journal, so already completed cached textures
+remain reusable after installing the hotfix.
