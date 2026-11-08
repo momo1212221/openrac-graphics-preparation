@@ -62,6 +62,19 @@ float number(const std::string& text) {
     return value;
 }
 
+int integer(const std::string& text) {
+    std::size_t used = 0;
+    const int value = std::stoi(text, &used);
+    if (used != text.size()) throw std::runtime_error("invalid integer");
+    return value;
+}
+
+bool known_preset(const std::string& preset) {
+    return preset == "sparks" || preset == "smoke" || preset == "mist" ||
+           preset == "glow" || preset == "energy" || preset == "rain" ||
+           preset == "heat-haze";
+}
+
 std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac::Mod& mod) {
     std::vector<Emitter> out;
     std::error_code ec;
@@ -82,10 +95,20 @@ std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac
                 const auto v = split_tabs(line);
                 if (v.size() != 17) throw std::runtime_error("expected 17 tab-separated fields");
                 Emitter e;
-                e.level = std::stoi(v[0]);
+                e.level = integer(v[0]);
+                if (e.level < 0 || e.level > 999) throw std::runtime_error("level out of range");
                 e.preset = v[1];
-                e.position = {number(v[2]), number(v[3]), number(v[4])};
-                e.colour = {number(v[5]), number(v[6]), number(v[7])};
+                if (!known_preset(e.preset)) throw std::runtime_error("unknown preset");
+                e.position = {
+                    std::clamp(number(v[2]), -1000000.0f, 1000000.0f),
+                    std::clamp(number(v[3]), -1000000.0f, 1000000.0f),
+                    std::clamp(number(v[4]), -1000000.0f, 1000000.0f),
+                };
+                e.colour = {
+                    std::clamp(number(v[5]), 0.0f, 4.0f),
+                    std::clamp(number(v[6]), 0.0f, 4.0f),
+                    std::clamp(number(v[7]), 0.0f, 4.0f),
+                };
                 e.alpha = std::clamp(number(v[8]), 0.0f, 1.0f);
                 e.rate = std::clamp(number(v[9]), 0.0f, 120.0f);
                 e.life = std::clamp(number(v[10]), 0.05f, 20.0f);
@@ -248,4 +271,4 @@ void load(openrac::Mod& mod) {
 
 } // namespace
 
-OPENRAC_MOD_CPP("graphics-effects-runtime", "0.1.0", load)
+OPENRAC_MOD_CPP("graphics-effects-runtime", "0.1.1", load)
