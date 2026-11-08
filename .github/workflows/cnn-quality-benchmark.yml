@@ -9,6 +9,9 @@ on:
       - "src/material-classify.js"
       - "tools/training/cnn_quality_benchmark.py"
       - "tools/training/fuse_benchmark_outputs.mjs"
+      - "tests/cnn-fusion.test.mjs"
+      - "tests/quality-metrics.test.mjs"
+      - "tests/p0-quality.test.mjs"
       - ".github/workflows/cnn-quality-benchmark.yml"
   pull_request:
     paths:
@@ -16,8 +19,15 @@ on:
       - "src/material-classify.js"
       - "tools/training/cnn_quality_benchmark.py"
       - "tools/training/fuse_benchmark_outputs.mjs"
+      - "tests/cnn-fusion.test.mjs"
+      - "tests/quality-metrics.test.mjs"
+      - "tests/p0-quality.test.mjs"
       - ".github/workflows/cnn-quality-benchmark.yml"
   workflow_dispatch: {}
+
+concurrency:
+  group: cnn-quality-benchmark-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
