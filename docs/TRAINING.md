@@ -44,3 +44,16 @@ python tools/training/validate_detail.py training-data models/detail-metal.onnx 
 The validator runs only held-out validation/test sources and compares the model against its degraded
 input in both RGB L1 and gradient L1. A model is marked `release_candidate: true` only when both
 error measures improve. The report includes the exact model SHA-256 for later release pinning.
+
+
+## Promote a validated model
+
+```bash
+python tools/training/promote_model.py models/detail-metal-candidate.onnx \
+  models/detail-metal.validation.json
+```
+
+Promotion verifies the validation result and SHA-256 again, copies the model and report into
+`models/`, and updates `models/specialized-models.json`. The normal package builder refuses any
+`detail-*.onnx` file that is not registered, hash-matched and backed by a
+`release_candidate: true` report.
