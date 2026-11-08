@@ -21,9 +21,13 @@ export function evaluateQuality(metrics={},context={}){
   if(metrics.alphaDrift>6)reasons.push("alpha drift");
   if(metrics.cnnAgreement<.42)reasons.push("low CNN agreement");
   if(metrics.edgeGain>3.2)reasons.push("edge amplification");
+  if(metrics.histogramDrift>22)reasons.push("histogram drift");
+  if(metrics.alphaCoverageDiff>5)reasons.push("alpha coverage");
+  if(metrics.ssim!==undefined&&metrics.ssim<.55)reasons.push("low structural similarity");
+  if(metrics.hallucinationScore>65)reasons.push("hallucination risk");
   const score=Number(metrics.score);
-  const fallback=score<fallbackThreshold;
-  const retry=!fallback&&score<retryThreshold;
+  const fallback=score<fallbackThreshold||metrics.hallucinationScore>82||metrics.alphaCoverageDiff>18;
+  const retry=!fallback&&(score<retryThreshold||metrics.hallucinationScore>65||(metrics.ssim!==undefined&&metrics.ssim<.5));
   const verdict=fallback?"reject":retry?"retry":score<72?"watch":"pass";
   let recommendedQuality=null;
   if(verdict==="reject")recommendedQuality="no-ai";
