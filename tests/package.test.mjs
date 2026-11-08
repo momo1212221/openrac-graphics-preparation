@@ -15,5 +15,5 @@ test('0.5.1 is a stock OpenRAC mod with bundled ORT module and no custom launche
   const first=readFileSync(root+'dist/SHA256SUMS','utf8');
   execFileSync('python3',['tools/package.py'],{cwd:root});
   assert.equal(readFileSync(root+'dist/SHA256SUMS','utf8'),first);
-  assert.match(first,/graphics-preparation-0\.5\.0\.zip/);
+  assert.match(first,/graphics-preparation-0\\.5\\.1\.zip/);
 });
