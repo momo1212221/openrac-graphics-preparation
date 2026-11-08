@@ -17,3 +17,12 @@ openrac_add_mod(
   MANIFEST effects-runtime/openrac-mod.json
   SOURCES effects-runtime/src/mod.cpp
 )
+
+get_target_property(EFFECTS_PACKAGE_DIR graphics_effects_runtime OPENRAC_MOD_PACKAGE_DIR)
+add_custom_command(TARGET graphics_effects_runtime POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${EFFECTS_PACKAGE_DIR}/assets"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${CMAKE_CURRENT_SOURCE_DIR}/effects-runtime/assets/particle.glb"
+          "${EFFECTS_PACKAGE_DIR}/assets/particle.glb"
+  COMMENT "Adding Graphics Effects Runtime assets"
+)
