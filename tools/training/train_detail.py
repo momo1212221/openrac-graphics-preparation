@@ -50,13 +50,16 @@ class Pairs(Dataset):
                 inp=torch.rot90(inp,k,(-2,-1));target=torch.rot90(target,k,(-2,-1))
         return inp,target
 
+ARCHITECTURE_VERSION=2
+CONTEXT_DILATIONS=(1,1,2,1,2,1,3,1)
+
 class Block(nn.Module):
-    def __init__(self,c=48):
+    def __init__(self,c=48,dilation=1):
         super().__init__()
         self.net=nn.Sequential(
-            nn.Conv2d(c,c,3,1,1),
+            nn.Conv2d(c,c,3,1,dilation=dilation),
             nn.SiLU(),
-            nn.Conv2d(c,c,3,1,1),
+            nn.Conv2d(c,c,3,1,dilation=dilation),
         )
     def forward(self,x):
         return x+self.net(x)*.2
@@ -65,7 +68,10 @@ class DetailCNN(nn.Module):
     def __init__(self,c=48,blocks=8):
         super().__init__()
         self.head=nn.Conv2d(3,c,3,1,1)
-        self.body=nn.Sequential(*[Block(c) for _ in range(blocks)])
+        self.body=nn.Sequential(*[
+            Block(c,CONTEXT_DILATIONS[i%len(CONTEXT_DILATIONS)])
+            for i in range(blocks)
+        ])
         self.tail=nn.Conv2d(c,3,3,1,1)
         # Identity start: the specialized CNN must earn every residual it adds.
         nn.init.zeros_(self.tail.weight)
@@ -185,6 +191,11 @@ def load_checkpoint(path:Path,model,opt,expected_material):
         raise SystemExit(
             f"checkpoint material {checkpoint.get('material')!r} does not match --material {expected_material!r}"
         )
+    if int(checkpoint.get("architecture_version",1))!=ARCHITECTURE_VERSION:
+        raise SystemExit(
+            f"checkpoint architecture v{checkpoint.get('architecture_version',1)} is incompatible "
+            f"with current v{ARCHITECTURE_VERSION}; start a new training run"
+        )
     model.load_state_dict(checkpoint["model"])
     opt.load_state_dict(checkpoint["optimizer"])
     return checkpoint
@@ -192,7 +203,9 @@ def load_checkpoint(path:Path,model,opt,expected_material):
 def save_checkpoint(path:Path,model,opt,epoch,best_val,bad_epochs,args):
     path.parent.mkdir(parents=True,exist_ok=True)
     torch.save({
-        "version":1,
+        "version":2,
+        "architecture_version":ARCHITECTURE_VERSION,
+        "context_dilations":list(CONTEXT_DILATIONS),
         "epoch":epoch,
         "model":model.state_dict(),
         "optimizer":opt.state_dict(),
@@ -380,6 +393,8 @@ def main():
         "train_pairs":len(train_ds),
         "validation_pairs":len(validation_ds),
         "seed":args.seed,
+        "architecture_version":ARCHITECTURE_VERSION,
+        "context_dilations":list(CONTEXT_DILATIONS),
         "gradient_weight":args.gradient_weight,
         "laplacian_weight":args.laplacian_weight,
     },indent=2))
