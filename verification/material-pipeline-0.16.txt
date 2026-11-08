@@ -1,0 +1,3 @@
+Graphics preparation 0.16.0 material pipeline verification branch.
+Stages: Upscaled Diffuse -> Albedo Cleanup -> Coarse Height -> Mid Height -> Micro Height -> Height Merge -> Normal From Height -> AO/Roughness -> optional Curvature.
+This branch exists only to obtain a stable CI result while main receives parallel commits.
