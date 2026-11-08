@@ -39,6 +39,12 @@ export function evaluateQuality(metrics={},context={}){
 export function chooseBetterQuality(primary,conservative){
   const a=primary?.metrics?.score??-1;
   const b=conservative?.metrics?.score??-1;
+  const ah=primary?.metrics?.hallucinationScore??0;
+  const bh=conservative?.metrics?.hallucinationScore??0;
+  const as=primary?.metrics?.ssim;
+  const bs=conservative?.metrics?.ssim;
+  if(bh+12<ah&&b>=a-2)return conservative;
+  if(as!==undefined&&bs!==undefined&&bs>as+.08&&b>=a-2)return conservative;
   if(b>a+1)return conservative;
   return primary;
 }
