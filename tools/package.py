@@ -7,7 +7,8 @@ from pathlib import Path
 
 root=Path(__file__).resolve().parents[1]
 m=json.loads((root/"openrac-mod.json").read_text())
-assert set(m["tool"])=={"page"}
+assert set(m["tool"])=={"page","service"}
+assert m["tool"]["service"]==m["id"]
 assert (root/m["tool"]["page"]).is_file()
 scripts=[root/p for p in m.get("scripts",[])]
 assert scripts and all(p.is_file() for p in scripts)

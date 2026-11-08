@@ -22,7 +22,7 @@ export function texturePackManifest(info, count, scale, edgePreserving) {
     game: info.packId,
     name: `Graphics preparation ${scale}x`,
     textures: count,
-    madeWith: `Graphics preparation 0.3.0 (${edgePreserving ? "edge-preserving" : "smooth"})`,
+    madeWith: `Graphics preparation 0.4.0 (${edgePreserving ? "edge-preserving" : "smooth"})`,
   };
 }
 

@@ -1,12 +1,13 @@
-Graphics preparation 0.3.0 integrates texture preparation into the OpenRAC mod page.
+Graphics preparation 0.4.0 ports the native AI graphics path from the OpenRAC fork into the installed mod UI.
 
-- UI redesigned to follow the Enhanced graphics settings layout.
-- Reads OpenRAC's own saved texture assets directly through the mod-tool API.
-- Local 2x and 4x texture preparation runs inside the sandboxed mod page.
-- Edge-preserving or high-quality smooth scaling.
-- Streams a standard OpenRAC texture-pack ZIP to disk.
-- No Python helper is required for the normal texture-upscale workflow.
-- Lighting/GI and temporal upscaling stay in OpenRAC's built-in Enhanced graphics page.
+- Declares the bounded `graphics-preparation` launcher service used by the fork.
+- **Prepare AI graphics** runs the fork's Upscayl/NCNN texture backend.
+- Faithful, Balanced and Maximum Detail profiles.
+- Preserves original micro-detail, stars and tiny lights after the neural pass.
+- Optional 3D AI for render meshes; collision always stays original.
+- Uses staging/backups from the fork backend, so a failed pass does not replace the current prepared pack.
+- Same Enhanced-graphics-style UI.
+- Supports RAC1-RAC4 versions represented by the fork service.
+- Stock launchers keep the local 2x/4x export fallback.
 
-Use OpenRAC's **Models and textures -> Save the game's textures while you play** first, then open
-**Graphics preparation**, choose the quality and press **Prepare textures**.
+On macOS install Upscayl in /Applications for the native AI path. No Python helper is required.

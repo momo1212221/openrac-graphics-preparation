@@ -14,9 +14,9 @@ test('saved OpenRAC texture files are deduplicated by texture hash',()=>{
   assert.equal(packPath(textureFiles(files)[0]),'Upscaled/aaaaaaaaaaaaaaaa.png');
 });
 
-test('standard OpenRAC texture pack metadata uses the launchers pack id',()=>{
+test('standard fallback pack metadata names the current mod version',()=>{
   const info={packId:'rac1-pal'};
   const manifest=texturePackManifest(info,42,4,true);
-  assert.deepEqual(manifest,{format:1,game:'rac1-pal',name:'Graphics preparation 4x',textures:42,madeWith:'Graphics preparation 0.3.0 (edge-preserving)'});
+  assert.deepEqual(manifest,{format:1,game:'rac1-pal',name:'Graphics preparation 4x',textures:42,madeWith:'Graphics preparation 0.4.0 (edge-preserving)'});
   assert.equal(outputName(info,4),'rac1-pal-graphics-preparation-4x');
 });
