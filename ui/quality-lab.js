@@ -78,7 +78,7 @@ export class QualityLab{
         try{
           const generated=await generateMaterialMapPngs(resultToShow.bytes,resultToShow.material);
           materialMaps={};
-          for(const name of ["normal","roughness","height","ao","emissive"]){
+          for(const name of ["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
             materialMaps[name]=blobUrl(generated[name]);this.urls.push(materialMaps[name]);
           }
         }catch{}
@@ -128,7 +128,7 @@ export class QualityLab{
       view.append(before,after);section.append(view);
       if(this.preview.materialMaps){
         const maps=el("div",undefined,"quality-material-maps");
-        for(const name of ["normal","roughness","height","ao","emissive"]){
+        for(const name of ["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
           const figure=el("figure");const image=document.createElement("img");
           image.src=this.preview.materialMaps[name];image.alt=name+" material map";
           figure.append(image,el("figcaption",name[0].toUpperCase()+name.slice(1)));maps.append(figure);
