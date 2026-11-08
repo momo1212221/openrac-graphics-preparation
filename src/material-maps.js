@@ -48,12 +48,13 @@ function deriveEmissiveFromSource(image,material){
     if(alpha<16)continue;
     const r=data[i],g=data[i+1],b=data[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);
     const sat=mx?((mx-mn)/mx):0;
-    const threshold=material==="energy"?.48:material==="weapon"?.78:.86;
+    const threshold=material==="energy"?.46:material==="weapon"?.58:.86;
     const peak=mx/255;
     const brightness=material==="energy"
-      ? Math.max(sourceLum[p],peak*.72)
-      : material==="weapon" ? Math.max(sourceLum[p],peak*.28+sourceLum[p]*.72) : sourceLum[p];
-    const e=Math.max(0,(brightness-threshold)/(1-threshold))*Math.max(.15,sat);
+      ? Math.max(sourceLum[p],peak*.78)
+      : material==="weapon" ? Math.max(sourceLum[p],peak*.58+sourceLum[p]*.42) : sourceLum[p];
+    const saturationFloor=material==="weapon"?.28:material==="energy"?.12:.15;
+    const e=Math.max(0,(brightness-threshold)/(1-threshold))*Math.max(saturationFloor,sat);
     if(e>.02){
       emissive.data[i]=clamp8(r*e);
       emissive.data[i+1]=clamp8(g*e);
@@ -197,6 +198,7 @@ export function deriveMaterialMaps(image,material="generic",options={}){
       merged:merged.stats,
       surface:surface.stats,
       curvatureEnabled:includeCurvature,
+      emissiveProtectionPixels:emissivePixels,
     },
   };
 }
