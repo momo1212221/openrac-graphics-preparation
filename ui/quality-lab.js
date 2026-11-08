@@ -85,7 +85,7 @@ export class QualityLab{
             quality:generated.quality,
             albedoDelight:generated.albedoDelight,albedoValidation:generated.albedoValidation,
           };
-          for(const name of ["albedo","coarseHeight","midHeight","microHeight","height","normal","roughness","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
+          for(const name of ["reliefPreview","albedo","coarseHeight","midHeight","microHeight","height","normal","roughness","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
             if(!generated[name])continue;
             materialMaps[name]=blobUrl(generated[name]);this.urls.push(materialMaps[name]);
           }
@@ -140,7 +140,8 @@ export class QualityLab{
           if(!this.preview.materialMaps[name])continue;
           const figure=el("figure");const image=document.createElement("img");
           image.src=this.preview.materialMaps[name];image.alt=name+" material map";
-          figure.append(image,el("figcaption",name[0].toUpperCase()+name.slice(1)));maps.append(figure);
+          const label=name==="reliefPreview"?"Lit relief preview":name[0].toUpperCase()+name.slice(1);
+          figure.append(image,el("figcaption",label));maps.append(figure);
         }
         section.append(maps);
       }
