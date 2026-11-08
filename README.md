@@ -211,7 +211,7 @@ border pixel. This gives x4plus and the detail CNN real material context across 
 reducing reconstructed seams without sharpening or modifying non-repeating UI/technical maps.
 
 
-## Quality Lab+ (0.12.0)
+## Quality Lab+ (0.11.1)
 
 Quality Lab now previews the derived Normal/Roughness/Height/AO/Emissive maps beside Original and AI
 output. Per texture hash, the user can override the reconstruction quality to Current, High, Max or
@@ -219,23 +219,32 @@ No AI. These overrides are also respected by the full batch export, so a logo or
 can stay conservative while weapons, terrain or hero materials run at maximum detail.
 
 
-## Adaptive quality policy (0.12.0)
+## Adaptive quality policy (0.11.1)
 
 Quality Guard now uses a shared policy instead of one fixed score cutoff. It considers aggregate score plus colour/luma drift, alpha drift, CNN agreement, edge amplification, texture class and material importance. Weak results are retried conservatively; critically bad uncached AI results are rejected and replaced by the deterministic 4x fallback. Quality Lab shows the verdict and recommended action before a full pack export.
 
 
-## Automatic per-texture detail planning (0.12.0)
+## Automatic per-texture detail planning (0.11.1)
 
 The global Detail reconstruction selector now includes **Auto**. Auto chooses a starting quality per texture from path scope, visual importance and source size: UI/technical maps stay conservative, important character/weapon assets may use Max, and ordinary world materials default to High. After the first neural pass, measured colour drift, edge gain, CNN agreement, material and class can trigger one refinement pass. Manual per-hash quality overrides always take precedence. Cache identity follows the quality actually written, so refined Max/High outputs cannot be restored under the wrong key.
 
 
-## P0 quality completion (0.12.0)
+## P0 quality completion (0.11.1)
 
-0.12.0 closes the main texture-quality workstream. Important Max-detail assets can use a selective 8× internal master: the source is expanded 2×, reconstructed by the local CNN stack to 8× original resolution, then high-quality downsampled to the normal 4× pack size. Unsupported/oversized cases fail open to the established 4× path.
+0.11.1 closes the main texture-quality workstream. Important Max-detail assets can use a selective 8× internal master: the source is expanded 2×, reconstructed by the local CNN stack to 8× original resolution, then high-quality downsampled to the normal 4× pack size. Unsupported/oversized cases fail open to the established 4× path.
 
 Source-detail restoration now uses three frequency bands (fine/mid/coarse) instead of a two-scale residual. Quality analysis adds approximate SSIM, histogram drift, alpha-coverage drift, seam score, microdetail gain and a hallucination-risk score. Automatic failure detection rejects catastrophic black/transparent/wrong-size/alpha-loss/over-detail/CNN-disagreement results before they enter the persistent cache.
 
 Material sidecars now include Normal, Roughness, Height, AO, Emissive, Specular, Metallic, Cavity, Curvature and Edge-Wear. Existing sidecar names remain unchanged; the additional files are additive for newer OpenRAC integrations.
+
+
+## Export quality report (0.11.1)
+
+Every AI texture-pack export now includes `quality-report.json`. The report keeps a compact,
+inspectable list of the 20 lowest-scoring outputs, the 20 highest-scoring outputs and every output
+that triggered automatic failure detection or a degraded fallback. Rows include the texture
+hash/path, class, material, actual detail quality, backend, master scale, cache state and measured
+quality metrics. The pack manifest points to the report through `resilience.quality_report`.
 
 
 ## Specialized material CNN runtime (0.12.0)
