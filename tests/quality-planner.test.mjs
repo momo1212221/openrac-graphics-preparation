@@ -2,6 +2,11 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {automaticDetailQuality,refinedDetailQuality} from '../src/quality-planner.js';
 
+const metrics=(score,extra={})=>({
+  score,cnnAgreement:.9,cnnConfidence:.85,colorDrift:4,edgeGain:1.2,ssim:.94,
+  alphaCoverageDiff:0,hallucinationScore:8,cnnRejectedRatio:.05,...extra,
+});
+
 test('automatic planner reserves max detail for important assets',()=>{
   assert.equal(automaticDetailQuality({path:'Characters/Ratchet/body.png',size:200000},'auto'),'max');
   assert.equal(automaticDetailQuality({path:'Interface/font.png',size:200000},'auto'),'standard');
@@ -12,23 +17,25 @@ test('global explicit quality bypasses automatic planning',()=>{
   assert.equal(automaticDetailQuality({path:'Characters/Ratchet/body.png',size:200000},'standard'),'standard');
 });
 
-test('measured fidelity can promote or demote the second pass',()=>{
-  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'weapon',metrics:{score:90,cnnAgreement:.9,colorDrift:5,edgeGain:1.2,ssim:.9,alphaCoverageDiff:0,hallucinationScore:10}},'high'),'max');
-  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'stone',metrics:{score:60,cnnAgreement:.3,colorDrift:5,edgeGain:1.2,ssim:.9,alphaCoverageDiff:0,hallucinationScore:10}},'max'),'standard');
+test('90 is standard, 94 sustains high, and 97 can promote max',()=>{
+  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'weapon',metrics:metrics(89)},'high'),'standard');
+  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'weapon',metrics:metrics(94)},'high'),'high');
+  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'weapon',metrics:metrics(98)},'high'),'max');
+});
+
+test('max tier demotes to high until it reaches 97',()=>{
+  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'stone',metrics:metrics(95)},'max'),'high');
+  assert.equal(refinedDetailQuality({textureClass:'diffuse',material:'stone',metrics:metrics(97)},'max'),'max');
 });
 
 test('structural and hallucination risk blocks aggressive detail',()=>{
-  const base={textureClass:'diffuse',material:'weapon',metrics:{score:90,cnnAgreement:.9,colorDrift:4,edgeGain:1.2,ssim:.9,alphaCoverageDiff:0,hallucinationScore:10}};
-  assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,hallucinationScore:70}},'max'),'standard');
-  assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,ssim:.4}},'high'),'standard');
-  assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,alphaCoverageDiff:8}},'high'),'standard');
-  assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,hallucinationScore:45}},'high'),'high');
+  const base={textureClass:'diffuse',material:'weapon',metrics:metrics(98)};
+  assert.equal(refinedDetailQuality({...base,metrics:metrics(98,{hallucinationScore:40})},'max'),'standard');
+  assert.equal(refinedDetailQuality({...base,metrics:metrics(98,{ssim:.70})},'high'),'standard');
+  assert.equal(refinedDetailQuality({...base,metrics:metrics(98,{alphaCoverageDiff:3})},'high'),'standard');
 });
 
 test('high local rejection blocks max detail promotion',()=>{
-  const result={textureClass:'diffuse',material:'weapon',metrics:{
-    score:92,cnnAgreement:.9,colorDrift:3,edgeGain:1.1,ssim:.92,
-    alphaCoverageDiff:0,hallucinationScore:12,cnnRejectedRatio:.55,
-  }};
+  const result={textureClass:'diffuse',material:'weapon',metrics:metrics(98,{cnnRejectedRatio:.55})};
   assert.equal(refinedDetailQuality(result,'high'),'standard');
 });
