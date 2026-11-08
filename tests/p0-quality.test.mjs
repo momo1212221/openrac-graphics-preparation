@@ -10,10 +10,12 @@ test('frequency bands preserve flat regions and reconstruct local structure',()=
   src.data.set([170,140,110,255],(2*5+2)*4);
   const bands=buildFrequencyBands(src);
   const out=img(20,20,100);
-  applyFrequencyBands(bands,out,{fine:.5,mid:.2,coarse:.1});
+  applyFrequencyBands(bands,out,{fine:.5,mid:.2,coarse:.1,broad:.05});
   assert.ok(out.data.some((v,i)=>i%4!==3&&v!==100));
   const flat=buildFrequencyBands(img(4,4,80));
   assert.ok([...flat.fine].every(v=>v===0));
+  assert.ok([...flat.broad].every(v=>v===0));
+  assert.equal(bands.broad.length,5*5*3);
 });
 
 test('failure detector catches catastrophic and excessive outputs',()=>{
