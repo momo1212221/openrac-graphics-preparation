@@ -78,3 +78,24 @@ test('real base structure still allows conservative detail refinement',()=>{
   assert.ok(stone.image.data[c]>=base.data[c]);
   assert.ok(stone.image.data[c]-base.data[c]<20);
 });
+
+
+test('regional confidence suppresses isolated weakly supported detail',()=>{
+  const base=img(9,9,100),detail=img(9,9,100);
+  const center=(4*9+4)*4;
+  base.data.set([122,122,122,255],center);
+  detail.data.set([146,146,146,255],center);
+  const out=fuseCnnOutputs(base,detail,{quality:'max',material:'stone'});
+  assert.ok(out.confidenceP10>=0&&out.confidenceP10<=1);
+  assert.ok(out.lowConfidenceRatio>=0&&out.lowConfidenceRatio<=1);
+  assert.equal(out.consideredPixels,81);
+  assert.ok(out.lowConfidencePixels>0);
+});
+
+test('regional confidence metrics stay high for identical stable output',()=>{
+  const a=img(6,6,100),b=img(6,6,100);
+  const out=fuseCnnOutputs(a,b,{quality:'max',material:'stone'});
+  assert.equal(out.agreement,1);
+  assert.ok(out.confidenceP10>=0);
+  assert.equal(out.detailPixels,0);
+});
