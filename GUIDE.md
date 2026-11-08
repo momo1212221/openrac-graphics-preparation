@@ -1,6 +1,6 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.16.1** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.17.0** mit dem aktuellen **OpenRAC Dev Launcher**.
 
 Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für die normale Nutzung werden **kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm** benötigt.
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.16.1.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.17.0.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
@@ -294,7 +294,7 @@ Nach der Verarbeitung fragt OpenRAC nach einem Speicherort für die erzeugte ZIP
 
 Speichere die ZIP.
 
-Der Stock Mod Tool-Pfad darf aus Sicherheitsgründen nicht automatisch einen weiteren Mod installieren. Deshalb musst du den fertigen Pack danach selbst hinzufügen:
+Graphics preparation 0.17.0 enthält seine native Effects Runtime bereits selbst. Für den Effects-Runtime-Code ist daher kein zweiter Mod-Download mehr nötig. Fertige, von dir erzeugte Effekt-/Texture-Packs werden weiterhin bewusst über Mods -> Add a mod hinzugefügt:
 
 1. Gehe zu **Mods -> Add a mod**.
 2. Wähle die neu erzeugte Texture-Pack-ZIP.
@@ -406,4 +406,16 @@ Für Sparks, Smoke, Mist, Glow, Energy, Rain und Heat Haze muss vor dem Export e
 5. Alte gespeicherte Effekte einmal mit **Confirm X/Y/Z** bestätigen.
 6. Erst wenn kein Eintrag mehr **Needs placement** anzeigt, kann der Runtime-Effects-Mod exportiert werden.
 
-**Use player position** bleibt deaktiviert, solange die normale OpenRAC Mod-Tool-Schnittstelle keine Live-Spielerposition an die Mod-Seite liefert. Der Export benötigt Graphics Effects Runtime 0.1.1 oder neuer.
+**Use player position** bleibt deaktiviert, solange die normale OpenRAC Mod-Tool-Schnittstelle keine Live-Spielerposition an die Mod-Seite liefert. Ab Graphics preparation 0.17.0 ist die native Partikel-/Haze-Runtime bereits im Hauptmod enthalten; ein separater Graphics Effects Runtime Download ist nicht mehr nötig.
+
+
+## Ein Produkt ab 0.17.0
+
+Ab 0.17.0 installierst du nur noch **Graphics preparation**.
+
+1. `graphics-preparation-0.17.0.zip` über **Mods -> Add a mod** installieren.
+2. Graphics preparation aktivieren.
+3. Die Tool-Seite über **Open** verwenden.
+4. Erzeugte Runtime-Effects-Packs wie gewohnt installieren.
+
+Die native Runtime für Sparks, Smoke, Mist, Glow, Energy, Rain und Heat Haze steckt bereits im Graphics-preparation-ZIP. Der alte separate `graphics-effects-runtime`-Mod ist nur noch für ältere Installationen gedacht.

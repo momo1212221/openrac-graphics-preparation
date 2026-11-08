@@ -67,7 +67,7 @@ export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
   }).sort((a,b)=>a.standardRate-b.standardRate||a.average-b.average||a.material.localeCompare(b.material));
   return {
     version:2,
-    generatedBy:"Graphics preparation 0.16.1",
+    generatedBy:"Graphics preparation 0.17.0",
     evaluated:normalized.length,
     scored:scored.length,
     averageScore:average==null?null:Number(average.toFixed(2)),

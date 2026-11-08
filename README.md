@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.16.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.17.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.16.1.zip`.
+2. Install `graphics-preparation-0.17.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -28,7 +28,7 @@ therefore bundled inside the mod.
 10. Add that ZIP through **Mods -> Add a mod**.
 
 Step 10 is required because the stock Mod Tool protocol deliberately allows a mod page to save files
-but does not let it install or enable another mod automatically.
+and no longer needs to install a second effects runtime: the native particle/glow/haze runtime is built into Graphics preparation 0.17.0.
 
 ## AI implementation
 
@@ -66,7 +66,7 @@ Graphics preparation also authors standard Enhanced graphics data:
 - particle presets in `graphics-effects.tsv`.
 
 The point/spot lights are read by the official Enhanced renderer from normal mod assets. Particle
-rows are played by **Graphics Effects Runtime**, a normal OpenRAC native mod built against SDK
+rows are played by the **native runtime integrated into Graphics preparation**, built against OpenRAC SDK
 1.14.2. It uses props and haze through the public API; it is not a launcher fork.
 
 The stock Mod Tool API deliberately cannot overwrite extracted level source or launch the native
@@ -328,7 +328,7 @@ Runtime particle and haze authoring now uses OpenRAC's exported level structure 
 - unplaced effects, missing levels and malformed coordinates block export instead of silently becoming world-origin effects or disappearing;
 - instance snapping stores a world-coordinate snapshot; it does not pretend to follow moving gameplay objects;
 - live **Use player position** remains visibly unavailable until the stock Mod Tool protocol exposes player coordinates;
-- authored particle/haze packs require **Graphics Effects Runtime 0.1.1**, which fixes the TSV parser and validates external preset/coordinate input.
+- authored particle/haze packs are executed by the native runtime inside Graphics preparation 0.17.0; no second runtime download is required.
 
 The placement coordinates use the same column-major 4x4 transform convention as OpenRAC's official level export.
 
@@ -405,3 +405,15 @@ Curvature remains optional in the UI. Turning it off skips the sidecar and is re
 The deterministic staged Height/Normal/PBR generator is production-ready in the preparation mod.
 Actual runtime parallax/displacement still depends on OpenRAC renderer support for the exported
 `Materials/<hash>/` sidecars.
+
+
+## One-package runtime (0.17.0)
+
+Graphics preparation is now one installable OpenRAC mod instead of a tool plus a separate native effects runtime.
+
+- The same `graphics-preparation-0.17.0.zip` contains the launcher tool page, AI/WASM assets, the particle mesh and native runtime libraries.
+- Native libraries are included for Linux x86_64/AArch64, macOS Intel/Apple Silicon and Windows x86_64.
+- The mod remains a normal OpenRAC mod and uses the official 1.14 native API.
+- Exported runtime-effect packs now require `graphics-preparation >= 0.17.0`; they no longer require `graphics-effects-runtime`.
+- The old `Graphics Effects Runtime 0.1.x` release remains only for compatibility with older 0.15/0.16 installations and is not needed by 0.17+.
+- Installing Graphics preparation once is enough for the editor and for authored Sparks, Smoke, Mist, Glow, Energy, Rain and Heat Haze.
