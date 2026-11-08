@@ -102,6 +102,8 @@ export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
       scalarStats:row.quality?.scalarStats||{},
       pbrValidation:row.pbrValidation||row.quality?.pbrValidation||null,
       pbrCalibration:row.pbrCalibration||row.quality?.pbrCalibration||null,
+      albedoValidation:row.albedoValidation||row.quality?.albedoValidation||null,
+      albedoDelight:row.albedoDelight||row.quality?.albedoDelight||null,
       seamScores:row.quality?.seamScores||{},
     })),
   };
