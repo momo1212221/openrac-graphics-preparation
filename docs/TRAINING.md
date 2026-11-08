@@ -21,8 +21,9 @@ CUDA is selected automatically when available, then Apple MPS, then CPU.
 python tools/training/prepare_dataset.py /path/to/reference-assets training-data
 ```
 
-For the highest-fidelity specialized training, generate inputs from the same pinned x4plus model
-used by the runtime:
+For any specialized model intended for release, generate inputs from the same pinned x4plus model
+used by the runtime. The simpler synthetic mode remains useful for experiments, but promotion and
+packaging reject it:
 
 ```bash
 python tools/training/prepare_dataset.py /path/to/reference-assets training-data \
@@ -137,9 +138,11 @@ python tools/training/promote_model.py \
   training-output/detail-metal.validation.json
 ```
 
-Promotion verifies `release_candidate`, re-checks the exact model SHA-256, copies the model/report
-into `models/`, and updates `models/specialized-models.json`. Promotion does **not** happen during
-training or suite execution.
+Promotion verifies `release_candidate`, re-checks the exact model SHA-256, requires validation
+report v3+, requires the runtime-aligned input pipeline, verifies the training base-model SHA against
+the pinned runtime x4plus SHA-256, and requires positive Laplacian improvement. It then copies the
+model/report into `models/` and updates `models/specialized-models.json`. Promotion does **not**
+happen during training or suite execution.
 
 The normal package builder refuses any `detail-*.onnx` file that is not registered, hash-matched
 and backed by a `release_candidate: true` validation report.
