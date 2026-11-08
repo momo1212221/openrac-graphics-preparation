@@ -88,6 +88,7 @@ export function normalizeEffects(value) {
 }
 
 export function normalizeLight(value = {}) {
+  value = value && typeof value === "object" ? value : {};
   const type = value.type === "spot" ? "spot" : "point";
   return {
     object: String(value.object || ""),
@@ -106,6 +107,7 @@ export function normalizeLight(value = {}) {
 }
 
 export function normalizeAreaLight(value = {}) {
+  value = value && typeof value === "object" ? value : {};
   return {
     level: String(value.level || ""),
     position: vec3(value.position,[0,0,0]),
@@ -116,6 +118,7 @@ export function normalizeAreaLight(value = {}) {
 }
 
 export function normalizeParticle(value = {}) {
+  value = value && typeof value === "object" ? value : {};
   const presets = ["sparks","smoke","mist","glow","energy","rain","heat-haze"];
   const explicitPosition = finiteVec3(value.position);
   const requestedPlacement = ["manual","object","unplaced"].includes(value.placement)
