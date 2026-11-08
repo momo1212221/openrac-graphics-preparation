@@ -81,6 +81,7 @@ export class QualityLab{
           materialMaps={};
           materialPbr={
             calibration:generated.pbrCalibration,validation:generated.pbrValidation,
+            heightReconstruction:generated.heightReconstruction,
             albedoDelight:generated.albedoDelight,albedoValidation:generated.albedoValidation,
           };
           for(const name of ["albedo","normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
@@ -133,7 +134,7 @@ export class QualityLab{
       view.append(before,after);section.append(view);
       if(this.preview.materialMaps){
         const maps=el("div",undefined,"quality-material-maps");
-        for(const name of ["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
+        for(const name of ["albedo","height","normal","roughness","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
           const figure=el("figure");const image=document.createElement("img");
           image.src=this.preview.materialMaps[name];image.alt=name+" material map";
           figure.append(image,el("figcaption",name[0].toUpperCase()+name.slice(1)));maps.append(figure);
@@ -152,6 +153,12 @@ export class QualityLab{
         ["Mean specular",this.preview.materialPbr?.calibration?.meanSpecular??"n/a"],
         ["Albedo de-light",this.preview.materialPbr?.albedoValidation?.ok===true?"pass":(this.preview.materialPbr?.albedoValidation?.ok===false?"review":"n/a")],
         ["Albedo adjusted",this.preview.materialPbr?.albedoDelight?.adjustedRatio!==undefined?Math.round(this.preview.materialPbr.albedoDelight.adjustedRatio*100)+"%":"n/a"],
+        ["Height source",this.preview.materialPbr?.heightReconstruction?.source??"n/a"],
+        ["Relief range",this.preview.materialPbr?.heightReconstruction?.stats?.reliefRange??"n/a"],
+        ["Normal strength",this.preview.materialPbr?.heightReconstruction?.profile?.normalStrength??"n/a"],
+        ["Coarse energy",this.preview.materialPbr?.heightReconstruction?.stats?.coarseEnergy??"n/a"],
+        ["Mid energy",this.preview.materialPbr?.heightReconstruction?.stats?.midEnergy??"n/a"],
+        ["Micro energy",this.preview.materialPbr?.heightReconstruction?.stats?.microEnergy??"n/a"],
         ["Verdict",policy.verdict],["Specialized CNN",r.specializedCnnUsed?"used":(r.specializedRejected?"rejected":"none")],["Failures",r.failures?.issues?.join(", ")||"none"],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
       section.append(facts);
