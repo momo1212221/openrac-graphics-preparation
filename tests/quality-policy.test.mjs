@@ -19,3 +19,9 @@ test('UI is judged more conservatively and better recovery must win by more than
   assert.equal(chooseBetterQuality(a,b),a);
   assert.equal(chooseBetterQuality(a,c),c);
 });
+
+test('safer recovery wins when score is nearly equal',()=>{
+  const primary={metrics:{score:76,hallucinationScore:58,ssim:.72}};
+  const safer={metrics:{score:74.5,hallucinationScore:30,ssim:.84}};
+  assert.equal(chooseBetterQuality(primary,safer),safer);
+});
