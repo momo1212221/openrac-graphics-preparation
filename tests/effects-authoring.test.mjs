@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeEffects,objectLightCatalog,bakerProfile,particleConfig} from '../src/effects-authoring.js';
+import {manifestObjectPosition,normalizeEffects,normalizeParticle,objectLightCatalog,bakerProfile,particleConfig} from '../src/effects-authoring.js';
 
 test('runtime point and spot lights serialize to the official object-lights format',()=>{
   const state=normalizeEffects({lights:[
@@ -31,4 +31,29 @@ test('particle config is deterministic TSV for the standard native runtime',()=>
   const text=particleConfig(state,[{dir:'level_02',level:2}]);
   assert.match(text,/^# OpenRAC Graphics Effects Runtime v1/m);
   assert.match(text,/^2\tsparks\t1\t2\t3\t/m);
+});
+
+
+test('runtime effects require explicit placement instead of silently exporting at world origin',()=>{
+  const unplaced=normalizeParticle({level:'level_02',preset:'smoke'});
+  assert.equal(unplaced.placement,'unplaced');
+  assert.deepEqual(unplaced.position,[0,0,0]);
+
+  const placed=normalizeParticle({level:'level_02',preset:'smoke',position:[4,5,6]});
+  assert.equal(placed.placement,'manual');
+
+  const state=normalizeEffects({particles:[
+    {level:'level_02',preset:'smoke'},
+    {level:'level_02',preset:'sparks',position:[1,2,3]},
+  ]});
+  const text=particleConfig(state,[{dir:'level_02',level:2}]);
+  assert.doesNotMatch(text,/\tsmoke\t/);
+  assert.match(text,/^2\tsparks\t1\t2\t3\t/m);
+});
+
+test('exported object transforms can provide placement anchors',()=>{
+  assert.deepEqual(manifestObjectPosition({position:[1,2,3]}),[1,2,3]);
+  assert.deepEqual(manifestObjectPosition({transform:{translation:[4,5,6]}}),[4,5,6]);
+  assert.deepEqual(manifestObjectPosition({matrix:[1,0,0,0,0,1,0,0,0,0,1,0,7,8,9,1]}),[7,8,9]);
+  assert.equal(manifestObjectPosition({name:'no transform'}),null);
 });
