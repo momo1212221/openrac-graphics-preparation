@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import random
@@ -182,33 +183,55 @@ def evaluate(model,loader,device,l1,gradient_weight=.35,laplacian_weight=.12):
         "pairs":seen,
     }
 
-def load_checkpoint(path:Path,model,opt,expected_material):
+def load_checkpoint(path:Path,model,opt,scheduler,args,dataset_manifest_sha256:str):
     try:
         checkpoint=torch.load(path,map_location="cpu",weights_only=False)
     except TypeError:
         checkpoint=torch.load(path,map_location="cpu")
-    if checkpoint.get("material")!=expected_material:
+    if checkpoint.get("material")!=args.material:
         raise SystemExit(
-            f"checkpoint material {checkpoint.get('material')!r} does not match --material {expected_material!r}"
+            f"checkpoint material {checkpoint.get('material')!r} does not match --material {args.material!r}"
         )
     if int(checkpoint.get("architecture_version",1))!=ARCHITECTURE_VERSION:
         raise SystemExit(
             f"checkpoint architecture v{checkpoint.get('architecture_version',1)} is incompatible "
             f"with current v{ARCHITECTURE_VERSION}; start a new training run"
         )
+    if list(checkpoint.get("context_dilations",[]))!=list(CONTEXT_DILATIONS):
+        raise SystemExit("checkpoint dilation schedule differs from the current architecture")
+    for key,expected in (("channels",args.channels),("blocks",args.blocks)):
+        if int(checkpoint.get(key,-1))!=int(expected):
+            raise SystemExit(f"checkpoint {key}={checkpoint.get(key)!r} does not match current {expected!r}")
+    for key,expected in (
+        ("gradient_weight",args.gradient_weight),
+        ("laplacian_weight",args.laplacian_weight),
+    ):
+        stored=checkpoint.get(key)
+        if stored is None or not math.isclose(float(stored),float(expected),rel_tol=0,abs_tol=1e-12):
+            raise SystemExit(f"checkpoint {key}={stored!r} does not match current {expected!r}")
+    if checkpoint.get("dataset_manifest_sha256")!=dataset_manifest_sha256:
+        raise SystemExit(
+            "checkpoint dataset manifest differs from the current dataset; "
+            "start a new run instead of resuming incompatible training data"
+        )
     model.load_state_dict(checkpoint["model"])
     opt.load_state_dict(checkpoint["optimizer"])
+    scheduler_state=checkpoint.get("scheduler")
+    if scheduler_state is None:
+        raise SystemExit("checkpoint has no scheduler state; start a new run with the current trainer")
+    scheduler.load_state_dict(scheduler_state)
     return checkpoint
 
-def save_checkpoint(path:Path,model,opt,epoch,best_val,bad_epochs,args):
+def save_checkpoint(path:Path,model,opt,scheduler,epoch,best_val,bad_epochs,args,dataset_manifest_sha256:str):
     path.parent.mkdir(parents=True,exist_ok=True)
     torch.save({
-        "version":2,
+        "version":3,
         "architecture_version":ARCHITECTURE_VERSION,
         "context_dilations":list(CONTEXT_DILATIONS),
         "epoch":epoch,
         "model":model.state_dict(),
         "optimizer":opt.state_dict(),
+        "scheduler":scheduler.state_dict(),
         "best_validation_score":best_val,
         "bad_epochs":bad_epochs,
         "material":args.material,
@@ -217,6 +240,7 @@ def save_checkpoint(path:Path,model,opt,epoch,best_val,bad_epochs,args):
         "blocks":args.blocks,
         "gradient_weight":args.gradient_weight,
         "laplacian_weight":args.laplacian_weight,
+        "dataset_manifest_sha256":dataset_manifest_sha256,
     },path)
 
 def main():
@@ -246,6 +270,10 @@ def main():
     if args.epochs<=0 or args.batch<=0 or args.lr<=0 or args.gradient_weight<0 or args.laplacian_weight<0:
         raise SystemExit("--epochs, --batch and --lr must be positive; fidelity weights must be non-negative")
     seed_everything(args.seed)
+    manifest_path=args.dataset/"manifest.jsonl"
+    if not manifest_path.exists():
+        raise SystemExit(f"dataset manifest does not exist: {manifest_path}")
+    dataset_manifest_sha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest()
 
     device=(
         "cuda" if torch.cuda.is_available()
@@ -280,7 +308,9 @@ def main():
     if args.resume:
         if not checkpoint_path.exists():
             raise SystemExit(f"checkpoint does not exist: {checkpoint_path}")
-        checkpoint=load_checkpoint(checkpoint_path,model,opt,args.material)
+        checkpoint=load_checkpoint(
+            checkpoint_path,model,opt,scheduler,args,dataset_manifest_sha256
+        )
         start_epoch=int(checkpoint.get("epoch",0))
         best_val=float(checkpoint.get("best_validation_score",checkpoint.get("best_validation_loss",math.inf)))
         bad_epochs=int(checkpoint.get("bad_epochs",0))
@@ -338,7 +368,7 @@ def main():
             bad_epochs+=1
 
         save_checkpoint(
-            checkpoint_path,model,opt,epoch+1,best_val,bad_epochs,args
+            checkpoint_path,model,opt,scheduler,epoch+1,best_val,bad_epochs,args,dataset_manifest_sha256
         )
 
         row={
@@ -385,19 +415,30 @@ def main():
         opset_version=18,
         dynamo=False,
     )
-    print(json.dumps({
+    model_sha256=hashlib.sha256(args.output.read_bytes()).hexdigest()
+    metadata={
+        "version":1,
         "output":str(args.output),
+        "model_sha256":model_sha256,
         "checkpoint":str(checkpoint_path),
         "best_weights":str(best_path) if best_path.exists() else None,
         "material":args.material,
         "train_pairs":len(train_ds),
         "validation_pairs":len(validation_ds),
+        "dataset_manifest_sha256":dataset_manifest_sha256,
         "seed":args.seed,
         "architecture_version":ARCHITECTURE_VERSION,
         "context_dilations":list(CONTEXT_DILATIONS),
+        "channels":args.channels,
+        "blocks":args.blocks,
         "gradient_weight":args.gradient_weight,
         "laplacian_weight":args.laplacian_weight,
-    },indent=2))
+        "best_validation_score":None if math.isinf(best_val) else best_val,
+        "device":device,
+    }
+    metadata_path=args.output.with_suffix(".training.json")
+    metadata_path.write_text(json.dumps(metadata,indent=2)+"\n",encoding="utf-8")
+    print(json.dumps({**metadata,"training_metadata":str(metadata_path)},indent=2))
 
 if __name__=="__main__":
     main()
