@@ -1,8 +1,9 @@
-Graphics preparation 0.10.4 adds adaptive quality policy.
+Graphics preparation 0.10.5 adds automatic per-texture detail planning.
 
-- Replaces the fixed 45/100 batch threshold with a shared material/class-aware policy.
-- Quality Lab shows pass/watch/retry/reject and a recommended action.
-- Weak AI outputs retry conservatively without the detail CNN.
-- Critically bad uncached neural outputs fall back to deterministic 4x instead of shipping a broken reconstruction.
-- Material sidecar metadata now reports the correct generator version.
-- Keeps dual-CNN reconstruction, seam-aware context, per-texture overrides and material previews.
+- New Auto detail mode chooses Current/High/Max per texture from scope, importance and source size.
+- Important character and weapon assets can receive Max automatically; UI and technical maps stay conservative.
+- Quality metrics can trigger one measured refinement pass after the initial reconstruction.
+- Manual per-texture quality overrides remain authoritative.
+- Adaptive Quality Guard still retries weak results and rejects critically poor uncached neural output.
+- Cache keys now follow the quality actually stored after refinement.
+- Fixes stale material-sidecar and UI version metadata.
