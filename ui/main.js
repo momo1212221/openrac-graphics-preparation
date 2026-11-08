@@ -276,6 +276,9 @@ async function createPack({ai}) {
               metrics: hit.metrics,
               classification: hit.classification,
               materialInfo: hit.materialInfo,
+              failures: hit.failures,
+              masterScale: hit.masterScale,
+              internalMaster: hit.internalMaster,
               errors: [],
               cached: true,
             };
