@@ -79,8 +79,11 @@ export class QualityLab{
         try{
           const generated=await generateMaterialMapPngs(resultToShow.bytes,resultToShow.material);
           materialMaps={};
-          materialPbr={calibration:generated.pbrCalibration,validation:generated.pbrValidation};
-          for(const name of ["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
+          materialPbr={
+            calibration:generated.pbrCalibration,validation:generated.pbrValidation,
+            albedoDelight:generated.albedoDelight,albedoValidation:generated.albedoValidation,
+          };
+          for(const name of ["albedo","normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
             materialMaps[name]=blobUrl(generated[name]);this.urls.push(materialMaps[name]);
           }
         }catch{}
@@ -147,6 +150,8 @@ export class QualityLab{
         ["Mean roughness",this.preview.materialPbr?.calibration?.meanRoughness??"n/a"],
         ["Mean metallic",this.preview.materialPbr?.calibration?.meanMetallic??"n/a"],
         ["Mean specular",this.preview.materialPbr?.calibration?.meanSpecular??"n/a"],
+        ["Albedo de-light",this.preview.materialPbr?.albedoValidation?.ok===true?"pass":(this.preview.materialPbr?.albedoValidation?.ok===false?"review":"n/a")],
+        ["Albedo adjusted",this.preview.materialPbr?.albedoDelight?.adjustedRatio!==undefined?Math.round(this.preview.materialPbr.albedoDelight.adjustedRatio*100)+"%":"n/a"],
         ["Verdict",policy.verdict],["Specialized CNN",r.specializedCnnUsed?"used":(r.specializedRejected?"rejected":"none")],["Failures",r.failures?.issues?.join(", ")||"none"],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
       section.append(facts);
