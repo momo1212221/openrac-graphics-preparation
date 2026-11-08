@@ -234,3 +234,24 @@ test('height pipeline exports explicit parallax authoring metadata without claim
  assert.equal(sky.heightPipeline.parallaxAuthoring.recommendedScale,0);
  assert.equal(sky.heightPipeline.parallaxAuthoring.ready,false);
 });
+
+
+test('lit relief preview visualizes the generated normal response without entering pack maps',()=>{
+ const src=image(24,24,(x,y)=>{
+   const v=(x===11||y===13)?55:125+((x+y)%4)*8;
+   return [v,v-5,v-10,255];
+ });
+ const maps=deriveMaterialMaps(src,'stone');
+ assert.ok(maps.reliefPreview);
+ assert.equal(maps.reliefPreview.width,24);
+ assert.equal(maps.reliefPreview.height,24);
+ let different=0;
+ for(let i=0;i<maps.reliefPreview.data.length;i+=4){
+   if(
+     maps.reliefPreview.data[i]!==maps.albedo.data[i]||
+     maps.reliefPreview.data[i+1]!==maps.albedo.data[i+1]||
+     maps.reliefPreview.data[i+2]!==maps.albedo.data[i+2]
+   )different++;
+ }
+ assert.ok(different>0);
+});
