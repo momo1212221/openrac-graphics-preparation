@@ -115,9 +115,10 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
   // reduced, while broad coherent structure keeps its original local confidence.
   let confidenceSum=0,detailPixels=0,rejectedPixels=0,lowConfidencePixels=0;
   const confidenceHistogram=new Uint32Array(21);
-  // Stable identical flat regions sit around ~0.51 in this structural confidence model.
-  // Treat materially weaker support as regional uncertainty without flagging stable flat output.
-  const lowThreshold=Math.max(.42,profile.minConfidence+.18);
+  // Perfectly agreeing flat regions define a 0.5125 structural-confidence baseline.
+  // Values below 0.51 therefore represent weaker-than-baseline local evidence without
+  // classifying stable identical flat output as uncertain.
+  const lowThreshold=Math.max(.51,profile.minConfidence+.18);
   for(let y=0;y<base.height;y++){
     for(let x=0;x<base.width;x++){
       const p=y*base.width+x;
