@@ -1,6 +1,6 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.15.1** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.16.1** mit dem aktuellen **OpenRAC Dev Launcher**.
 
 Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für die normale Nutzung werden **kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm** benötigt.
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.15.1.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.16.1.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
@@ -216,6 +216,8 @@ Optional kann Graphics preparation zusätzliche Material-Sidecars erzeugen, daru
 - Curvature;
 - Edge Wear.
 
+Die Material-Pipeline arbeitet in 0.16.1 über **Albedo Cleanup -> Coarse/Mid/Micro Height -> Height Merge -> Normal -> AO/Roughness**. Im Quality Lab kannst du zusätzlich eine **Lit relief preview** ansehen, die zeigt, wie die erzeugte Normal Map unter synthetischem Licht wirkt. Der Export enthält außerdem Parallax-Authoring-Metadaten für `height.png`; der Stock-Renderer rendert Parallax/Displacement dadurch noch nicht automatisch.
+
 Für normale Texture-Packs im unveränderten Stock-Launcher sollte **Material Maps: Off** bleiben, weil diese Dateien eine neuere beziehungsweise erweiterte Enhanced-Graphics-Integration voraussetzen können.
 
 ## 13. AI Backend
@@ -284,7 +286,7 @@ Der Mod führt dann automatisch die nötigen Schritte aus, darunter:
 11. bei Bedarf konservativer neu verarbeiten oder auf einen sicheren Fallback wechseln;
 12. Texture-Pack erzeugen.
 
-Große Texture-Sammlungen und Max-/8x-Verarbeitung können entsprechend viel Rechenzeit benötigen.
+Große Texture-Sammlungen und Max-/8x-Verarbeitung können entsprechend viel Rechenzeit benötigen. Die Fortschrittsanzeige zeigt Prozent, vergangene Zeit, Restzeit und Texturen pro Minute; Material-Maps, Mipmaps und das Schreiben des Packs zählen dabei mit, bevor eine Textur als abgeschlossen gilt.
 
 ## 17. Texture-Pack speichern und installieren
 
