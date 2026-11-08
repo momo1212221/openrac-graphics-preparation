@@ -1018,7 +1018,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.12.0 · adaptive standard-launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.13.0 · adaptive standard-launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
