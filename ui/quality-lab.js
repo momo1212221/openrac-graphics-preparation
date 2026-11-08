@@ -141,7 +141,7 @@ export class QualityLab{
       for(const [name,value] of [
         ["Class",r.textureClass],["Material",r.material],["Planned",this.preview.plannedQuality],["Used",r.detailQuality],["Quality",m.score!==undefined?`${m.score}/100`:"n/a"],
         ["Master",r.internalMaster?"8× → 4×":"4×"],["CNN agreement",m.cnnAgreement??"n/a"],["SSIM",m.ssim??"n/a"],["Colour drift",m.colorDrift??"n/a"],["Histogram drift",m.histogramDrift??"n/a"],["Edge gain",m.edgeGain??"n/a"],["Hallucination",m.hallucinationScore??"n/a"],
-        ["Verdict",policy.verdict],["Failures",r.failures?.issues?.join(", ")||"none"],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
+        ["Verdict",policy.verdict],["Specialized CNN",r.specializedCnnUsed?"used":(r.specializedRejected?"rejected":"none")],["Failures",r.failures?.issues?.join(", ")||"none"],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
       section.append(facts);
     }
