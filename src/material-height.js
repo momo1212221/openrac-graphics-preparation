@@ -4,18 +4,18 @@ const clamp8=(v)=>Math.max(0,Math.min(255,Math.round(v)));
 const luma=(r,g,b)=>(54*r+183*g+19*b)/256;
 
 export const MATERIAL_HEIGHT_PROFILES=Object.freeze({
-  generic:Object.freeze({coarseRadius:7,midRadius:3,coarse:.28,mid:.62,micro:.72,heightGain:1.55,normalStrength:2.4,aoRadius:5}),
-  terrain:Object.freeze({coarseRadius:12,midRadius:4,coarse:.58,mid:.90,micro:.82,heightGain:1.95,normalStrength:3.8,aoRadius:7}),
-  stone:Object.freeze({coarseRadius:10,midRadius:3,coarse:.52,mid:1.08,micro:1.18,heightGain:2.15,normalStrength:4.8,aoRadius:6}),
-  metal:Object.freeze({coarseRadius:7,midRadius:2,coarse:.12,mid:.82,micro:.38,heightGain:1.65,normalStrength:3.2,aoRadius:4}),
-  fabric:Object.freeze({coarseRadius:5,midRadius:2,coarse:.08,mid:.48,micro:1.32,heightGain:1.80,normalStrength:4.1,aoRadius:3}),
-  organic:Object.freeze({coarseRadius:8,midRadius:3,coarse:.34,mid:.72,micro:.68,heightGain:1.55,normalStrength:2.8,aoRadius:5}),
-  character:Object.freeze({coarseRadius:7,midRadius:3,coarse:.18,mid:.42,micro:.38,heightGain:1.15,normalStrength:1.8,aoRadius:4}),
-  weapon:Object.freeze({coarseRadius:7,midRadius:2,coarse:.16,mid:.92,micro:.52,heightGain:1.85,normalStrength:3.7,aoRadius:4}),
-  energy:Object.freeze({coarseRadius:7,midRadius:3,coarse:.06,mid:.12,micro:.08,heightGain:.55,normalStrength:.65,aoRadius:3}),
-  glass:Object.freeze({coarseRadius:7,midRadius:3,coarse:.03,mid:.08,micro:.04,heightGain:.35,normalStrength:.35,aoRadius:3}),
-  sky:Object.freeze({coarseRadius:12,midRadius:5,coarse:.04,mid:.06,micro:.02,heightGain:.30,normalStrength:.25,aoRadius:5}),
-  ui:Object.freeze({coarseRadius:5,midRadius:2,coarse:.02,mid:.05,micro:.03,heightGain:.25,normalStrength:.25,aoRadius:2}),
+  generic:Object.freeze({coarseRadius:7,midRadius:3,coarse:.28,mid:.62,micro:.72,heightGain:1.55,normalStrength:2.4,aoRadius:5,parallaxScale:.025}),
+  terrain:Object.freeze({coarseRadius:12,midRadius:4,coarse:.58,mid:.90,micro:.82,heightGain:1.95,normalStrength:3.8,aoRadius:7,parallaxScale:.05}),
+  stone:Object.freeze({coarseRadius:10,midRadius:3,coarse:.52,mid:1.08,micro:1.18,heightGain:2.15,normalStrength:4.8,aoRadius:6,parallaxScale:.06}),
+  metal:Object.freeze({coarseRadius:7,midRadius:2,coarse:.12,mid:.82,micro:.38,heightGain:1.65,normalStrength:3.2,aoRadius:4,parallaxScale:.022}),
+  fabric:Object.freeze({coarseRadius:5,midRadius:2,coarse:.08,mid:.48,micro:1.32,heightGain:1.80,normalStrength:4.1,aoRadius:3,parallaxScale:.018}),
+  organic:Object.freeze({coarseRadius:8,midRadius:3,coarse:.34,mid:.72,micro:.68,heightGain:1.55,normalStrength:2.8,aoRadius:5,parallaxScale:.028}),
+  character:Object.freeze({coarseRadius:7,midRadius:3,coarse:.18,mid:.42,micro:.38,heightGain:1.15,normalStrength:1.8,aoRadius:4,parallaxScale:.012}),
+  weapon:Object.freeze({coarseRadius:7,midRadius:2,coarse:.16,mid:.92,micro:.52,heightGain:1.85,normalStrength:3.7,aoRadius:4,parallaxScale:.03}),
+  energy:Object.freeze({coarseRadius:7,midRadius:3,coarse:.06,mid:.12,micro:.08,heightGain:.55,normalStrength:.65,aoRadius:3,parallaxScale:.005}),
+  glass:Object.freeze({coarseRadius:7,midRadius:3,coarse:.03,mid:.08,micro:.04,heightGain:.35,normalStrength:.35,aoRadius:3,parallaxScale:.004}),
+  sky:Object.freeze({coarseRadius:12,midRadius:5,coarse:.04,mid:.06,micro:.02,heightGain:.30,normalStrength:.25,aoRadius:5,parallaxScale:0}),
+  ui:Object.freeze({coarseRadius:5,midRadius:2,coarse:.02,mid:.05,micro:.03,heightGain:.25,normalStrength:.25,aoRadius:2,parallaxScale:0}),
 });
 
 function luminance(image){
