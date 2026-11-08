@@ -14,6 +14,7 @@ test('opaque textures remain fully opaque',()=>{
   const stats=reconstructAlphaEdges(src,out);
   assert.equal(stats.hasTransparency,false);
   assert.ok([...out.data].filter((_,i)=>i%4===3).every(a=>a===255));
+  assert.equal(stats.coverageErrorPercent,0);
 });
 
 test('hard cutout reconstruction preserves alpha coverage',()=>{
@@ -23,6 +24,7 @@ test('hard cutout reconstruction preserves alpha coverage',()=>{
   const stats=reconstructAlphaEdges(src,out);
   assert.equal(profile.hardCutout,true);
   assert.ok(Math.abs(stats.coverageAfter-profile.coverage128)<=.08);
+  assert.ok(stats.coverageErrorPercent<=8);
   assert.ok(stats.edgePixels>0);
 });
 
