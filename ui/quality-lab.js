@@ -4,6 +4,7 @@ import {readFailSafe} from "../src/resilience.js";
 import {upscalePng} from "../src/upscale.js";
 import {generateMaterialMapPngs} from "../src/material-maps.js";
 import {evaluateQuality} from "../src/quality-policy.js";
+import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
 
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
 const blobUrl=(bytes)=>URL.createObjectURL(new Blob([bytes],{type:"image/png"}));
@@ -38,7 +39,7 @@ export class QualityLab{
       const state=this.getSettings();
       const override=this.getOverride(texture.hash);
       const detailQuality=["standard","high","max"].includes(override.quality)
-        ? override.quality : state.detailQuality;
+        ? override.quality : automaticDetailQuality(texture,state.detailQuality);
       const result=override.quality==="no-ai"
         ? {
             bytes:await upscalePng(source,4,true),backend:"no-ai",textureClass:override.textureClass||"manual",
@@ -50,20 +51,40 @@ export class QualityLab{
             preserveStars:state.preserveStars,backend:state.aiBackend,texturePaths:[texture.path],
             textureClassOverride:override.textureClass,materialOverride:override.material,
           });
+      let finalResult=result;
+      if(state.detailQuality==="auto"&&!override.quality&&override.quality!=="no-ai"&&result.metrics){
+        const refinedQuality=refinedDetailQuality(result,detailQuality);
+        if(refinedQuality!==detailQuality){
+          try{
+            const refined=await upscaleAiPng(source,{
+              mode:state.aiMode,detailQuality:refinedQuality,detailCnn:state.detailCnn,
+              sourceColorLock:state.sourceColorLock,preserveMicrodetail:state.preserveMicrodetail,
+              preserveStars:state.preserveStars,backend:state.aiBackend,texturePaths:[texture.path],
+              textureClassOverride:override.textureClass,materialOverride:override.material,
+            });
+            if(refinedQuality==="max"
+              ? (refined.metrics?.score??0)>=(result.metrics?.score??0)-2
+              : (refined.metrics?.score??-1)>(result.metrics?.score??-1)+1){
+              finalResult=refined;
+            }
+          }catch{}
+        }
+      }
       this.clearUrls();
-      const original=blobUrl(source),output=blobUrl(result.bytes);this.urls.push(original,output);
+      const resultToShow=finalResult;
+      const original=blobUrl(source),output=blobUrl(resultToShow.bytes);this.urls.push(original,output);
       let materialMaps=null;
-      if(result.textureClass==="diffuse"&&result.material&&result.material!=="manual"){
+      if(resultToShow.textureClass==="diffuse"&&resultToShow.material&&resultToShow.material!=="manual"){
         try{
-          const generated=await generateMaterialMapPngs(result.bytes,result.material);
+          const generated=await generateMaterialMapPngs(resultToShow.bytes,resultToShow.material);
           materialMaps={};
           for(const name of ["normal","roughness","height","ao","emissive"]){
             materialMaps[name]=blobUrl(generated[name]);this.urls.push(materialMaps[name]);
           }
         }catch{}
       }
-      this.preview={texture,original,output,result,materialMaps};
-      this.setMessage(`Preview ready · ${result.textureClass}/${result.material} · quality ${result.metrics?.score??"n/a"}/100`);
+      this.preview={texture,original,output,result:resultToShow,materialMaps,plannedQuality:detailQuality};
+      this.setMessage(`Preview ready · ${resultToShow.textureClass}/${resultToShow.material} · ${resultToShow.detailQuality} · quality ${resultToShow.metrics?.score??"n/a"}/100`);
       document.dispatchEvent(new CustomEvent("graphics-quality-lab-change"));
     }catch(error){this.setMessage(error instanceof Error?error.message:String(error),true)}
   }
@@ -118,7 +139,7 @@ export class QualityLab{
       const policy=evaluateQuality(m,r);
       const facts=el("div",undefined,"quality-facts");
       for(const [name,value] of [
-        ["Class",r.textureClass],["Material",r.material],["Quality",m.score!==undefined?`${m.score}/100`:"n/a"],
+        ["Class",r.textureClass],["Material",r.material],["Planned",this.preview.plannedQuality],["Used",r.detailQuality],["Quality",m.score!==undefined?`${m.score}/100`:"n/a"],
         ["CNN agreement",m.cnnAgreement??"n/a"],["Colour drift",m.colorDrift??"n/a"],["Edge gain",m.edgeGain??"n/a"],
         ["Verdict",policy.verdict],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
