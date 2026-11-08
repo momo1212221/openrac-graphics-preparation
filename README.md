@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.14.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.15.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.14.0.zip`.
+2. Install `graphics-preparation-0.15.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -292,9 +292,9 @@ scalar-channel consistency and edge discontinuity. Results are written into each
 - Material-sidecar validation and PSNR reporting from 0.12.2 remain enabled.
 
 
-## Realism asset pipeline (0.14.0)
+## Realism asset pipeline (0.15.0)
 
-0.14.0 focuses on source-faithful realism rather than stronger sharpening.
+0.15.0 focuses on source-faithful realism rather than stronger sharpening.
 
 - Coverage-aware alpha reconstruction preserves hard cutout coverage while keeping smoke, glow and
   other soft-alpha effects continuous. Low-alpha RGB dilation reduces dark or bright fringes around
@@ -317,3 +317,17 @@ scalar-channel consistency and edge discontinuity. Results are written into each
 
 Enhanced mipmaps and material sidecars remain optional because the stock launcher does not yet
 consume those extra renderer assets.
+
+## Production runtime effect placement (0.15.0)
+
+Runtime particle and haze authoring now uses OpenRAC's exported level structure directly:
+
+- `manifest.json` supplies class metadata while `placements.json` supplies real tie/shrub/moby instance transforms;
+- the placement UI has a separate level-instance selector, manual X/Y/Z entry, copy/paste, placement clearing and explicit confirmation;
+- legacy saved effects keep their old coordinates but are migrated to **Needs placement** until the user confirms them once;
+- unplaced effects, missing levels and malformed coordinates block export instead of silently becoming world-origin effects or disappearing;
+- instance snapping stores a world-coordinate snapshot; it does not pretend to follow moving gameplay objects;
+- live **Use player position** remains visibly unavailable until the stock Mod Tool protocol exposes player coordinates;
+- authored particle/haze packs require **Graphics Effects Runtime 0.1.1**, which fixes the TSV parser and validates external preset/coordinate input.
+
+The placement coordinates use the same column-major 4x4 transform convention as OpenRAC's official level export.

@@ -1,11 +1,10 @@
-Graphics preparation 0.14.0 adds the first realism-focused asset pipeline.
+Graphics preparation 0.15.0 productionizes runtime effect placement while retaining the 0.14 realism/AI pipeline.
 
-- Coverage-aware alpha reconstruction preserves cutout silhouette coverage and soft transparency while reducing colour fringes.
-- Alpha fidelity is revalidated after both direct 4x output and selective 8x-to-4x master downsampling.
-- Optional enhanced mipmap sidecars preserve cutout alpha coverage across distance levels.
-- Regional CNN confidence suppresses isolated unsupported detail while retaining coherent source-supported structure.
-- Quality Guard v4 uses regional low-confidence ratio and confidence P10 in tier selection, recovery and failure detection.
-- Quality Lab exposes regional confidence plus alpha coverage/error metrics.
-- PBR material calibration constrains Roughness, Metallic and Specular as one material workflow and records validation metadata in material sidecars.
-- Material packs now include an optional lighting-neutralized albedo candidate with bounded low-frequency de-lighting and emissive protection.
-- Retains adaptive tile context, directional source-detail reconstruction, specialized CNN validation, material sidecars, Quality Lab, safe pause/resume and fail-safe recovery.
+- Runtime Sparks, Smoke, Mist, Glow, Energy, Rain and Heat Haze can be placed at explicit world X/Y/Z coordinates.
+- Level-instance snapping reads the official OpenRAC `placements.json` matrices for ties, shrubs and mobys instead of guessing positions from class metadata.
+- Light-class selection and particle-instance placement are separate, preventing one authoring control from overwriting the other.
+- Legacy saved effects preserve their coordinates but require one explicit placement confirmation after migration.
+- Export is blocked for unplaced effects, unavailable levels or malformed coordinates; no silent origin placement or dropped rows.
+- Placement anchors are snapshots in world space and are labelled as such; moving gameplay objects are not falsely presented as live attachments.
+- Graphics Effects Runtime 0.1.1 fixes the 17-field TSV parser, rejects unknown presets/malformed levels and bounds external coordinate/colour input.
+- Standard/High/Max texture quality remains 90/94/97 with the 0.14 alpha, regional CNN confidence, PBR and material-sidecar improvements intact.
