@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image
 import torch
 from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 class Pairs(Dataset):
@@ -80,13 +81,24 @@ def seed_everything(seed:int):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-def fidelity_loss(out,target,l1,gradient_weight=.35):
+def laplacian(z):
+    p=F.pad(z,(1,1,1,1),mode="replicate")
+    return (
+        p[:,:,1:-1,:-2]+p[:,:,1:-1,2:]+
+        p[:,:,:-2,1:-1]+p[:,:,2:,1:-1]-4*z
+    )
+
+def fidelity_loss(out,target,l1,gradient_weight=.35,laplacian_weight=.12):
     gx=lambda z:z[:,:,:,1:]-z[:,:,:,:-1]
     gy=lambda z:z[:,:,1:,:]-z[:,:,:-1,:]
     colour=l1(out,target)
     grad_x=l1(gx(out),gx(target))
     grad_y=l1(gy(out),gy(target))
-    return colour+gradient_weight*grad_x+gradient_weight*grad_y,colour,grad_x,grad_y
+    lap=l1(laplacian(out),laplacian(target))
+    return (
+        colour+gradient_weight*grad_x+gradient_weight*grad_y+laplacian_weight*lap,
+        colour,grad_x,grad_y,
+    )
 
 def source_balanced_sampler(ds:Pairs,seed:int):
     counts=Counter(str(r.get("source_sha256") or r.get("source") or r.get("id")) for r in ds.rows)
@@ -113,7 +125,7 @@ def make_loader(ds,batch,workers,shuffle,seed,balance=False):
         generator=generator,
     )
 
-def evaluate(model,loader,device,l1,gradient_weight=.35):
+def evaluate(model,loader,device,l1,gradient_weight=.35,laplacian_weight=.12):
     if not len(loader.dataset):
         return None
     model.eval()
@@ -124,8 +136,8 @@ def evaluate(model,loader,device,l1,gradient_weight=.35):
         for inp,target in loader:
             inp,target=inp.to(device),target.to(device)
             out=model(inp)
-            loss,c,gx,gy=fidelity_loss(out,target,l1,gradient_weight)
-            _,bc,bgx,bgy=fidelity_loss(inp,target,l1,gradient_weight)
+            loss,c,gx,gy=fidelity_loss(out,target,l1,gradient_weight,laplacian_weight)
+            _,bc,bgx,bgy=fidelity_loss(inp,target,l1,gradient_weight,laplacian_weight)
             n=inp.shape[0]
             total+=float(loss)*n
             colour+=float(c)*n
@@ -190,6 +202,8 @@ def save_checkpoint(path:Path,model,opt,epoch,best_val,bad_epochs,args):
         "seed":args.seed,
         "channels":args.channels,
         "blocks":args.blocks,
+        "gradient_weight":args.gradient_weight,
+        "laplacian_weight":args.laplacian_weight,
     },path)
 
 def main():
@@ -202,6 +216,8 @@ def main():
     ap.add_argument("--lr",type=float,default=2e-4)
     ap.add_argument("--gradient-weight",type=float,default=.35,
                     help="Weight for horizontal/vertical gradient fidelity in the training loss.")
+    ap.add_argument("--laplacian-weight",type=float,default=.12,
+                    help="Weight for second-order high-frequency fidelity; improves fine structure without adversarial loss.")
     ap.add_argument("--device",default="auto")
     ap.add_argument("--workers",type=int,default=2)
     ap.add_argument("--seed",type=int,default=1337)
@@ -214,8 +230,8 @@ def main():
     ap.add_argument("--checkpoint",type=Path,default=None)
     args=ap.parse_args()
 
-    if args.epochs<=0 or args.batch<=0 or args.lr<=0 or args.gradient_weight<0:
-        raise SystemExit("--epochs, --batch and --lr must be positive; --gradient-weight must be non-negative")
+    if args.epochs<=0 or args.batch<=0 or args.lr<=0 or args.gradient_weight<0 or args.laplacian_weight<0:
+        raise SystemExit("--epochs, --batch and --lr must be positive; fidelity weights must be non-negative")
     seed_everything(args.seed)
 
     device=(
@@ -263,7 +279,7 @@ def main():
         }))
     elif validation_loader:
         initial_validation=evaluate(
-            model,validation_loader,device,l1,args.gradient_weight
+            model,validation_loader,device,l1,args.gradient_weight,args.laplacian_weight
         )
         best_val=initial_validation["selection_score"]
         best_path.parent.mkdir(parents=True,exist_ok=True)
@@ -281,7 +297,7 @@ def main():
         for inp,target in train_loader:
             inp,target=inp.to(device),target.to(device)
             out=model(inp)
-            loss,c,gx,gy=fidelity_loss(out,target,l1,args.gradient_weight)
+            loss,c,gx,gy=fidelity_loss(out,target,l1,args.gradient_weight,args.laplacian_weight)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(),1.0)
@@ -294,7 +310,7 @@ def main():
             seen+=n
 
         validation=evaluate(
-            model,validation_loader,device,l1,args.gradient_weight
+            model,validation_loader,device,l1,args.gradient_weight,args.laplacian_weight
         ) if validation_loader else None
         monitor=validation["selection_score"] if validation else total/max(1,seen)
         scheduler.step(monitor)
@@ -326,6 +342,7 @@ def main():
             "source_balanced":not args.no_source_balance,
             "augment":args.augment,
             "gradient_weight":args.gradient_weight,
+            "laplacian_weight":args.laplacian_weight,
             "checkpoint":str(checkpoint_path),
         }
         print(json.dumps(row))
@@ -363,6 +380,8 @@ def main():
         "train_pairs":len(train_ds),
         "validation_pairs":len(validation_ds),
         "seed":args.seed,
+        "gradient_weight":args.gradient_weight,
+        "laplacian_weight":args.laplacian_weight,
     },indent=2))
 
 if __name__=="__main__":
