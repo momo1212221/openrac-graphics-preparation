@@ -16,3 +16,11 @@ assets/object-lights.json and graphics-effects.tsv. Enhanced graphics reads the 
 point/spot lights directly; this runtime reads only the particle/haze rows.
 
 Particles are capped at 192 live props to stay below OpenRAC's shared 256-prop limit.
+
+
+## 0.1.1
+
+- fixes the 17-field TSV parser used by authored effects;
+- rejects unknown presets and malformed level numbers;
+- clamps external position/colour values to finite runtime-safe ranges;
+- remains compatible with the standard OpenRAC 1.14 mod API and launcher.
