@@ -251,10 +251,11 @@ async function createPack({ai}) {
           materialOverride: override.material || null,
         };
         let key = null;
+        let digest = null;
         let prepared = null;
 
         if (state.persistentCache) {
-          const digest = await sourceDigest(source);
+          digest = await sourceDigest(source);
           key = cacheKey(digest, cacheOptions);
           const hit = await cacheGet(key);
           if (hit) {
@@ -356,7 +357,7 @@ async function createPack({ai}) {
           try {
             const conservative = await upscaleAiPng(source, {
               mode: state.aiMode,
-              detailQuality: effectiveDetailQuality === "max" ? "high" : "standard",
+              detailQuality: prepared.detailQuality === "max" ? "high" : "standard",
               detailCnn: false,
               sourceColorLock: true,
               preserveMicrodetail: state.preserveMicrodetail,
@@ -384,7 +385,24 @@ async function createPack({ai}) {
           } catch {}
         }
 
-        if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped && key && state.persistentCache) {
+        if (state.qualityGuard && prepared.metrics?.score!==undefined) {
+          const policy=evaluateQuality(prepared.metrics,prepared);
+          if(policy.fallback && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped){
+            prepared.bytes=await upscalePng(source,4,true);
+            prepared.strategy="fallback";
+            prepared.backend="quality-guard-fallback";
+            prepared.skipped=true;
+            prepared.skipReason="quality-reject";
+            prepared.detailCnnUsed=false;
+            prepared.detailPixels=0;
+            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-rejected",metrics:prepared.metrics,policy});
+          }else if(policy.verdict!=="pass"){
+            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-warning",metrics:prepared.metrics,policy});
+          }
+        }
+
+        if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped && digest && state.persistentCache) {
+          key = cacheKey(digest, {...cacheOptions, detailQuality:prepared.detailQuality || effectiveDetailQuality});
           const cached = await cachePut(
             key,
             prepared,
@@ -403,21 +421,7 @@ async function createPack({ai}) {
         stats.detailPixels+=prepared.detailPixels||0;
         if(prepared.metrics?.score!==undefined){
           stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
-          if(state.qualityGuard){
-            const policy=evaluateQuality(prepared.metrics,prepared);
-            if(policy.fallback && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped){
-              prepared.bytes=await upscalePng(source,4,true);
-              prepared.strategy="fallback";
-              prepared.backend="quality-guard-fallback";
-              prepared.skipped=true;
-              prepared.skipReason="quality-reject";
-              prepared.detailCnnUsed=false;
-              prepared.detailPixels=0;
-              stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-rejected",metrics:prepared.metrics,policy});
-            }else if(policy.verdict!=="pass"){
-              stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-warning",metrics:prepared.metrics,policy});
-            }
-          }
+
         }
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
         stats.stars += prepared.stars;
