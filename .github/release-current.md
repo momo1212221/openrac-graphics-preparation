@@ -1,10 +1,10 @@
-Graphics preparation 0.11.0 completes the P0 texture-quality stack.
+Graphics preparation 0.12.0 connects validated specialized material CNNs to the production runtime.
 
-- Selective 8× internal master for important Max-detail character/weapon/boss/key-terrain assets, downsampled to 4× final.
-- Three-band fine/mid/coarse source-frequency reconstruction.
-- Extended QA: SSIM, histogram drift, alpha coverage, seam score, microdetail gain and hallucination-risk score.
-- Automatic failure detection for black/transparent/wrong-size/alpha-loss/over-detail/CNN-disagreement outputs.
-- Failure-rejected AI output never enters the persistent cache and falls back safely.
-- Advanced sidecars: Specular, Metallic, Cavity, Curvature and Edge-Wear in addition to Normal/Roughness/Height/AO/Emissive.
-- Quality Lab shows master scale, structural metrics, hallucination score and detected failure reasons.
-- Cache pipeline version bumped for the new reconstruction and 8× master semantics.
+- Max-detail diffuse textures can receive a material-specific same-resolution refinement after the general 4× CNN path.
+- Runtime routing uses the existing material classifier and promoted specialized-model registry.
+- Every specialized ONNX payload is SHA-256 verified against its pinned registry entry before session creation.
+- Missing/invalid models, backend failures and inference errors fail open to the established general CNN output.
+- Specialized candidates are accepted only inside strict quality-score, hallucination-risk and colour-drift guardrails.
+- Persistent cache identity includes the specialized model registry fingerprint.
+- Source alpha is preserved and specialized runs/rejections are reported in batch statistics.
+- Retains the 0.11.1 export quality report and the 0.11.0 selective 8×/material-sidecar stack.
