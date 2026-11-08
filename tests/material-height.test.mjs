@@ -93,3 +93,35 @@ test("curvature stage can be disabled without changing required surface maps",()
   assert.ok(surface.ao);
   assert.ok(surface.roughness);
 });
+
+
+test("transparent RGB outside the visible island cannot bend height or normals",()=>{
+  const src=image(20,20,(x,y)=>{
+    const visible=x>=4&&x<=15&&y>=4&&y<=15;
+    if(visible)return [128,128,128,255];
+    // Deliberately hostile hidden RGB must not leak into visible reconstruction.
+    return [(x*37+y*11)%256,(x*13+y*29)%256,(x*7+y*53)%256,0];
+  });
+  const out=deriveMultiScaleHeight(src,"stone");
+  const centre=(10*20+10)*4;
+  const edge=(4*20+10)*4;
+  assert.ok(out.stats.reliefRange<.001);
+  for(const i of [centre,edge]){
+    assert.ok(Math.abs(out.normal.data[i]-128)<=1);
+    assert.ok(Math.abs(out.normal.data[i+1]-128)<=1);
+    assert.ok(out.normal.data[i+2]>=254);
+  }
+});
+
+test("surface AO ignores transparent neighbours at cutout edges",()=>{
+  const src=image(16,16,(x,y)=>{
+    const visible=x>=3&&x<=12&&y>=3&&y<=12;
+    return visible?[120,120,120,255]:[0,0,0,0];
+  });
+  const bands=deriveHeightBands(src,"generic");
+  const merged=mergeHeightBands(src,bands,"generic");
+  const surface=deriveHeightSurfaceMaps(src,merged.heightField,"generic",.58,{curvature:true});
+  const edge=(3*16+8)*4;
+  assert.ok(surface.ao.data[edge]>=250);
+  assert.ok(Math.abs(surface.roughness.data[edge]/255-.58)<.03);
+});
