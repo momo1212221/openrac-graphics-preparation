@@ -74,16 +74,18 @@ export class QualityLab{
       const resultToShow=finalResult;
       const original=blobUrl(source),output=blobUrl(resultToShow.bytes);this.urls.push(original,output);
       let materialMaps=null;
+      let materialPbr=null;
       if(resultToShow.textureClass==="diffuse"&&resultToShow.material&&resultToShow.material!=="manual"){
         try{
           const generated=await generateMaterialMapPngs(resultToShow.bytes,resultToShow.material);
           materialMaps={};
+          materialPbr={calibration:generated.pbrCalibration,validation:generated.pbrValidation};
           for(const name of ["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
             materialMaps[name]=blobUrl(generated[name]);this.urls.push(materialMaps[name]);
           }
         }catch{}
       }
-      this.preview={texture,original,output,result:resultToShow,materialMaps,plannedQuality:detailQuality};
+      this.preview={texture,original,output,result:resultToShow,materialMaps,materialPbr,plannedQuality:detailQuality};
       this.setMessage(`Preview ready · ${resultToShow.textureClass}/${resultToShow.material} · ${resultToShow.detailQuality} · quality ${resultToShow.metrics?.score??"n/a"}/100`);
       document.dispatchEvent(new CustomEvent("graphics-quality-lab-change"));
     }catch(error){this.setMessage(error instanceof Error?error.message:String(error),true)}
@@ -141,6 +143,10 @@ export class QualityLab{
       for(const [name,value] of [
         ["Class",r.textureClass],["Material",r.material],["Planned",this.preview.plannedQuality],["Used",r.detailQuality],["Target",policy.targetScore!==undefined?`${policy.targetScore}/100`:"n/a"],["Quality",m.score!==undefined?`${m.score}/100`:"n/a"],
         ["Master",r.internalMaster?"8× → 4×":"4×"],["CNN agreement",m.cnnAgreement??"n/a"],["CNN confidence",m.cnnConfidence??"n/a"],["Confidence P10",m.cnnConfidenceP10??"n/a"],["Regional low confidence",m.cnnLowConfidenceRatio!==undefined?Math.round(m.cnnLowConfidenceRatio*100)+"%":"n/a"],["SSIM",m.ssim??"n/a"],["Colour drift",m.colorDrift??"n/a"],["Histogram drift",m.histogramDrift??"n/a"],["Edge gain",m.edgeGain??"n/a"],["Hallucination",m.hallucinationScore??"n/a"],["Alpha coverage",r.alphaEdges?.hasTransparency?Math.round((r.alphaEdges.coverageAfter??0)*100)+"%":"opaque"],["Alpha edge error",m.alphaEdgeCoverageDiff!==undefined?m.alphaEdgeCoverageDiff+"%":"n/a"],["Alpha edge pixels",r.alphaEdges?.edgePixels??0],
+        ["PBR validation",this.preview.materialPbr?.validation?.ok===true?"pass":(this.preview.materialPbr?.validation?.ok===false?"review":"n/a")],
+        ["Mean roughness",this.preview.materialPbr?.calibration?.meanRoughness??"n/a"],
+        ["Mean metallic",this.preview.materialPbr?.calibration?.meanMetallic??"n/a"],
+        ["Mean specular",this.preview.materialPbr?.calibration?.meanSpecular??"n/a"],
         ["Verdict",policy.verdict],["Specialized CNN",r.specializedCnnUsed?"used":(r.specializedRejected?"rejected":"none")],["Failures",r.failures?.issues?.join(", ")||"none"],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
       section.append(facts);
