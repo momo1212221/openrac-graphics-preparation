@@ -10,6 +10,9 @@ const MATERIAL_LIMIT=Object.freeze({
   character:22,weapon:30,energy:20,glass:16,sky:18,ui:10,normal:0,mask:0,
 });
 
+// Fragile/smooth materials intentionally admit very little second-CNN novelty.
+ // The x4plus image remains authoritative; enrichment is allowed only where real-CNN
+ // regression benchmarks stay inside the per-material fidelity budget.
 const MATERIAL_PROFILE=Object.freeze({
   generic:{minConfidence:.12,modelOnlyAllowance:.55,noveltyScale:1.00},
   terrain:{minConfidence:.10,modelOnlyAllowance:.78,noveltyScale:1.05},
@@ -17,11 +20,11 @@ const MATERIAL_PROFILE=Object.freeze({
   metal:{minConfidence:.14,modelOnlyAllowance:.52,noveltyScale:.92},
   fabric:{minConfidence:.11,modelOnlyAllowance:.72,noveltyScale:1.02},
   organic:{minConfidence:.15,modelOnlyAllowance:.48,noveltyScale:.86},
-  character:{minConfidence:.18,modelOnlyAllowance:.34,noveltyScale:.72},
-  weapon:{minConfidence:.14,modelOnlyAllowance:.56,noveltyScale:.94},
-  energy:{minConfidence:.18,modelOnlyAllowance:.30,noveltyScale:.68},
-  glass:{minConfidence:.22,modelOnlyAllowance:.18,noveltyScale:.48},
-  sky:{minConfidence:.20,modelOnlyAllowance:.24,noveltyScale:.56},
+  character:{minConfidence:.18,modelOnlyAllowance:.34,noveltyScale:.36},
+  weapon:{minConfidence:.14,modelOnlyAllowance:.56,noveltyScale:.85},
+  energy:{minConfidence:.18,modelOnlyAllowance:.30,noveltyScale:.07},
+  glass:{minConfidence:.22,modelOnlyAllowance:.18,noveltyScale:.20},
+  sky:{minConfidence:.20,modelOnlyAllowance:.24,noveltyScale:.16},
   ui:{minConfidence:.28,modelOnlyAllowance:.10,noveltyScale:.30},
   normal:{minConfidence:1,modelOnlyAllowance:0,noveltyScale:0},
   mask:{minConfidence:1,modelOnlyAllowance:0,noveltyScale:0},
