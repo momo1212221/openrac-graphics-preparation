@@ -64,19 +64,27 @@ function structureConfidence(base,detail,x,y){
  * is not added a second time, preventing agreement from becoming artificial sharpening.
  */
 export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={}){
-  if(!detail||base.width!==detail.width||base.height!==detail.height)
-    return {image:base,agreement:1,confidence:1,detailPixels:0,rejectedPixels:0,consideredPixels:0};
+  const empty=(image)=>({
+    image,agreement:1,confidence:1,confidenceP10:1,lowConfidencePixels:0,
+    lowConfidenceRatio:0,detailPixels:0,rejectedPixels:0,consideredPixels:0,
+  });
+  if(!detail||base.width!==detail.width||base.height!==detail.height)return empty(base);
   const gain=(QUALITY_GAIN[quality]??QUALITY_GAIN.high)*(MATERIAL_DETAIL_GAIN[material]??1);
-  if(gain<=0)return {image:base,agreement:1,confidence:1,detailPixels:0,rejectedPixels:0,consideredPixels:0};
+  if(gain<=0)return empty(base);
 
   const out={width:base.width,height:base.height,data:new Uint8ClampedArray(base.data)};
   const impulseLimit=MATERIAL_LIMIT[material]??MATERIAL_LIMIT.generic;
   const profile=MATERIAL_PROFILE[material]??MATERIAL_PROFILE.generic;
-  let agreementSum=0,confidenceSum=0,detailPixels=0,rejectedPixels=0,count=0;
+  const pixels=base.width*base.height;
+  const rawConfidence=new Float32Array(pixels);
+  const modelSafety=new Float32Array(pixels);
+  const visible=new Uint8Array(pixels);
+  let agreementSum=0,count=0;
 
+  // Pass 1: local evidence. This preserves the existing material-aware fidelity model.
   for(let y=0;y<base.height;y++){
     for(let x=0;x<base.width;x++){
-      const i=(y*base.width+x)*4;
+      const p=y*base.width+x,i=p*4;
       if(base.data[i+3]<16)continue;
       const disagreement=(
         Math.abs(base.data[i]-detail.data[i])+
@@ -86,46 +94,86 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
       const colourAgreement=clamp01(1-disagreement/72);
       const structure=structureConfidence(base,detail,x,y);
       let baseEnergy=0,detailEnergy=0;
-      for(let c=0;c<3;c++){
-        baseEnergy+=Math.abs(residualAt(base,x,y,c));
-        detailEnergy+=Math.abs(residualAt(detail,x,y,c));
+      for(let ch=0;ch<3;ch++){
+        baseEnergy+=Math.abs(residualAt(base,x,y,ch));
+        detailEnergy+=Math.abs(residualAt(detail,x,y,ch));
       }
       baseEnergy/=3;detailEnergy/=3;
       const modelOnly=clamp01((detailEnergy-baseEnergy-2)/18);
       const baseSupport=clamp01((baseEnergy-1)/12);
-      const modelOnlySafety=1-modelOnly*(1-profile.modelOnlyAllowance)*(1-baseSupport);
-      const confidence=clamp01(colourAgreement*(.25+.75*structure)*modelOnlySafety);
+      const safety=1-modelOnly*(1-profile.modelOnlyAllowance)*(1-baseSupport);
+      const confidence=clamp01(colourAgreement*(.25+.75*structure)*safety);
+      rawConfidence[p]=confidence;
+      modelSafety[p]=safety;
+      visible[p]=1;
       agreementSum+=colourAgreement;
-      confidenceSum+=confidence;
       count++;
+    }
+  }
+
+  // Pass 2: regional support. A high-confidence pixel surrounded by weak evidence is
+  // reduced, while broad coherent structure keeps its original local confidence.
+  let confidenceSum=0,detailPixels=0,rejectedPixels=0,lowConfidencePixels=0;
+  const confidenceHistogram=new Uint32Array(21);
+  const lowThreshold=Math.max(.25,profile.minConfidence+.08);
+  for(let y=0;y<base.height;y++){
+    for(let x=0;x<base.width;x++){
+      const p=y*base.width+x;
+      if(!visible[p])continue;
+      let neighborhood=0,neighbors=0;
+      for(let yy=Math.max(0,y-1);yy<=Math.min(base.height-1,y+1);yy++){
+        for(let xx=Math.max(0,x-1);xx<=Math.min(base.width-1,x+1);xx++){
+          const q=yy*base.width+xx;
+          if(!visible[q])continue;
+          neighborhood+=rawConfidence[q];neighbors++;
+        }
+      }
+      neighborhood=neighbors?neighborhood/neighbors:rawConfidence[p];
+      const local=rawConfidence[p];
+      const supportRatio=local>1e-6?clamp01(neighborhood/local):0;
+      const confidence=local*(.60+.40*supportRatio);
+      confidenceSum+=confidence;
+      confidenceHistogram[Math.min(20,Math.max(0,Math.round(confidence*20)))]++;
+      if(confidence<lowThreshold)lowConfidencePixels++;
+
+      const structure=structureConfidence(base,detail,x,y);
       if(confidence<profile.minConfidence || (structure<.10 && confidence<profile.minConfidence+.08)){
         rejectedPixels++;continue;
       }
 
+      const i=p*4;
       let used=false;
-      for(let c=0;c<3;c++){
-        const detailResidual=residualAt(detail,x,y,c);
-        const baseResidual=residualAt(base,x,y,c);
+      for(let ch=0;ch<3;ch++){
+        const detailResidual=residualAt(detail,x,y,ch);
+        const baseResidual=residualAt(base,x,y,ch);
         if(Math.abs(detailResidual)<1.5)continue;
         const detailDelta=detailResidual-baseResidual;
         if(Math.abs(detailDelta)<1)continue;
         const residualAgreement=clamp01(1-Math.abs(detailDelta)/
           Math.max(8,Math.abs(detailResidual)+Math.abs(baseResidual)));
-        // Inject only the extra detail contributed by the fidelity CNN. If both CNNs already
-        // contain the same structure, detailDelta is zero and the base result stays untouched.
         const noveltyGate=(.20+.80*residualAgreement)*profile.noveltyScale;
-        const supported=detailDelta*noveltyGate*modelOnlySafety;
+        const supported=detailDelta*noveltyGate*modelSafety[p];
         const limited=Math.max(-impulseLimit,Math.min(impulseLimit,supported));
-        out.data[i+c]=clamp8(base.data[i+c]+limited*gain*confidence);
+        out.data[i+ch]=clamp8(base.data[i+ch]+limited*gain*confidence);
         used=true;
       }
       if(used)detailPixels++;
     }
   }
+
+  const target=Math.max(1,Math.ceil(count*.10));
+  let cumulative=0,p10=1;
+  for(let bin=0;bin<confidenceHistogram.length;bin++){
+    cumulative+=confidenceHistogram[bin];
+    if(cumulative>=target){p10=bin/20;break;}
+  }
   return {
     image:out,
     agreement:count?agreementSum/count:1,
     confidence:count?confidenceSum/count:1,
+    confidenceP10:p10,
+    lowConfidencePixels,
+    lowConfidenceRatio:count?lowConfidencePixels/count:0,
     detailPixels,
     rejectedPixels,
     consideredPixels:count,
