@@ -9,6 +9,8 @@ import {classifyMaterial} from "./material-classify.js";
 import {fuseCnnOutputs} from "./cnn-fusion.js";
 import {lockSourceChroma, qualityMetrics} from "./quality-metrics.js";
 import {detectTextureWrap} from "./seam.js";
+import {detectOutputFailures} from "./failure-detect.js";
+import {resizePng,upscalePng} from "./upscale.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -520,6 +522,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     const metrics=qualityMetrics(sourceData,outData,{
       cnnAgreement:cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1,
     });
+    const failures=detectOutputFailures(sourceData,outData,metrics);
     outputCtx.putImageData(outData, 0, 0);
     return {
       bytes:await canvasPng(output),
@@ -532,6 +535,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       detailCnnUsed:!!detailRuntime,
       detailPixels,
       metrics,
+      failures,
       classification,
       materialInfo,
       elapsedMs:performance.now()-started,
@@ -539,5 +543,68 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     };
   } finally {
     if (typeof image.close === "function") image.close();
+  }
+}
+
+
+function importantMasterPath(paths){
+  const rows=(Array.isArray(paths)?paths:[paths]).filter(Boolean).map(String);
+  return rows.some((p)=>/(ratchet|clank|character|hero|skin|weapon|wrench|blaster|gun|launcher|boss|enemy|terrain|rock|stone)/i.test(p));
+}
+
+async function decodedDimensions(buffer){
+  const image=await imageFromBytes(buffer);
+  try{return {width:image.width,height:image.height};}
+  finally{if(typeof image.close==="function")image.close();}
+}
+
+async function imageDataFromPng(buffer){
+  const image=await imageFromBytes(buffer);
+  try{
+    const canvas=document.createElement("canvas");
+    canvas.width=image.width;canvas.height=image.height;
+    const ctx=canvas.getContext("2d",{alpha:true,willReadFrequently:true});
+    if(!ctx)throw new Error("2D image processing is unavailable");
+    ctx.drawImage(image,0,0);
+    return ctx.getImageData(0,0,canvas.width,canvas.height);
+  }finally{if(typeof image.close==="function")image.close();}
+}
+
+/**
+ * Selective 8x internal master path.
+ * Important small/medium assets are first expanded 2x, reconstructed 4x by the CNN (8x original),
+ * then high-quality downsampled to the normal 4x pack size. This is intentionally opt-in/auto-selective.
+ */
+export async function upscaleAiMasterPng(buffer,options={},onProgress=()=>{}){
+  const requested=options.master8x!==false;
+  const detailQuality=["standard","high","max"].includes(options.detailQuality)?options.detailQuality:"high";
+  const dims=await decodedDimensions(buffer);
+  const eligible=requested&&detailQuality==="max"&&importantMasterPath(options.texturePaths||options.texturePath||"")&&
+    dims.width*8<=8192&&dims.height*8<=8192&&dims.width*dims.height*64<=64*1024*1024;
+  if(!eligible)return upscaleAiPng(buffer,options,onProgress);
+
+  try{
+    const source2x=await upscalePng(buffer,2,false);
+    const master=await upscaleAiPng(source2x,{
+      ...options,
+      master8x:false,
+      detailQuality:"max",
+    },onProgress);
+    const finalBytes=await resizePng(master.bytes,dims.width*4,dims.height*4,{smoothing:true});
+    const [sourceData,finalData]=await Promise.all([imageDataFromPng(buffer),imageDataFromPng(finalBytes)]);
+    const metrics=qualityMetrics(sourceData,finalData,{cnnAgreement:master.metrics?.cnnAgreement??1});
+    const failures=detectOutputFailures(sourceData,finalData,metrics);
+    return {
+      ...master,
+      bytes:finalBytes,
+      metrics,
+      failures,
+      masterScale:8,
+      internalMaster:true,
+      elapsedMs:master.elapsedMs,
+    };
+  }catch{
+    const direct=await upscaleAiPng(buffer,options,onProgress);
+    return {...direct,masterScale:4,internalMaster:false,masterFallback:true};
   }
 }
