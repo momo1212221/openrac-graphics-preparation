@@ -59,3 +59,35 @@ test('highest passing tier respects the render tier cap',()=>{
   assert.equal(highestPassingQuality(safe(89),{textureClass:'diffuse',material:'stone'},'max'),null);
   assert.equal(QUALITY_POLICY_VERSION,'90-94-97-v2');
 });
+
+
+test('material risk profile tightens fragile surfaces without lowering tier score',()=>{
+  const maxGeneric=qualityTargetFor('max','generic','diffuse');
+  const maxGlass=qualityTargetFor('max','glass','diffuse');
+  const maxStone=qualityTargetFor('max','stone','diffuse');
+  assert.equal(maxGeneric.score,97);
+  assert.equal(maxGlass.score,97);
+  assert.equal(maxStone.score,97);
+  assert.ok(maxGlass.cnnConfidence>maxGeneric.cnnConfidence);
+  assert.ok(maxGlass.cnnRejectedRatio<maxGeneric.cnnRejectedRatio);
+  assert.ok(maxGlass.hallucination<maxGeneric.hallucination);
+  assert.ok(maxStone.cnnConfidence<maxGeneric.cnnConfidence);
+  assert.ok(maxStone.cnnRejectedRatio>maxGeneric.cnnRejectedRatio);
+});
+
+test('same CNN metrics can pass stone but retry glass at the same tier',()=>{
+  const metrics=safe(97,{
+    cnnConfidence:.70,cnnRejectedRatio:.20,ssim:.90,hallucinationScore:12,edgeGain:1.7,
+  });
+  const stone=evaluateQuality(metrics,{detailQuality:'max',textureClass:'diffuse',material:'stone'});
+  const glass=evaluateQuality(metrics,{detailQuality:'max',textureClass:'diffuse',material:'glass'});
+  assert.equal(stone.verdict,'pass');
+  assert.equal(glass.verdict,'retry');
+  assert.ok(glass.reasons.includes('low CNN confidence')||glass.reasons.includes('high CNN rejection'));
+});
+
+test('near-equal recovery with much better CNN confidence is preferred',()=>{
+  const primary={metrics:{score:96,hallucinationScore:22,ssim:.88,cnnConfidence:.48,cnnRejectedRatio:.52}};
+  const safer={metrics:{score:94.5,hallucinationScore:20,ssim:.89,cnnConfidence:.72,cnnRejectedRatio:.18}};
+  assert.equal(chooseBetterQuality(primary,safer),safer);
+});
