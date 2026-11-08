@@ -1,13 +1,16 @@
-Graphics preparation 0.4.0 ports the native AI graphics path from the OpenRAC fork into the installed mod UI.
+Graphics preparation 0.5.0 runs real AI upscaling on the stock OpenRAC Dev Launcher.
 
-- Declares the bounded `graphics-preparation` launcher service used by the fork.
-- **Prepare AI graphics** runs the fork's Upscayl/NCNN texture backend.
+- No custom launcher service.
+- No Python helper.
+- No external Upscayl application required.
+- Bundles Real-ESRGAN x4plus ONNX and ONNX Runtime Web/WASM in the mod.
 - Faithful, Balanced and Maximum Detail profiles.
-- Preserves original micro-detail, stars and tiny lights after the neural pass.
-- Optional 3D AI for render meshes; collision always stays original.
-- Uses staging/backups from the fork backend, so a failed pass does not replace the current prepared pack.
-- Same Enhanced-graphics-style UI.
-- Supports RAC1-RAC4 versions represented by the fork service.
-- Stock launchers keep the local 2x/4x export fallback.
+- Same fork-style micro-detail restoration strengths and sharpening.
+- Same stars/tiny-lights preservation thresholds.
+- 96x96 tiled inference with overlap to control memory.
+- Reads only OpenRAC's normal saved texture dump through the stock Mod Tool API.
+- Writes a standard OpenRAC texture-pack ZIP through the stock streaming save API.
+- Keeps the fast non-AI 2x/4x fallback in Advanced.
 
-On macOS install Upscayl in /Applications for the native AI path. No Python helper is required.
+Because the official Mod Tool API intentionally cannot install another mod, the generated ZIP still
+needs to be added through Mods -> Add a mod after processing.

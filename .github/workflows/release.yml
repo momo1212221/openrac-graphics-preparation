@@ -23,12 +23,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Test
-        run: |
-          node --test
-          python3 -m unittest discover -s tests -p 'test_*.py'
+      - name: Install pinned ONNX Runtime Web
+        run: npm install --ignore-scripts --no-audit --no-fund
 
-      - name: Build release artifacts
+      - name: Bundle standard-launcher WASM runtime
+        run: npm run prepare:webai
+
+      - name: Download pinned Real-ESRGAN x4plus ONNX model
+        run: |
+          mkdir -p models
+          curl -L --fail --retry 5 --output models/realesrgan-x4plus.onnx             "https://huggingface.co/qualcomm/Real-ESRGAN-x4plus/resolve/725b1db7360e0befb85be5ca9924d8c1e9b1b229/Real-ESRGAN-x4plus.onnx"
+          echo "a64fb7ec8780e6e67a99cf380067961a0aab618c934171240eea2724217fd304  models/realesrgan-x4plus.onnx" | sha256sum -c -
+
+      - name: Test
+        run: node --test
+
+      - name: Build release artifact
+        env:
+          OPENRAC_REQUIRE_AI_ASSETS: "1"
         run: python3 tools/package.py
 
       - name: Read version
@@ -47,5 +59,4 @@ jobs:
             echo "$TAG already exists."
             exit 0
           fi
-
           gh release create "$TAG"             "dist/graphics-preparation-$VERSION.zip"             "dist/SHA256SUMS"             --target "$GITHUB_SHA"             --title "Graphics preparation $VERSION"             --notes-file .github/release-current.md

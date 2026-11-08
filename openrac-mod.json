@@ -2,9 +2,9 @@
   "format": 2,
   "id": "graphics-preparation",
   "name": "Graphics preparation",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": "OpenRAC fork contributors",
-  "description": "Integrated OpenRAC graphics preparation with native fork AI asset enhancement, local fallback upscaling and standard texture-pack export.",
+  "description": "Standard-launcher OpenRAC AI texture preparation with bundled Real-ESRGAN ONNX/WASM and fork-style detail preservation.",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/momo1212221/openrac-graphics-preparation",
   "type": "script",
@@ -17,8 +17,7 @@
     "rac4": ["ntsc"]
   },
   "tool": {
-    "page": "ui/index.html",
-    "service": "graphics-preparation"
+    "page": "ui/index.html"
   },
   "multiplayer": "cosmetic"
 }

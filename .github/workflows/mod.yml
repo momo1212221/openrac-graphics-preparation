@@ -13,9 +13,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm run prepare:webai
       - run: node --test
       - run: python tools/package.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mod
-          path: dist/*

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-/** Thin wrapper around OpenRAC's protocol-1 mod-tool API plus the bounded fork service. */
+/** Thin wrapper around OpenRAC's stock protocol-1 mod-tool API. */
 const bufferOf = (value) => {
   if (value instanceof ArrayBuffer) return value;
   if (ArrayBuffer.isView(value)) return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
@@ -13,7 +13,6 @@ export class ModController {
   }
 
   info() { return this.request("info"); }
-  service(operation, value = {}) { return this.request("service", {operation, value}, 300000); }
   list(root) { return this.request("list", {root}); }
   read(root, path, start, length) {
     return this.request("read", {

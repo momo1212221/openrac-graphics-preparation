@@ -15,20 +15,23 @@ export function textureFiles(files, {includeInterface = true} = {}) {
   return [...byHash.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export function texturePackManifest(info, count, scale, edgePreserving) {
+export function texturePackManifest(info, count, options = {}) {
   if (!info || typeof info.packId !== "string" || !info.packId) throw new TypeError("missing OpenRAC pack id");
+  const ai = options.ai === true;
   return {
     format: 1,
     game: info.packId,
-    name: `Graphics preparation ${scale}x`,
+    name: ai ? "Graphics preparation AI 4x" : `Graphics preparation ${options.scale ?? 4}x`,
     textures: count,
-    madeWith: `Graphics preparation 0.4.0 (${edgePreserving ? "edge-preserving" : "smooth"})`,
+    madeWith: ai
+      ? `Graphics preparation 0.5.0 (Real-ESRGAN ${options.mode ?? "balanced"})`
+      : `Graphics preparation 0.5.0 (${options.edgePreserving ? "edge-preserving" : "smooth"})`,
   };
 }
 
-export function outputName(info, scale) {
+export function outputName(info, suffix) {
   const id = String(info?.packId || "openrac").replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
-  return `${id}-graphics-preparation-${scale}x`;
+  return `${id}-graphics-preparation-${suffix}`;
 }
 
 export function packPath(texture) {

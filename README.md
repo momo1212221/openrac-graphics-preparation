@@ -1,69 +1,57 @@
 # Graphics preparation
 
-Integrated OpenRAC graphics preparation.
+Graphics preparation 0.5.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
-Version 0.4.0 ports the native AI asset path from the user's OpenRAC fork into the installed
-Graphics preparation mod. The same page now chooses the fork's neural pipeline when the launcher
-exposes the bounded `graphics-preparation` service, and keeps the 2x/4x browser path as a compatibility
-fallback on stock launchers.
+There is no custom launcher service, no Python helper and no external executable. The release ZIP
+contains:
 
-## Native fork AI
+- Real-ESRGAN x4plus as an ONNX model;
+- ONNX Runtime Web's WASM backend;
+- the same Faithful / Balanced / Maximum Detail post-processing strengths used by the fork;
+- the fork's micro-detail restoration and stars/tiny-lights preservation logic.
 
-With the matching fork launcher, **Prepare AI graphics** runs the same offline path already present
-in `integration/upstream-develop-20261108`:
-
-- Upscayl/NCNN 4x texture reconstruction;
-- **Faithful**, **Balanced**, and **Maximum detail** profiles;
-- post-processing that restores source micro-detail;
-- preservation of stars, windows and tiny emissive lights that neural models can remove as noise;
-- optional render-mesh AI via `openrac-mesh-ai`;
-- collision assets are never sent to the 3D AI worker;
-- staging and backup before a new AI texture pack replaces the previous prepared pack.
-
-There is no AI work in the game render loop. Assets are prepared once and reused.
-
-On macOS the current fork backend expects Upscayl at
-`/Applications/Upscayl.app/Contents/Resources/bin/upscayl-bin` with its models folder. Windows
-searches launcher resources, LocalAppData, Program Files and PATH. Linux uses `upscayl-bin`.
-
-## UI
-
-The page follows the same compact settings style as Enhanced graphics and exposes:
-
-- AI asset profile;
-- Preserve original micro-detail;
-- Preserve stars & tiny lights;
-- AI render meshes;
-- saved OpenRAC texture count and backend status.
-
-The Advanced section retains the local 2x/4x export path for official launchers that do not expose
-the fork service.
+The standard OpenRAC Mod Tool page already permits scripts, WebAssembly and workers from the mod's
+own folder while denying network and arbitrary filesystem access. The AI model and runtime are
+therefore bundled inside the mod.
 
 ## Use
 
-1. Use the fork launcher containing the graphics-preparation service.
-2. Install and enable `graphics-preparation-0.4.0.zip`.
-3. The launcher asks once for permission to use the bounded graphics-preparation service.
-4. In **Models and textures**, enable saving the game's textures and play the content you want to cover.
+1. Install the normal current OpenRAC Dev Launcher.
+2. Install `graphics-preparation-0.5.0.zip`.
+3. In **Models and textures**, enable **Save the game's textures while you play**.
+4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
-6. Choose the AI profile and preservation options.
-7. Press **Prepare AI graphics**.
+6. Choose Faithful, Balanced or Maximum Detail.
+7. Choose whether to preserve micro-detail and stars/tiny lights.
+8. Press **Prepare AI graphics**.
+9. Choose where OpenRAC should save the generated texture-pack ZIP.
+10. Add that ZIP through **Mods -> Add a mod**.
 
-The native backend writes/activates the prepared AI pack in OpenRAC's own texture-pack storage.
-No Python helper or extra UI is needed.
+Step 10 is required because the stock Mod Tool protocol deliberately allows a mod page to save files
+but does not let it install or enable another mod automatically.
 
-## Stock launcher fallback
+## AI implementation
 
-On a launcher without the service, the mod still works as the 0.3 series did: it reads OpenRAC's
-saved textures, performs local 2x/4x scaling in the sandboxed page, and exports a normal texture-pack
-ZIP for **Mods -> Add a mod**.
+Real-ESRGAN runs locally in the mod's iframe through ONNX Runtime Web/WASM. Input is processed in
+overlapping 96x96 source tiles so large PS2 textures do not require one enormous inference buffer.
+After the 4x neural pass, the code restores source alpha and applies the fork's post-processing:
 
-## Develop
+- Faithful: residual 0.28, sharpen 0.04
+- Balanced: residual 0.44, sharpen 0.16
+- Maximum Detail: residual 0.56, sharpen 0.30
 
-```sh
-node --test
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 tools/package.py
-```
+Tiny bright stars/lights and high-contrast source microdetail are detected using the same thresholds
+as the fork implementation.
 
-GPL-3.0-or-later. No game/disc assets or neural model weights are included.
+## Compatibility fallback
+
+The Advanced section still contains the fast local 2x/4x non-AI scaler. It uses only stock OpenRAC
+Mod Tool calls as well.
+
+## Build
+
+The release workflow pins ONNX Runtime Web 1.31.1 and a pinned Real-ESRGAN x4plus ONNX artifact,
+verifies the model SHA-256, then packages the runtime, WASM and model into the release ZIP.
+
+GPL-3.0-or-later for this mod's code. Third-party runtime/model components keep their own licenses.
+No game/disc assets are included.
