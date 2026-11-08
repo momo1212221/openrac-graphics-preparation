@@ -12,6 +12,7 @@ export function detectOutputFailures(source,output,metrics={}){
   if(visible===0)issues.push("transparent-output");
   if(visible&&black/visible>.985)issues.push("black-output");
   if(metrics.alphaDrift>18)issues.push("alpha-loss");
+  if(metrics.alphaEdgeCoverageDiff!==undefined&&metrics.alphaEdgeCoverageDiff>10)issues.push("alpha-edge-coverage");
   if(metrics.edgeGain>3.6)issues.push("over-detail");
   if(metrics.cnnAgreement!==undefined&&metrics.cnnAgreement<.2)issues.push("cnn-disagreement");
   if(metrics.hallucinationScore!==undefined&&metrics.hallucinationScore>70)issues.push("hallucination-risk");
