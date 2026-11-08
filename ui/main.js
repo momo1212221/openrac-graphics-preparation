@@ -3,7 +3,7 @@ import {request} from "./bridge.js";
 import {ModController} from "../src/controller.js";
 import {resetAiSession, warmAi, upscaleAiMasterPng} from "../src/ai-runtime.js";
 import {prepareTextureFailSafe, readFailSafe} from "../src/resilience.js";
-import {textureFiles, texturePackManifest, outputName, packPath} from "../src/texture-pack.js";
+import {textureFiles, texturePackManifest, outputName, packPath, mipmapPath} from "../src/texture-pack.js";
 import {upscalePng} from "../src/upscale.js";
 import {ZipStream} from "../src/zip.js";
 import {EffectsEditor} from "./effects.js";
@@ -13,6 +13,7 @@ import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
+import {generateMipChain,shouldGenerateMipmaps} from "../src/mipmaps.js";
 import {QUALITY_POLICY_VERSION,chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
 import {applyQualifiedDowngrade,qualityRecoveryProfiles,qualifiedTier} from "../src/quality-recovery.js";
 import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
@@ -55,6 +56,7 @@ let state = {
   qualityGuard: true,
   master8x: true,
   materialMaps: "off",
+  mipmaps: "off",
 };
 
 const el = (tag, text, cls) => {
@@ -207,6 +209,8 @@ async function createPack({ai}) {
     qualityScoreSum:0,
     qualityScoreCount:0,
     materialMapSets:0,
+    mipmapSets:0,
+    mipmapLevels:0,
     master8xRuns:0,
     failureRejected:0,
     specializedCnnRuns:0,
@@ -596,8 +600,45 @@ async function createPack({ai}) {
             });
           }
         }
+        let generatedMips = null;
+        if (
+          state.mipmaps !== "off" &&
+          shouldGenerateMipmaps(prepared.textureClass, prepared.material, state.mipmaps)
+        ) {
+          try {
+            generatedMips = await generateMipChain(prepared.bytes,{maxLevels:6,minSize:1});
+            stats.mipmapSets += group.members.length;
+            stats.mipmapLevels += generatedMips.levels.length * group.members.length;
+          } catch (error) {
+            stats.warnings.push({
+              hashes:group.members.map((member)=>member.hash),
+              strategy:"mipmap-generation-failed",
+              error:error instanceof Error?error.message:String(error),
+            });
+          }
+        }
         for (const member of group.members) {
           await zip.add(packPath(member), prepared.bytes);
+          if (generatedMips) {
+            const root = `Mipmaps/${member.hash}/`;
+            for (const level of generatedMips.levels) {
+              await zip.add(mipmapPath(member,level.level),level.bytes);
+            }
+            const mipMeta = {
+              format:1,
+              generator:"Graphics preparation 0.13.0",
+              sourceHash:member.hash,
+              sourceWidth:generatedMips.sourceWidth,
+              sourceHeight:generatedMips.sourceHeight,
+              hardCutout:generatedMips.hardCutout,
+              targetAlphaCoverage:generatedMips.targetAlphaCoverage,
+              levels:generatedMips.levels.map((level)=>({
+                level:level.level,width:level.width,height:level.height,
+                alphaCoverage:level.alphaCoverage,alphaBias:level.alphaBias,
+              })),
+            };
+            await zip.add(root+"mipmaps.json",encoder.encode(JSON.stringify(mipMeta,null,2)+"\n"));
+          }
           if (generatedMaps) {
             const root = `Materials/${member.hash}/`;
             await zip.add(root+"normal.png", generatedMaps.normal);
@@ -612,7 +653,7 @@ async function createPack({ai}) {
             await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.12.0",
+              generator:"Graphics preparation 0.13.0",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
@@ -679,6 +720,9 @@ async function createPack({ai}) {
       average_quality_score: stats.qualityScoreCount ? Number((stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)) : null,
       material_map_sets: stats.materialMapSets,
       material_maps_mode: state.materialMaps,
+      mipmap_sets: stats.mipmapSets,
+      mipmap_levels: stats.mipmapLevels,
+      mipmaps_mode: state.mipmaps,
       internal_8x_masters: stats.master8xRuns,
       failure_rejected: stats.failureRejected,
       specialized_cnn_runs: stats.specializedCnnRuns,
@@ -727,6 +771,7 @@ async function createPack({ai}) {
         stats.qualityRecoveryAttempts ? `${stats.qualityRecoveryAttempts} material-aware quality recovery attempts` : "",
         stats.qualityRecovered ? `${stats.qualityRecovered} sub-standard results recovered back to ≥90` : "",
         stats.materialMapSets ? `${stats.materialMapSets} material sidecar sets generated` : "",
+        stats.mipmapSets ? `${stats.mipmapSets} enhanced mip chains · ${stats.mipmapLevels} levels generated` : "",
         stats.master8xRuns ? `${stats.master8xRuns} important assets used selective 8× internal masters` : "",
         stats.failureRejected ? `${stats.failureRejected} outputs were rejected by automatic failure detection` : "",
         stats.specializedCnnRuns ? `${stats.specializedCnnRuns} material-specific refinement passes accepted` : "",
@@ -891,6 +936,19 @@ function render() {
     state.materialMaps=value;await savePrefs();render();
   }));
   general.append(materialMaps.row);
+
+  const mipmaps = settingRow(
+    "Enhanced mipmaps",
+    "Builds alpha-stable distance mip chains from the final 4× texture. Intended for the enhanced renderer; keep Off for the stock launcher.",
+  );
+  mipmaps.control.append(select([
+    ["off","Off · stock-compatible"],
+    ["key","Key materials only"],
+    ["all","All eligible diffuse/sky textures"],
+  ], state.mipmaps, async(value)=>{
+    state.mipmaps=value;await savePrefs();render();
+  }));
+  general.append(mipmaps.row);
 
   const acceleration = settingRow(
     "AI acceleration",
@@ -1072,6 +1130,7 @@ async function start() {
       qualityGuard: saved.qualityGuard !== false,
       master8x: saved.master8x !== false,
       materialMaps: ["off","key","all"].includes(saved.materialMaps) ? saved.materialMaps : "off",
+      mipmaps: ["off","key","all"].includes(saved.mipmaps) ? saved.mipmaps : "off",
     };
   }
   if (state.persistentCache) {
