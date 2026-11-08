@@ -37,7 +37,7 @@ const selectField=(label,value,rows,onchange)=>{
 export class EffectsEditor {
   constructor(controller,info,setMessage){
     this.controller=controller;this.info=info;this.setMessage=setMessage;
-    this.state=normalizeEffects(DEFAULT_EFFECTS);this.levels=[];this.profile={};
+    this.state=normalizeEffects(DEFAULT_EFFECTS);this.levels=[];this.profile={};this.positionClipboard=null;
   }
   async start(){
     const [levels,saved]=await Promise.all([
@@ -53,7 +53,30 @@ export class EffectsEditor {
     await this.persist();
   }
   currentLevel(){return this.levels.find(l=>l.dir===this.state.selectedLevel)}
+  selectedPlacementObject(){
+    return this.currentLevel()?.objects?.find((o)=>o.key===this.state.selectedObject)||null;
+  }
   async persist(){await this.controller.storeSet("effects-authoring-v1",this.state)}
+  async placeParticleAtObject(particle){
+    const anchor=this.selectedPlacementObject();
+    if(!anchor?.position){
+      this.setMessage("The selected exported object has no world position in its level manifest. Enter X/Y/Z manually for this effect.",true);
+      return;
+    }
+    particle.position=[...anchor.position];
+    particle.placement="object";
+    particle.anchorObject=anchor.key;
+    await this.persist();
+    document.dispatchEvent(new CustomEvent("graphics-effects-change"));
+    this.setMessage(`Placed ${particle.preset} at ${anchor.label} · X ${particle.position[0]} · Y ${particle.position[1]} · Z ${particle.position[2]}`);
+  }
+  async setParticlePosition(particle,position){
+    particle.position=[...position];
+    particle.placement="manual";
+    particle.anchorObject="";
+    await this.persist();
+    document.dispatchEvent(new CustomEvent("graphics-effects-change"));
+  }
   async chooseLevel(dir){
     this.state.selectedLevel=dir;
     const level=this.currentLevel();
@@ -80,7 +103,12 @@ export class EffectsEditor {
       rain:{preset:"rain",colour:[0.6,0.75,1],alpha:0.55,rate:45,life:1.5,size:0.05,speed:12,spread:5,gravity:-14},
       "heat-haze":{preset:"heat-haze",colour:[1,1,1],alpha:0,rate:0,life:1,size:0,speed:0,spread:0,gravity:0,hazeRadius:3,hazeStrength:0.35},
     };
-    this.state.particles.push(normalizeParticle({level:this.state.selectedLevel,...presets[preset]}));
+    const anchor=this.selectedPlacementObject();
+    this.state.particles.push(normalizeParticle({
+      level:this.state.selectedLevel,
+      ...presets[preset],
+      ...(anchor?.position?{position:[...anchor.position],placement:"object",anchorObject:anchor.key}:{placement:"unplaced"}),
+    }));
     void this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"));
   }
   render(){
@@ -123,7 +151,24 @@ export class EffectsEditor {
 
     const particles=node("section",undefined,"panel");
     particles.append(node("div","PARTICLES & EFFECTS","eyebrow"));
-    particles.append(node("p","Runtime effects use the official OpenRAC prop/haze API. Pick a preset, then edit position, colour and motion. No custom launcher is required.","muted"));
+    particles.append(node("p","Runtime effects use the official OpenRAC prop/haze API. Pick a preset, then place it at X/Y/Z or at an exported object position before export. No custom launcher is required.","muted"));
+    const placementTop=node("div",undefined,"effect-placement-toolbar");
+    const placementObjects=(level?.objects||[]).map((o)=>[o.key,o.position?o.label:`${o.label} · no position`]);
+    placementTop.append(selectField(
+      "Placement anchor",
+      this.state.selectedObject,
+      placementObjects,
+      async v=>{this.state.selectedObject=v;await this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"))},
+    ));
+    const anchor=this.selectedPlacementObject();
+    placementTop.append(node(
+      "p",
+      anchor?.position
+        ? `Selected object position: X ${anchor.position[0]} · Y ${anchor.position[1]} · Z ${anchor.position[2]}`
+        : "Select an exported object with a world position, or enter X/Y/Z manually on the effect card.",
+      anchor?.position?"placement-ready":"placement-note",
+    ));
+    particles.append(placementTop);
     const presets=node("div",undefined,"effect-actions wrap");
     for(const [id,label] of [["sparks","Sparks"],["smoke","Smoke"],["mist","Mist"],["glow","Glow"],["energy","Energy"],["rain","Rain"],["heat-haze","Heat haze"]]) {
       const b=node("button","+ "+label,"ghost");b.type="button";b.onclick=()=>this.addParticle(id);presets.append(b);
@@ -184,7 +229,55 @@ export class EffectsEditor {
       const index=this.state.particles.indexOf(p);const card=node("div",undefined,"effect-card");
       const head=node("div",undefined,"effect-card-head");head.append(node("strong",p.preset));
       const del=node("button","Remove","ghost");del.onclick=async()=>{this.state.particles.splice(index,1);await this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"))};head.append(del);card.append(head);
-      card.append(vecFields("Position",p.position,async v=>{p.position=v;await this.persist()}));
+      const placement=node("div",undefined,"effect-placement");
+      const placementHead=node("div",undefined,"effect-placement-head");
+      placementHead.append(node("strong","Placement"));
+      const placed=p.placement!=="unplaced";
+      placementHead.append(node(
+        "span",
+        placed?(p.placement==="object"?"Placed · object":"Placed · manual"):"Needs placement",
+        placed?"status-ok":"status-warn",
+      ));
+      placement.append(placementHead);
+      placement.append(vecFields("World position",p.position,async v=>this.setParticlePosition(p,v)));
+      const placementActions=node("div",undefined,"effect-actions wrap placement-actions");
+      const anchor=this.selectedPlacementObject();
+      const placeObject=node("button","Place at selected object","ghost");
+      placeObject.type="button";
+      placeObject.disabled=!anchor?.position;
+      placeObject.title=anchor?.position?"Use the selected exported object's world position.":"Selected object has no exported world position.";
+      placeObject.onclick=()=>void this.placeParticleAtObject(p);
+      placementActions.append(placeObject);
+
+      const copy=node("button","Copy position","ghost");
+      copy.type="button";
+      copy.onclick=()=>{this.positionClipboard=[...p.position];this.setMessage(`Copied effect position X ${p.position[0]} · Y ${p.position[1]} · Z ${p.position[2]}`)};
+      placementActions.append(copy);
+
+      const paste=node("button","Paste position","ghost");
+      paste.type="button";
+      paste.disabled=!this.positionClipboard;
+      paste.onclick=()=>this.positionClipboard&&void this.setParticlePosition(p,this.positionClipboard);
+      placementActions.append(paste);
+
+      const player=node("button","Use player position","ghost placement-unavailable");
+      player.type="button";
+      player.disabled=true;
+      player.title="The current stock OpenRAC Mod Tool protocol does not expose the live player position.";
+      placementActions.append(player);
+
+      const clear=node("button","Clear placement","ghost");
+      clear.type="button";
+      clear.onclick=async()=>{p.position=[0,0,0];p.placement="unplaced";p.anchorObject="";await this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"))};
+      placementActions.append(clear);
+      placement.append(placementActions);
+      if(p.placement==="object"&&p.anchorObject){
+        placement.append(node("p",`Anchor: ${p.anchorObject}. Position is stored as world coordinates in the exported runtime file.`,"placement-note"));
+      }
+      if(!placed){
+        placement.append(node("p","This effect will not export until it has a valid placement.","placement-warning"));
+      }
+      card.append(placement);
       if(p.preset==="heat-haze"){
         const g=node("div",undefined,"effect-grid two");
         g.append(field("Radius",p.hazeRadius,async v=>{p.hazeRadius=v;await this.persist()},{min:"0"}));
