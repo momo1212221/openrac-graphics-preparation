@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import * as ort from "../vendor/ort.wasm.bundle.min.mjs";
 import {restoreSourceDetail} from "./detail.js";
 
 const SCALE = 4;
 const TILE = 96;
 const PAD = 8;
-let ortPromise;
-let modelPromise;
 let sessionPromise;
+let wasmPromise;
+let modelPromise;
 
 const imageFromBytes = async (buffer) => {
   const blob = new Blob([buffer], {type: "image/png"});
@@ -30,19 +31,16 @@ const canvasPng = (canvas) => new Promise((resolve, reject) => {
   }, "image/png");
 });
 
-async function ortModule() {
-  if (!ortPromise) {
-    ortPromise = import("../vendor/ort.wasm.min.mjs").then((ort) => {
-      ort.env.wasm.numThreads = 1;
-      ort.env.wasm.proxy = false;
-      ort.env.wasm.wasmPaths = {
-        wasm: new URL("../vendor/ort-wasm-simd-threaded.wasm", import.meta.url).href,
-        mjs: new URL("../vendor/ort-wasm-simd-threaded.mjs", import.meta.url).href,
-      };
-      return ort;
-    });
+async function runtimeBytes() {
+  if (!wasmPromise) {
+    wasmPromise = fetch(new URL("../vendor/ort-wasm-simd-threaded.wasm", import.meta.url))
+      .then((response) => {
+        if (!response.ok) throw new Error(`ONNX WASM runtime could not be loaded (${response.status})`);
+        return response.arrayBuffer();
+      })
+      .then((value) => new Uint8Array(value));
   }
-  return ortPromise;
+  return wasmPromise;
 }
 
 async function modelBytes() {
@@ -59,7 +57,12 @@ async function modelBytes() {
 
 async function session() {
   if (!sessionPromise) {
-    sessionPromise = Promise.all([ortModule(), modelBytes()]).then(async ([ort, model]) => {
+    sessionPromise = Promise.all([runtimeBytes(), modelBytes()]).then(async ([wasm, model]) => {
+      // The stock OpenRAC page is a custom-scheme WebView. Keep ORT single-threaded and give it
+      // the WASM bytes directly: no nested module import, worker bootstrap or external URL is needed.
+      ort.env.wasm.numThreads = 1;
+      ort.env.wasm.proxy = false;
+      ort.env.wasm.wasmBinary = wasm;
       return ort.InferenceSession.create(model, {
         executionProviders: ["wasm"],
         graphOptimizationLevel: "all",
@@ -71,7 +74,7 @@ async function session() {
   return sessionPromise;
 }
 
-function imageDataTensor(ort, imageData) {
+function imageDataTensor(imageData) {
   const {width, height, data} = imageData;
   const plane = width * height;
   const values = new Float32Array(plane * 3);
@@ -97,7 +100,7 @@ function tensorImageData(tensor) {
   return out;
 }
 
-async function runTile(sourceCanvas, sourceX, sourceY, coreW, coreH, aiSession, ort) {
+async function runTile(sourceCanvas, sourceX, sourceY, coreW, coreH, aiSession) {
   const readX = Math.max(0, sourceX - PAD);
   const readY = Math.max(0, sourceY - PAD);
   const readRight = Math.min(sourceCanvas.width, sourceX + coreW + PAD);
@@ -110,11 +113,9 @@ async function runTile(sourceCanvas, sourceX, sourceY, coreW, coreH, aiSession, 
   tile.height = readH;
   const tileCtx = tile.getContext("2d", {alpha: true, willReadFrequently: true});
   tileCtx.drawImage(sourceCanvas, readX, readY, readW, readH, 0, 0, readW, readH);
-  const input = imageDataTensor(ort, tileCtx.getImageData(0, 0, readW, readH));
-  const inputName = aiSession.inputNames[0];
-  const outputName = aiSession.outputNames[0];
-  const outputs = await aiSession.run({[inputName]: input});
-  const outputData = tensorImageData(outputs[outputName]);
+  const input = imageDataTensor(tileCtx.getImageData(0, 0, readW, readH));
+  const outputs = await aiSession.run({[aiSession.inputNames[0]]: input});
+  const outputData = tensorImageData(outputs[aiSession.outputNames[0]]);
 
   const rendered = document.createElement("canvas");
   rendered.width = outputData.width;
@@ -131,7 +132,7 @@ async function runTile(sourceCanvas, sourceX, sourceY, coreW, coreH, aiSession, 
 
 export async function warmAi() {
   await session();
-  return {model: "Real-ESRGAN x4plus ONNX", backend: "ONNX Runtime Web/WASM"};
+  return {model: "Real-ESRGAN x4plus ONNX", backend: "ONNX Runtime Web/WASM · embedded module"};
 }
 
 export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) {
@@ -151,8 +152,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     output.width = source.width * SCALE;
     output.height = source.height * SCALE;
     const outputCtx = output.getContext("2d", {alpha: true, willReadFrequently: true});
+    const aiSession = await session();
 
-    const [ort, aiSession] = await Promise.all([ortModule(), session()]);
     const tilesX = Math.ceil(source.width / TILE);
     const tilesY = Math.ceil(source.height / TILE);
     const total = tilesX * tilesY;
@@ -162,7 +163,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       for (let x = 0; x < source.width; x += TILE) {
         const coreW = Math.min(TILE, source.width - x);
         const coreH = Math.min(TILE, source.height - y);
-        const tile = await runTile(source, x, y, coreW, coreH, aiSession, ort);
+        const tile = await runTile(source, x, y, coreW, coreH, aiSession);
         outputCtx.drawImage(
           tile.rendered,
           tile.cropX, tile.cropY, tile.cropW, tile.cropH,
@@ -173,7 +174,6 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       }
     }
 
-    // The neural network is RGB. Restore the game's original alpha at 4x.
     const alpha = document.createElement("canvas");
     alpha.width = output.width;
     alpha.height = output.height;

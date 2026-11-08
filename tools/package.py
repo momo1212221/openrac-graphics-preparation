@@ -14,8 +14,7 @@ scripts=[root/p for p in m.get("scripts",[])]
 assert scripts and all(p.is_file() for p in scripts)
 if os.environ.get("OPENRAC_REQUIRE_AI_ASSETS")=="1":
     for path in [
-        root/"vendor"/"ort.wasm.min.mjs",
-        root/"vendor"/"ort-wasm-simd-threaded.mjs",
+        root/"vendor"/"ort.wasm.bundle.min.mjs",
         root/"vendor"/"ort-wasm-simd-threaded.wasm",
         root/"models"/"realesrgan-x4plus.onnx",
     ]:

@@ -5,10 +5,10 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 
-test('0.5.0 is a stock OpenRAC mod with no custom launcher service',()=>{
+test('0.5.1 is a stock OpenRAC mod with bundled ORT module and no custom launcher service',()=>{
   const m=JSON.parse(readFileSync(root+'openrac-mod.json'));
   assert.equal(m.id,'graphics-preparation');
-  assert.equal(m.version,'0.5.0');
+  assert.equal(m.version,'0.5.1');
   assert.equal(m.type,'script');
   assert.deepEqual(m.tool,{page:'ui/index.html'});
   execFileSync('python3',['tools/package.py'],{cwd:root});

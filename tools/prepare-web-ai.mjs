@@ -6,8 +6,7 @@ const src = resolve(root, "node_modules/onnxruntime-web/dist");
 const out = resolve(root, "vendor");
 await mkdir(out, {recursive:true});
 for (const name of [
-  "ort.wasm.min.mjs",
-  "ort-wasm-simd-threaded.mjs",
+  "ort.wasm.bundle.min.mjs",
   "ort-wasm-simd-threaded.wasm",
 ]) {
   await copyFile(resolve(src, name), resolve(out, name));

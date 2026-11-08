@@ -266,7 +266,7 @@ function render() {
 
 async function start() {
   info = await controller.info();
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.5.0 · standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.5.1 · standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
