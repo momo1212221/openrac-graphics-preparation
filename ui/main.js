@@ -619,6 +619,7 @@ async function createPack({ai}) {
               stats.materialQualityRows.push({
                 hash:member.hash,path:member.path,material:prepared.material,quality:generatedMaps.quality,
                 pbrCalibration:generatedMaps.pbrCalibration,pbrValidation:generatedMaps.pbrValidation,
+                heightReconstruction:generatedMaps.heightReconstruction,
                 albedoDelight:generatedMaps.albedoDelight,albedoValidation:generatedMaps.albedoValidation,
               });
             }
@@ -699,6 +700,7 @@ async function createPack({ai}) {
               pbrValidation:generatedMaps.pbrValidation,
               albedoDelight:generatedMaps.albedoDelight,
               albedoValidation:generatedMaps.albedoValidation,
+              heightReconstruction:generatedMaps.heightReconstruction,
               quality:generatedMaps.quality,
               sourceHash:member.hash,
             };
@@ -984,7 +986,7 @@ function render() {
 
   const materialMaps = settingRow(
     "Enhanced material maps",
-    "Generates Normal/Roughness/Height/AO/Emissive sidecars. Requires an OpenRAC build with Materials/<hash> sidecar support; keep Off for today's stock launcher.",
+    "Builds de-lit Albedo plus multi-scale Height/Normal, Roughness, AO, Emissive and PBR sidecars. Stone/terrain/metal/fabric/weapon use stronger material-specific relief. Requires Materials/<hash> renderer support.",
   );
   materialMaps.control.append(select([
     ["off","Off · stock-compatible"],
