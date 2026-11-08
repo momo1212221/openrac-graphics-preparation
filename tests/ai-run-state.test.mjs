@@ -28,8 +28,14 @@ test("interrupted and complete run states are explicit",()=>{
   assert.deepEqual(new Set(run.completedHashes),new Set(["aa","bb"]));
 });
 
-test("run store key is game scoped and sanitized",()=>{
-  assert.equal(aiRunStoreKey("RAC 1/NTSC"),"texture-preparation-ai-run-v1:rac-1-ntsc");
+test("run store key is game scoped and launcher-safe",()=>{
+  const key=aiRunStoreKey("RAC 1/NTSC.foo:beta");
+  assert.equal(key,"texture-preparation-ai-run-v1-rac-1-ntsc-foo-beta");
+  assert.match(key,/^[a-z0-9_-]+$/);
+  assert.ok(key.length<=64);
+  const longKey=aiRunStoreKey("A".repeat(200));
+  assert.match(longKey,/^[a-z0-9_-]+$/);
+  assert.equal(longKey.length,64);
 });
 
 
