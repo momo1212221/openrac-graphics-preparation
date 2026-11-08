@@ -223,11 +223,11 @@ export function deriveMaterialMaps(image,material="generic",options={}){
 
   const pbrCalibration=calibratePbrMaps(maps,albedo,material);
   const pbrValidation=validatePbrCalibration(pbrCalibration);
-  const reliefPreview=deriveReliefPreview(maps);
+  const reliefPreview=options.qaPreview===true?deriveReliefPreview(maps):null;
 
   return {
     ...maps,
-    reliefPreview,
+    ...(reliefPreview?{reliefPreview}:{}),
     emissivePixels,
     pbrCalibration,
     pbrValidation,
@@ -287,9 +287,10 @@ export async function generateMaterialMapPngs(bytes,material="generic",options={
     };
     const names=[
       "albedo","normal","roughness","height","ao","emissive","specular","metallic",
-      "cavity","edgewear","coarseHeight","midHeight","microHeight","reliefPreview"
+      "cavity","edgewear","coarseHeight","midHeight","microHeight"
     ];
     if(maps.curvature)names.push("curvature");
+    if(maps.reliefPreview)names.push("reliefPreview");
     for(const name of names)out[name]=await encode(maps[name]);
     return out;
   }finally{if(typeof image.close==="function")image.close()}
