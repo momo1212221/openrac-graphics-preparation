@@ -15,6 +15,7 @@ const finiteVec3 = (value) => {
   return out.every(Number.isFinite) ? out : null;
 };
 const clone = (value) => JSON.parse(JSON.stringify(value));
+export const EFFECTS_SCHEMA_VERSION = 2;
 
 export function manifestObjectPosition(entry = {}) {
   for (const candidate of [
@@ -36,8 +37,10 @@ export function manifestObjectPosition(entry = {}) {
 }
 
 export const DEFAULT_EFFECTS = {
+  schemaVersion: EFFECTS_SCHEMA_VERSION,
   selectedLevel: "",
   selectedObject: "",
+  selectedPlacement: "",
   baker: {
     skyIntensity: 0.5,
     skyWeight: 0.3,
@@ -54,9 +57,20 @@ export const DEFAULT_EFFECTS = {
 
 export function normalizeEffects(value) {
   const src = value && typeof value === "object" ? value : {};
+  const legacy = Number(src.schemaVersion || 0) < EFFECTS_SCHEMA_VERSION;
+  const particles = Array.isArray(src.particles)
+    ? src.particles.map((row)=>{
+        const migrated = legacy && !["manual","object","unplaced"].includes(row?.placement)
+          ? {...row,placement:"unplaced"}
+          : row;
+        return normalizeParticle(migrated);
+      })
+    : [];
   return {
+    schemaVersion: EFFECTS_SCHEMA_VERSION,
     selectedLevel: typeof src.selectedLevel === "string" ? src.selectedLevel : "",
     selectedObject: typeof src.selectedObject === "string" ? src.selectedObject : "",
+    selectedPlacement: typeof src.selectedPlacement === "string" ? src.selectedPlacement : "",
     baker: {
       skyIntensity: safeNumber(src.baker?.skyIntensity, 0.5),
       skyWeight: safeNumber(src.baker?.skyWeight, 0.3),
@@ -68,7 +82,7 @@ export function normalizeEffects(value) {
     },
     lights: Array.isArray(src.lights) ? src.lights.map(normalizeLight) : [],
     areaLights: Array.isArray(src.areaLights) ? src.areaLights.map(normalizeAreaLight) : [],
-    particles: Array.isArray(src.particles) ? src.particles.map(normalizeParticle) : [],
+    particles,
   };
 }
 
@@ -103,14 +117,17 @@ export function normalizeAreaLight(value = {}) {
 export function normalizeParticle(value = {}) {
   const presets = ["sparks","smoke","mist","glow","energy","rain","heat-haze"];
   const explicitPosition = finiteVec3(value.position);
-  const placement = ["manual","object","unplaced"].includes(value.placement)
+  const requestedPlacement = ["manual","object","unplaced"].includes(value.placement)
     ? value.placement
     : explicitPosition ? "manual" : "unplaced";
+  const placement = explicitPosition && requestedPlacement !== "unplaced"
+    ? requestedPlacement
+    : "unplaced";
   return {
     level: String(value.level || ""),
     preset: presets.includes(value.preset) ? value.preset : "sparks",
     placement,
-    anchorObject: String(value.anchorObject || "").slice(0,256),
+    anchorObject: placement === "object" ? String(value.anchorObject || "").slice(0,256) : "",
     position: explicitPosition || [0,0,0],
     colour: vec3(value.colour,[1,0.55,0.15]).map(v=>Math.max(0,Math.min(4,v))),
     alpha: Math.max(0,Math.min(1,safeNumber(value.alpha,0.9))),
@@ -142,12 +159,43 @@ function objectsFromManifest(manifest) {
         classId:id,
         name:entry.name || key.split("/").pop() || key,
         label:`${layer} ${id} · ${entry.name || key.split("/").pop() || key}`,
-        position:manifestObjectPosition(entry),
       });
     }
   }
   const seen = new Set();
   return out.filter((row)=>!seen.has(row.key) && seen.add(row.key)).sort((a,b)=>a.label.localeCompare(b.label));
+}
+
+export function placementsFromLevel(manifest, placements) {
+  const out = [];
+  const classMaps = manifest?.classes || {};
+  const layers = [
+    ["ties","tie"],
+    ["shrubs","shrub"],
+    ["mobys","moby"],
+  ];
+  for (const [plural,singular] of layers) {
+    const rows = Array.isArray(placements?.[plural]) ? placements[plural] : [];
+    rows.forEach((entry,rowIndex)=>{
+      const position = manifestObjectPosition(entry);
+      if (!position) return;
+      const classId = String(entry?.class ?? "");
+      const index = Number.isInteger(entry?.index) ? entry.index : rowIndex;
+      const classEntry = classMaps?.[singular]?.[classId] || {};
+      const mesh = typeof classEntry.mesh === "string" ? classEntry.mesh : "";
+      const name = classEntry.name || stem(mesh).split("/").pop() || `${singular} class ${classId || "?"}`;
+      out.push({
+        key:`${singular}:${classId || "?"}:${index}`,
+        layer:singular,
+        classId,
+        index,
+        name,
+        label:`${singular} ${index} · class ${classId || "?"} · ${name}`,
+        position,
+      });
+    });
+  }
+  return out.sort((a,b)=>a.label.localeCompare(b.label));
 }
 
 export async function loadLevels(controller) {
@@ -159,11 +207,25 @@ export async function loadLevels(controller) {
       const raw = await controller.read("levels", file.path);
       const manifest = JSON.parse(dec.decode(raw));
       const dir = file.path.split("/")[0];
+      let placements = {};
+      const placementsName = typeof manifest.placements === "string" && manifest.placements
+        ? manifest.placements.replace(/^\/+/, "")
+        : "placements.json";
+      if (!placementsName.split("/").includes("..")) {
+        try {
+          const placementRaw = await controller.read("levels", `${dir}/${placementsName}`);
+          const parsed = JSON.parse(dec.decode(placementRaw));
+          if (parsed && typeof parsed === "object") placements = parsed;
+        } catch {
+          placements = {};
+        }
+      }
       out.push({
         dir,
         level:Number.isInteger(manifest.level) ? manifest.level : Number(dir.replace("level_","")),
         manifest,
         objects:objectsFromManifest(manifest),
+        placements:placementsFromLevel(manifest,placements),
       });
     } catch {
       // A broken level should not make authoring disappear for every other exported level.
@@ -231,6 +293,19 @@ function tsvValue(value) {
   return String(value).replace(/[\t\r\n]/g," ");
 }
 
+export function effectExportIssues(state, levels) {
+  const issues = [];
+  const validLevels = new Set((levels || []).map((row)=>row.dir));
+  (state?.particles || []).forEach((raw,index)=>{
+    const p = normalizeParticle(raw);
+    const label = `Effect ${index+1} (${p.preset})`;
+    if (!p.level || !validLevels.has(p.level)) issues.push(`${label}: level is unavailable`);
+    if (p.placement === "unplaced") issues.push(`${label}: placement is not confirmed`);
+    if (!finiteVec3(raw?.position)) issues.push(`${label}: X/Y/Z must be finite numbers`);
+  });
+  return issues;
+}
+
 export function particleConfig(state, levels) {
   const numberByDir = new Map(levels.map((row)=>[row.dir,row.level]));
   const header = [
@@ -267,9 +342,9 @@ export async function exportBakerProfile(controller, info, state, levelDir, base
 }
 
 export async function exportEffectsMod(controller, info, state, levels) {
-  const unplaced=(state.particles||[]).map(normalizeParticle).filter((p)=>p.placement==="unplaced");
-  if(unplaced.length){
-    throw new Error(`${unplaced.length} runtime effect${unplaced.length===1?"":"s"} still need placement. Set X/Y/Z or use Place at selected object before exporting.`);
+  const issues=effectExportIssues(state,levels);
+  if(issues.length){
+    throw new Error(`Runtime effects are not ready to export: ${issues.slice(0,3).join("; ")}${issues.length>3?` (+${issues.length-3} more)`:""}`);
   }
   const id = `graphics-effects-${info.game}-${info.version}`.replace(/[^a-z0-9-]+/g,"-");
   const token = await controller.saveStart(id,"zip");
@@ -290,7 +365,7 @@ export async function exportEffectsMod(controller, info, state, levels) {
       scripts:["main.luau"],
       assets:"assets",
       games:{[info.game]:[info.version]},
-      requires:[{id:"graphics-effects-runtime",version:">=0.1.0"}],
+      requires:[{id:"graphics-effects-runtime",version:">=0.1.1"}],
       multiplayer:"cosmetic",
     };
     const noop = "-- Generated by Graphics preparation. Runtime effects are handled by graphics-effects-runtime.\n";
@@ -303,7 +378,7 @@ export async function exportEffectsMod(controller, info, state, levels) {
       "",
       "Install this ZIP through Mods -> Add a mod.",
       "Runtime point/spot lights are read from assets/object-lights.json by Enhanced graphics.",
-      "Particles require the standard OpenRAC native mod graphics-effects-runtime >= 0.1.0.",
+      "Particles require the standard OpenRAC native mod graphics-effects-runtime >= 0.1.1.",
       "Bake-only area lights are exported separately as probe-bake.json and use Enhanced graphics -> Prepare lighting.",
       "",
     ].join("\n");
