@@ -22,6 +22,7 @@ export function aiRunSignature(state={}){
     state.preserveMicrodetail!==false?"micro1":"micro0",
     state.preserveStars!==false?"stars1":"stars0",
     ["off","key","all"].includes(state.materialMaps)?state.materialMaps:"off",
+    ["off","key","all"].includes(state.mipmaps)?state.mipmaps:"off",
   ].join("|");
 }
 
