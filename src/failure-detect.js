@@ -17,6 +17,8 @@ export function detectOutputFailures(source,output,metrics={}){
   if(metrics.cnnAgreement!==undefined&&metrics.cnnAgreement<.2)issues.push("cnn-disagreement");
   if(metrics.hallucinationScore!==undefined&&metrics.hallucinationScore>70)issues.push("hallucination-risk");
   if(metrics.cnnRejectedRatio!==undefined&&metrics.cnnRejectedRatio>.6)issues.push("cnn-local-rejection");
+  if(metrics.cnnLowConfidenceRatio!==undefined&&metrics.cnnLowConfidenceRatio>.75)issues.push("cnn-low-confidence");
+  if(metrics.cnnConfidenceP10!==undefined&&metrics.cnnConfidenceP10<.04)issues.push("cnn-regional-confidence");
   if(metrics.expectSeamless===true&&metrics.seamScore!==undefined&&metrics.seamScore>35)issues.push("seam-risk");
   return {ok:issues.length===0,issues,visiblePixels:visible,opaquePixels:opaque};
 }
