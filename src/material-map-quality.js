@@ -74,8 +74,8 @@ export function validateMaterialMaps(maps){
   if(heightPipelineValidation.ok===false){
     for(const issue of heightPipelineValidation.issues)issues.push(issue);
   }
-  let normalError=0,normalCount=0,normalBackward=0,normalTiltSum=0,normalFlat=0,normalSteep=0;
-  const normalTilts=[];
+  let normalError=0,normalCount=0,normalBackward=0,normalTiltSum=0,normalFlat=0,normalSteep=0,normalTiltMax=0;
+  const normalTiltHistogram=new Uint32Array(91);
   const normal=maps?.normal;
   if(normal){
     for(let i=0;i<normal.data.length;i+=4){
@@ -87,16 +87,21 @@ export function validateMaterialMaps(maps){
       const cosine=length?clamp(nz/length,-1,1):1;
       const tilt=Math.acos(cosine)*180/Math.PI;
       normalTiltSum+=tilt;
-      normalTilts.push(tilt);
+      normalTiltMax=Math.max(normalTiltMax,tilt);
+      normalTiltHistogram[Math.max(0,Math.min(90,Math.round(tilt)))]++;
       if(tilt<2)normalFlat++;
       if(tilt>70)normalSteep++;
     }
   }
-  normalTilts.sort((a,b)=>a-b);
   const tiltPercentile=(p)=>{
-    if(!normalTilts.length)return 0;
-    const at=(normalTilts.length-1)*p,lo=Math.floor(at),hi=Math.ceil(at),mix=at-lo;
-    return normalTilts[lo]*(1-mix)+normalTilts[hi]*mix;
+    if(!normalCount)return 0;
+    const target=Math.max(1,Math.ceil(normalCount*p));
+    let seen=0;
+    for(let degree=0;degree<normalTiltHistogram.length;degree++){
+      seen+=normalTiltHistogram[degree];
+      if(seen>=target)return degree;
+    }
+    return 90;
   };
   const meanNormalLengthError=normalCount?normalError/normalCount:0;
   const backwardNormalPercent=normalCount?normalBackward/normalCount*100:0;
@@ -104,7 +109,7 @@ export function validateMaterialMaps(maps){
     meanDeg:Number((normalCount?normalTiltSum/normalCount:0).toFixed(3)),
     p50Deg:Number(tiltPercentile(.5).toFixed(3)),
     p95Deg:Number(tiltPercentile(.95).toFixed(3)),
-    maxDeg:Number((normalTilts.at(-1)||0).toFixed(3)),
+    maxDeg:Number(normalTiltMax.toFixed(3)),
     flatPercent:Number((normalCount?normalFlat/normalCount*100:0).toFixed(2)),
     steepPercent:Number((normalCount?normalSteep/normalCount*100:0).toFixed(2)),
   };
