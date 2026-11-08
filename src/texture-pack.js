@@ -37,3 +37,9 @@ export function outputName(info, suffix) {
 export function packPath(texture) {
   return `Upscaled/${texture.hash}.png`;
 }
+
+
+export function mipmapPath(texture,level){
+  const n=Math.max(1,Math.floor(Number(level)||1));
+  return `Mipmaps/${texture.hash}/mip${n}.png`;
+}
