@@ -199,6 +199,7 @@ async function createPack({ai}) {
     specializedCnnRuns:0,
     specializedCnnRejected:0,
     qualityRows:[],
+    materialQualityRows:[],
   };
 
   try {
@@ -538,6 +539,18 @@ async function createPack({ai}) {
           try {
             generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic");
             stats.materialMapSets += group.members.length;
+            for(const member of group.members){
+              stats.materialQualityRows.push({
+                hash:member.hash,path:member.path,material:prepared.material,quality:generatedMaps.quality,
+              });
+            }
+            if(generatedMaps.quality?.ok===false){
+              stats.warnings.push({
+                hashes:group.members.map((member)=>member.hash),
+                strategy:"material-map-quality",
+                quality:generatedMaps.quality,
+              });
+            }
           } catch (error) {
             stats.warnings.push({
               hashes:group.members.map((member)=>member.hash),
@@ -566,6 +579,7 @@ async function createPack({ai}) {
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
+              quality:generatedMaps.quality,
               sourceHash:member.hash,
             };
             await zip.add(root+"material.json", encoder.encode(JSON.stringify(meta,null,2)+"\n"));
@@ -631,7 +645,7 @@ async function createPack({ai}) {
       specialized_cnn_rejected: stats.specializedCnnRejected,
     };
     if (ai) {
-      const qualityReport=buildQualityReport(stats.qualityRows,{limit:20});
+      const qualityReport=buildQualityReport(stats.qualityRows,{limit:20,materialMaps:stats.materialQualityRows});
       manifest.resilience.quality_report="quality-report.json";
       await zip.add("quality-report.json", encoder.encode(JSON.stringify(qualityReport,null,2)+"\n"));
     }
