@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.10.3 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.10.4 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.10.3.zip`.
+2. Install `graphics-preparation-0.10.4.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -211,9 +211,14 @@ border pixel. This gives x4plus and the detail CNN real material context across 
 reducing reconstructed seams without sharpening or modifying non-repeating UI/technical maps.
 
 
-## Quality Lab+ (0.10.3)
+## Quality Lab+ (0.10.4)
 
 Quality Lab now previews the derived Normal/Roughness/Height/AO/Emissive maps beside Original and AI
 output. Per texture hash, the user can override the reconstruction quality to Current, High, Max or
 No AI. These overrides are also respected by the full batch export, so a logo or fragile UI asset
 can stay conservative while weapons, terrain or hero materials run at maximum detail.
+
+
+## Adaptive quality policy (0.10.4)
+
+Quality Guard now uses a shared policy instead of one fixed score cutoff. It considers aggregate score plus colour/luma drift, alpha drift, CNN agreement, edge amplification, texture class and material importance. Weak results are retried conservatively; critically bad uncached AI results are rejected and replaced by the deterministic 4x fallback. Quality Lab shows the verdict and recommended action before a full pack export.
