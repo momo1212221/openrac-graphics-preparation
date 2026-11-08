@@ -150,3 +150,24 @@ test('production export validation accepts confirmed zero coordinates',()=>{
   },[{dir:'level_02',level:2}]);
   assert.deepEqual(issues,[]);
 });
+
+
+test('corrupt stored authoring rows normalize without crashing',()=>{
+  const state=normalizeEffects({
+    schemaVersion:EFFECTS_SCHEMA_VERSION,
+    lights:[null,42],
+    areaLights:[null],
+    particles:[null,'bad'],
+  });
+  assert.equal(state.lights.length,2);
+  assert.equal(state.areaLights.length,1);
+  assert.equal(state.particles.length,2);
+  assert.ok(state.particles.every((p)=>p.placement==='unplaced'));
+});
+
+test('legacy corrupt rows migrate to unplaced instead of becoming origin effects',()=>{
+  const state=normalizeEffects({particles:[null,{preset:'smoke',position:[1,2,3]}]});
+  assert.equal(state.particles[0].placement,'unplaced');
+  assert.equal(state.particles[1].placement,'unplaced');
+  assert.deepEqual(state.particles[1].position,[1,2,3]);
+});
