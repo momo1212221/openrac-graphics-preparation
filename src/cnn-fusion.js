@@ -47,9 +47,9 @@ function structureConfidence(base,detail,x,y){
  */
 export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={}){
   if(!detail||base.width!==detail.width||base.height!==detail.height)
-    return {image:base,agreement:1,confidence:1,detailPixels:0,rejectedPixels:0};
+    return {image:base,agreement:1,confidence:1,detailPixels:0,rejectedPixels:0,consideredPixels:0};
   const gain=(QUALITY_GAIN[quality]??QUALITY_GAIN.high)*(MATERIAL_DETAIL_GAIN[material]??1);
-  if(gain<=0)return {image:base,agreement:1,confidence:1,detailPixels:0,rejectedPixels:0};
+  if(gain<=0)return {image:base,agreement:1,confidence:1,detailPixels:0,rejectedPixels:0,consideredPixels:0};
 
   const out={width:base.width,height:base.height,data:new Uint8ClampedArray(base.data)};
   const impulseLimit=MATERIAL_LIMIT[material]??MATERIAL_LIMIT.generic;
