@@ -28,6 +28,7 @@ def main():
     ap.add_argument("--output",type=Path,default=Path("model-validation.json"))
     ap.add_argument("--min-l1-improvement",type=float,default=0.0)
     ap.add_argument("--min-gradient-improvement",type=float,default=0.0)
+    ap.add_argument("--min-laplacian-improvement",type=float,default=0.0)
     args=ap.parse_args()
 
     manifest=args.dataset/"manifest.jsonl"
@@ -49,7 +50,7 @@ def main():
         raise SystemExit("model must expose NCHW input and output")
     name=input_info.name
 
-    l1_before=l1_after=grad_before=grad_after=0.0
+    l1_before=l1_after=grad_before=grad_after=lap_before=lap_after=0.0
     split_counts=Counter()
     sources=set()
     worst=[]
@@ -73,6 +74,17 @@ def main():
         ga=float(np.abs(grad(out)-gt).mean())
         grad_before+=gb
         grad_after+=ga
+
+        def lap(a):
+            p=np.pad(a,((1,1),(1,1),(0,0)),mode="edge")
+            return (
+                p[1:-1,:-2]+p[1:-1,2:]+p[:-2,1:-1]+p[2:,1:-1]-4*a
+            )
+        lt=lap(target)
+        lb=float(np.abs(lap(inp)-lt).mean())
+        la=float(np.abs(lap(out)-lt).mean())
+        lap_before+=lb
+        lap_after+=la
         split_counts[r["split"]]+=1
         sources.add(r.get("source_sha256") or r.get("source"))
         worst.append({
@@ -83,6 +95,8 @@ def main():
             "l1_after":after,
             "gradient_before":gb,
             "gradient_after":ga,
+            "laplacian_before":lb,
+            "laplacian_after":la,
             "l1_improvement":(before-after)/max(before,1e-9),
         })
 
@@ -113,16 +127,21 @@ def main():
         "l1_after":l1_after/n,
         "gradient_l1_before":grad_before/n,
         "gradient_l1_after":grad_after/n,
+        "laplacian_l1_before":lap_before/n,
+        "laplacian_l1_after":lap_after/n,
         "thresholds":{
             "min_l1_improvement":args.min_l1_improvement,
             "min_gradient_improvement":args.min_gradient_improvement,
+            "min_laplacian_improvement":args.min_laplacian_improvement,
         },
     }
     result["l1_improvement"]=(result["l1_before"]-result["l1_after"])/max(result["l1_before"],1e-9)
     result["gradient_improvement"]=(result["gradient_l1_before"]-result["gradient_l1_after"])/max(result["gradient_l1_before"],1e-9)
+    result["laplacian_improvement"]=(result["laplacian_l1_before"]-result["laplacian_l1_after"])/max(result["laplacian_l1_before"],1e-9)
     result["release_candidate"]=(
         result["l1_improvement"]>args.min_l1_improvement and
-        result["gradient_improvement"]>args.min_gradient_improvement
+        result["gradient_improvement"]>args.min_gradient_improvement and
+        result["laplacian_improvement"]>args.min_laplacian_improvement
     )
     result["worst_examples"]=sorted(worst,key=lambda r:r["l1_improvement"])[:20]
 
