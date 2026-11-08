@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.12.2 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.13.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.12.2.zip`.
+2. Install `graphics-preparation-0.13.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -273,3 +273,20 @@ Texture QA now records PSNR in addition to SSIM and the existing colour, histogr
 hallucination metrics. Generated material sidecars are checked for tangent-normal unit length/facing,
 scalar-channel consistency and edge discontinuity. Results are written into each
 `Materials/<hash>/material.json` and aggregated in `quality-report.json`.
+
+
+## Adaptive reconstruction and interactive pause (0.13.0)
+
+0.13.0 moves the remaining quality/performance work onto the current main line.
+
+- Smooth diffuse textures can use reduced-overlap adaptive tile geometry while complex textures retain
+  the full High/Max context windows. The chosen geometry and measured texture complexity are recorded
+  with cached results.
+- Source-detail restoration adds a directional edge-aligned frequency band. It samples along local
+  edge tangents so High/Max can recover real source variation without turning cross-edge contrast into
+  sharpening halos.
+- AI pack generation can be paused safely after a completed texture-group checkpoint and resumed
+  without discarding the active ZIP stream or persisted run state.
+- CNN training now has executable held-out learning smoke tests and a separate real-model quality
+  benchmark workflow in addition to runtime sanity checks.
+- Material-sidecar validation and PSNR reporting from 0.12.2 remain enabled.
