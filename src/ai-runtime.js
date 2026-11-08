@@ -349,6 +349,7 @@ async function releasePromise(promise) {
   try {
     const value = await promise;
     if (value && typeof value.release === "function") await value.release();
+    else if (value?.session && typeof value.session.release === "function") await value.session.release();
   } catch {}
 }
 
