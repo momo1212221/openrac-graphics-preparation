@@ -5,10 +5,10 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 
-test('0.17.0 is one native OpenRAC graphics product with its tool page',()=>{
+test('0.17.1 is one native OpenRAC graphics product with its tool page',()=>{
   const m=JSON.parse(readFileSync(root+'openrac-mod.json'));
   assert.equal(m.id,'graphics-preparation');
-  assert.equal(m.version,'0.17.0');
+  assert.equal(m.version,'0.17.1');
   assert.equal(m.type,'native');
   assert.equal(m.api,'1.14');
   assert.equal(m.assets,'assets');
@@ -18,5 +18,5 @@ test('0.17.0 is one native OpenRAC graphics product with its tool page',()=>{
   const first=readFileSync(root+'dist/SHA256SUMS','utf8');
   execFileSync('python3',['tools/package.py'],{cwd:root});
   assert.equal(readFileSync(root+'dist/SHA256SUMS','utf8'),first);
-  assert.ok(first.includes('graphics-preparation-0.17.0.zip'));
+  assert.ok(first.includes('graphics-preparation-0.17.1.zip'));
 });
