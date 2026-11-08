@@ -5,9 +5,12 @@ const root = resolve(new URL("..", import.meta.url).pathname);
 const src = resolve(root, "node_modules/onnxruntime-web/dist");
 const out = resolve(root, "vendor");
 await mkdir(out, {recursive:true});
+
 for (const name of [
   "ort.wasm.bundle.min.mjs",
   "ort-wasm-simd-threaded.wasm",
+  "ort.webgpu.bundle.min.mjs",
+  "ort-wasm-simd-threaded.asyncify.wasm",
 ]) {
   await copyFile(resolve(src, name), resolve(out, name));
   console.log("copied", name);

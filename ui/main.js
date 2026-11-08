@@ -28,6 +28,7 @@ let state = {
   aiMode: "balanced",
   preserveMicrodetail: true,
   preserveStars: true,
+  aiBackend: "auto",
 };
 
 const el = (tag, text, cls) => {
@@ -135,7 +136,7 @@ async function createPack({ai}) {
   try {
     if (ai) {
       progress(0, 1, "AI preflight · model + 128×128 inference check…");
-      aiReady = await warmAi();
+      aiReady = await warmAi(state.aiBackend);
     }
 
     let workGroups = textures.map((texture) => ({members:[texture], verified:true}));
@@ -206,6 +207,7 @@ async function createPack({ai}) {
             mode: state.aiMode,
             preserveMicrodetail: state.preserveMicrodetail,
             preserveStars: state.preserveStars,
+            backend: state.aiBackend,
           }, (tile, totalTiles) => {
             const fraction = (groupIndex + tile / totalTiles) / workGroups.length;
             progress(fraction, 1, `AI · ${baseLabel} · tile ${tile}/${totalTiles}`);
@@ -342,6 +344,22 @@ function render() {
   ], state.aiMode, async (value) => { state.aiMode = value; await savePrefs(); }));
   general.append(profile.row);
 
+  const acceleration = settingRow(
+    "AI acceleration",
+    "Auto uses WebGPU first and falls back to WASM if the OpenRAC WebView or GPU backend is unavailable.",
+  );
+  acceleration.control.append(select([
+    ["auto", "Auto · WebGPU → WASM"],
+    ["webgpu", "WebGPU · GPU only"],
+    ["wasm", "WASM · CPU only"],
+  ], state.aiBackend, async (value) => {
+    state.aiBackend = value;
+    aiReady = null;
+    await savePrefs();
+    render();
+  }));
+  general.append(acceleration.row);
+
   const micro = settingRow("Preserve original micro-detail", "Restores source residual detail after the neural pass instead of letting the model smooth it away.");
   micro.control.append(toggle(state.preserveMicrodetail, "Preserve original micro-detail", async (value) => {
     state.preserveMicrodetail = value; await savePrefs(); render();
@@ -380,8 +398,8 @@ function render() {
   source.control.append(refresh); assets.append(source.row);
 
   const backend = settingRow("AI backend", aiReady
-    ? `${aiReady.model} · ${aiReady.backend}`
-    : "Bundled Real-ESRGAN x4plus + ONNX Runtime Web/WASM; loaded when preparation starts.");
+    ? `${aiReady.model} · ${aiReady.backend}${aiReady.fallbackReason ? ` · WebGPU fallback: ${aiReady.fallbackReason}` : ""}`
+    : "Bundled Real-ESRGAN x4plus · Auto tries WebGPU first, then optimized WASM.");
   backend.control.append(el("span", "Standard launcher", "status-ok"));
   assets.append(backend.row);
   assets.append(el("p",
@@ -430,7 +448,7 @@ async function start() {
   effectsEditor = new EffectsEditor(controller, info, setMessage);
   await effectsEditor.start();
   document.addEventListener("graphics-effects-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.6.1 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.7.0 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -440,6 +458,7 @@ async function start() {
       aiMode: ["faithful", "balanced", "enhanced"].includes(saved.aiMode) ? saved.aiMode : "balanced",
       preserveMicrodetail: saved.preserveMicrodetail !== false,
       preserveStars: saved.preserveStars !== false,
+      aiBackend: ["auto","webgpu","wasm"].includes(saved.aiBackend) ? saved.aiBackend : "auto",
     };
   }
   await scan();

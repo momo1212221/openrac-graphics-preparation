@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.6.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.7.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.6.1.zip`.
+2. Install `graphics-preparation-0.7.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -85,3 +85,15 @@ Each unique PNG source is sent through Real-ESRGAN only once. The prepared resul
 written to every OpenRAC texture hash that referenced identical bytes, so the implementation does
 not keep an entire 4x texture library in memory. The final summary reports unique sources, exact
 duplicates and how many repeated AI passes were avoided.
+
+
+## WebGPU acceleration (0.7.0)
+
+AI acceleration defaults to **Auto**. Graphics preparation first attempts ONNX Runtime WebGPU and
+runs Real-ESRGAN on the GPU when the OpenRAC WebView exposes WebGPU. If WebGPU is unavailable or
+fails preflight/inference, Auto disables it for that run and continues with the optimized WASM
+backend. Manual WebGPU-only and WASM-only modes are available for testing.
+
+The release bundles both ORT execution paths locally. The WebGPU bridge stays single-threaded at the
+WASM boundary so the custom-scheme WebView never needs an external worker/module bootstrap; the
+heavy neural operators execute on WebGPU.
