@@ -34,7 +34,7 @@ export function lockSourceChroma(source,output,strength=.7){
   return output;
 }
 
-export function qualityMetrics(source,output,{cnnAgreement=1}={}){
+export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAgreement}={}){
   const sx=output.width/source.width,sy=output.height/source.height;
   let colorDrift=0,lumaDrift=0,alphaDiff=0,sourceEdge=0,outEdge=0,n=0;
   let srcVisible=0,outVisible=0,sumS=0,sumO=0,sumSS=0,sumOO=0,sumSO=0;
@@ -77,7 +77,7 @@ export function qualityMetrics(source,output,{cnnAgreement=1}={}){
   const c1=6.5025,c2=58.5225;
   const ssim=((2*ms*mo+c1)*(2*cov+c2))/((ms*ms+mo*mo+c1)*(vs+vo+c2));
   const hallucinationScore=clamp(
-    (1-cnnAgreement)*55+Math.max(0,edgeGain-1.8)*12+meanColor*.7+histogramDrift*.5,
+    (1-cnnAgreement)*34+(1-cnnConfidence)*28+Math.max(0,edgeGain-1.8)*12+meanColor*.7+histogramDrift*.5,
     0,100
   );
   let seamScore=0,seamN=0;
@@ -94,7 +94,8 @@ export function qualityMetrics(source,output,{cnnAgreement=1}={}){
   seamScore=seamN?seamScore/seamN:0;
   const score=clamp(
     100-meanColor*.45-meanLuma*.14-meanAlpha*.20-histogramDrift*.12-alphaCoverageDiff*.25-
-    Math.max(0,.55-cnnAgreement)*48-Math.max(0,edgeGain-2.8)*8-Math.max(0,hallucinationScore-55)*.18,
+    Math.max(0,.55-cnnAgreement)*32-Math.max(0,.45-cnnConfidence)*38-
+    Math.max(0,edgeGain-2.8)*8-Math.max(0,hallucinationScore-55)*.18,
     0,100
   );
   return {
@@ -107,6 +108,7 @@ export function qualityMetrics(source,output,{cnnAgreement=1}={}){
     edgeGain:Number(edgeGain.toFixed(2)),
     microdetailGain:Number(Math.max(0,edgeGain-1).toFixed(2)),
     cnnAgreement:Number(cnnAgreement.toFixed(3)),
+    cnnConfidence:Number(cnnConfidence.toFixed(3)),
     ssim:Number(clamp(ssim,-1,1).toFixed(4)),
     hallucinationScore:Number(hallucinationScore.toFixed(1)),
     seamScore:Number(seamScore.toFixed(2)),
