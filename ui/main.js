@@ -17,6 +17,7 @@ import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
 import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
 import {specializedRegistryIdentity} from "../src/specialized-models.js";
 import {buildQualityReport} from "../src/quality-report.js";
+import {aiRunStoreKey,aiRunSignature,beginAiRun,checkpointAiRun,interruptAiRun,completeAiRun,aiRunProgress} from "../src/ai-run-state.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -32,6 +33,8 @@ let aiReady = null;
 let effectsEditor = null;
 let cacheState = {available:false,total:0,entries:0};
 let qualityLab = null;
+let aiRunState = null;
+let activeAiRun = false;
 let state = {
   scale: 4,
   edgePreserving: true,
@@ -68,6 +71,30 @@ function setBusy(value) {
 }
 
 async function savePrefs() { await controller.storeSet("texture-preparation", state); }
+
+const currentRunKey = () => aiRunStoreKey(info?.packId || "openrac");
+const currentRunSignature = () => aiRunSignature(state);
+function currentRunProgress() {
+  return aiRunProgress(aiRunState, {
+    packId:info?.packId,
+    signature:currentRunSignature(),
+    hashes:textures.map((texture)=>texture.hash),
+  });
+}
+async function storeAiRun(next) {
+  aiRunState = next;
+  await controller.storeSet(currentRunKey(), next);
+}
+async function checkpointCurrentRun(hashes) {
+  if (!aiRunState) return;
+  await storeAiRun(checkpointAiRun(aiRunState, hashes));
+}
+
+window.addEventListener("beforeunload", (event) => {
+  if (!activeAiRun) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
 
 function settingRow(title, description) {
   const row = el("div", undefined, "setting-row");
@@ -139,6 +166,7 @@ async function createPack({ai}) {
   }
 
   setBusy(true);
+  if (ai) activeAiRun = true;
   let zip = null;
   const stats = {
     ai: 0,
@@ -209,9 +237,24 @@ async function createPack({ai}) {
     }
 
     const suffix = ai ? `ai-${state.aiMode}-4x` : `${state.scale}x`;
+    if (ai) {
+      const previous=currentRunProgress();
+      if (previous.compatible && previous.completed>0) {
+        setMessage(
+          `Existing AI progress detected: ${previous.completed}/${previous.total} textures already prepared. Cached results will be verified and reused automatically.`,
+        );
+      }
+    }
     const token = await controller.saveStart(outputName(info, suffix), "zip");
     if (!token) { setMessage("Save cancelled."); return; }
     zip = new ZipStream(controller, token);
+    if (ai) {
+      await storeAiRun(beginAiRun(aiRunState,{
+        packId:info.packId,
+        signature:currentRunSignature(),
+        hashes:textures.map((texture)=>texture.hash),
+      }));
+    }
 
     let included = 0;
     for (let groupIndex = 0; groupIndex < workGroups.length; groupIndex++) {
@@ -546,6 +589,7 @@ async function createPack({ai}) {
           included++;
         }
       }
+      if (ai) await checkpointCurrentRun(group.members.map((member)=>member.hash));
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
@@ -596,9 +640,12 @@ async function createPack({ai}) {
     zip = null;
 
     if (!saved) {
-      setMessage("Save cancelled.");
+      if (ai && aiRunState) await storeAiRun(interruptAiRun(aiRunState));
+      setMessage("Save cancelled. Completed AI textures remain cached and can be reused next time.");
       return;
     }
+
+    if (ai && aiRunState) await storeAiRun(completeAiRun(aiRunState));
 
     if (ai) {
       const degraded = stats.fallback + stats.original + stats.unreadable;
@@ -633,9 +680,11 @@ async function createPack({ai}) {
     }
   } catch (error) {
     if (zip) await zip.cancel().catch(() => undefined);
+    if (ai && aiRunState) await storeAiRun(interruptAiRun(aiRunState)).catch(()=>undefined);
     const text = error instanceof Error ? error.message : String(error);
-    setMessage(`Pack output stopped safely: ${text}. No half-finished ZIP was kept.`, true);
+    setMessage(`Pack output stopped safely: ${text}. Completed AI textures remain cached for resume; no half-finished ZIP was kept.`, true);
   } finally {
+    if (ai) activeAiRun = false;
     setBusy(false);
   }
 }
@@ -650,6 +699,15 @@ function render() {
     el("p", textures.length ? `Ready for ${textures.length} saved texture${textures.length === 1 ? "" : "s"}.` : "No saved textures are ready yet.", "lead"),
     el("p", "Fail-safe Real-ESRGAN: preflight, retry, session reset, 4× fallback and original-texture fallback are automatic per texture.", "muted"),
   );
+  const runProgress=currentRunProgress();
+  if (runProgress.compatible && runProgress.completed>0) {
+    const runText=runProgress.status==="complete"
+      ? `AI check: ${runProgress.completed}/${runProgress.total} textures were already prepared for this game/profile. A new export reuses verified cache entries.`
+      : `Resume available: ${runProgress.completed}/${runProgress.total} textures were already prepared before the last run stopped. Starting again continues via the persistent cache.`;
+    left.append(el("p",runText,runProgress.status==="complete"?"status-ok":"info-note"));
+  } else if (aiRunState && !runProgress.compatible) {
+    left.append(el("p","Earlier AI progress exists for this game, but with a different quality profile. Cache entries are revalidated per texture before reuse.","info-note"));
+  }
   const prepareButton = el("button", "Prepare AI graphics", "primary");
   prepareButton.onclick = () => void createPack({ai: true});
   prepareCard.append(left, prepareButton);
@@ -810,6 +868,7 @@ function render() {
     ["Adaptive material routing", "Weapon/character/terrain/stone/metal/fabric/glass/energy/sky classes tune detail gain conservatively.", "On"],
     ["Adaptive texture classes", "UI stays conservative; normal/mask maps use technical-safe upscaling; world/sky textures use CNN detail reconstruction.", "On"],
     ["Lossless trivial bypass", "Fully transparent and exactly uniform textures skip Real-ESRGAN and are enlarged directly.", "On"],
+    ["Close protection + resume", "Closing the launcher during AI processing triggers a leave warning. Finished textures are checkpointed and reused from the persistent cache after reopening.", "On"],
     ["Per-texture retry", "If ONNX fails, the session is released and rebuilt once.", "1 retry"],
     ["Automatic fallback", "If AI still fails, that texture uses deterministic 4× scaling.", "4×"],
     ["Last-resort original", "If even fallback scaling fails, the original PNG is kept instead of aborting the pack.", "Safe"],
@@ -869,8 +928,12 @@ function render() {
   const clearCacheButton = el("button", "Clear persistent AI cache", "ghost advanced-action");
   clearCacheButton.onclick = async () => {
     const ok = await clearAiCache();
+    if (ok) {
+      aiRunState=null;
+      await controller.storeSet(currentRunKey(), null).catch(()=>undefined);
+    }
     cacheState = await cacheInfo();
-    setMessage(ok ? "Persistent AI cache cleared." : "Persistent AI cache could not be cleared.", !ok);
+    setMessage(ok ? "Persistent AI cache and saved AI run progress cleared." : "Persistent AI cache could not be cleared.", !ok);
     render();
   };
   body.append(clearCacheButton);
@@ -918,8 +981,19 @@ async function start() {
     await trimCache(state.cacheBudgetMb * 1024 * 1024);
     cacheState = await cacheInfo();
   }
+  aiRunState = await controller.storeGet(currentRunKey()).catch(()=>null);
+  if (aiRunState?.status === "running") {
+    await storeAiRun(interruptAiRun(aiRunState)).catch(()=>undefined);
+  }
   await scan();
-  setMessage("Ready. Fail-safe standard OpenRAC AI path is available.");
+  const previous=currentRunProgress();
+  if (previous.compatible && previous.completed>0 && previous.status!=="complete") {
+    setMessage(`Interrupted AI run found: ${previous.completed}/${previous.total} textures are checkpointed. Start AI graphics again to continue from cached results.`);
+  } else if (previous.compatible && previous.status==="complete") {
+    setMessage(`AI graphics already exist for this game/profile: ${previous.completed}/${previous.total} textures prepared. A new export will verify and reuse them.`);
+  } else {
+    setMessage("Ready. Fail-safe standard OpenRAC AI path is available.");
+  }
 }
 
 start().catch((error) => setMessage(error instanceof Error ? error.message : String(error), true));
