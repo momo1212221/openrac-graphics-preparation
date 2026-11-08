@@ -84,6 +84,52 @@ def make_reference(kind: str, h: int, w: int) -> np.ndarray:
             out+=glow[...,None]*np.array([.95,.98,1.0],dtype=np.float32)
         return np.clip(out,0,1)
 
+    if kind=="character":
+        # Smooth painted regions with a few deliberate seams/highlights. This punishes
+        # model-only skin/cloth microtexture more than natural rough materials do.
+        radial=np.hypot(x-.48,y-.46)
+        shade=np.clip(.72-radial*.42+.05*np.sin(y*math.tau*2.0),.28,.82)
+        out=np.stack([shade*.92,shade*.70,shade*.54],axis=2)
+        seam=np.exp(-((y-(.62+.035*np.sin(x*math.tau*2)))**2)/(2*.0025**2))
+        highlight=np.exp(-(((x-.36)/.035)**2+((y-.34)/.018)**2))
+        out-=seam[...,None]*np.array([.12,.10,.08],dtype=np.float32)
+        out+=highlight[...,None]*np.array([.20,.16,.11],dtype=np.float32)
+        return np.clip(out,0,1)
+
+    if kind=="weapon":
+        panel=.22+.38*x
+        grooves=(np.sin(xx*math.tau/29.0)>.92).astype(np.float32)*.10
+        bevel=np.exp(-((y-.48)**2)/(2*.012**2))*.14
+        out=np.stack([
+            panel*.92+bevel,
+            panel*.97+bevel*.82,
+            panel*1.02+grooves,
+        ],axis=2)
+        emitter=np.exp(-(((x-.72)/.05)**2+((y-.32)/.025)**2))
+        out+=emitter[...,None]*np.array([.15,.55,.85],dtype=np.float32)
+        return np.clip(out,0,1)
+
+    if kind=="glass":
+        base=.26+.22*x+.06*np.sin(y*math.tau*1.5)
+        out=np.stack([base*.80,base*.94,np.minimum(1,base*1.12)],axis=2)
+        diagonal=np.abs(y-(.16+.62*x))
+        spec=np.exp(-(diagonal*diagonal)/(2*.006**2))*.42
+        rim=np.exp(-((x-.08)**2)/(2*.012**2))*.16
+        out+=spec[...,None]*np.array([.85,.92,1.0],dtype=np.float32)
+        out+=rim[...,None]*np.array([.45,.58,.70],dtype=np.float32)
+        return np.clip(out,0,1)
+
+    if kind=="energy":
+        out=np.zeros((h,w,3),dtype=np.float32)
+        out[...,0]=.035;out[...,1]=.045;out[...,2]=.08
+        for sx,sy,amp in [(.25,.34,.9),(.47,.55,.75),(.72,.27,.95),(.80,.67,.65)]:
+            d2=((x-sx)*w)**2+((y-sy)*h)**2
+            core=np.exp(-d2/5.0)*amp
+            halo=np.exp(-d2/70.0)*amp*.28
+            out+=core[...,None]*np.array([.35,.72,1.0],dtype=np.float32)
+            out+=halo[...,None]*np.array([.08,.24,.55],dtype=np.float32)
+        return np.clip(out,0,1)
+
     raise ValueError(kind)
 
 
@@ -193,7 +239,7 @@ def main() -> None:
 
     out_h,out_w=bh*4,bw*4
     runner=Path(__file__).with_name("fuse_benchmark_outputs.mjs")
-    cases=["stone","fabric","metal","organic","sky"]
+    cases=["stone","fabric","metal","organic","character","weapon","glass","energy","sky"]
     report={"version":2,"input":[bw,bh],"output":[out_w,out_h],"cases":[]}
     quality_wins={"base":0,"detail":0,"fused":0,"bicubic":0}
 
@@ -233,10 +279,17 @@ def main() -> None:
             gradient_regression=fused_metrics["gradient_mae_255"]/max(base_metrics["gradient_mae_255"],1e-9)-1
             mae_regression=fused_metrics["mae_255"]/max(base_metrics["mae_255"],1e-9)-1
             ssim_regression=base_metrics["ssim"]-fused_metrics["ssim"]
+            regression_limit={
+                "glass":.01,"sky":.01,"character":.015,"energy":.015,
+                "weapon":.02,"metal":.025,
+            }.get(kind,.03)
+            ssim_limit={
+                "glass":.004,"sky":.004,"character":.006,"energy":.006,
+            }.get(kind,.01)
             case_gate={
-                "gradient_regression_le_3pct":gradient_regression<=.03,
-                "mae_regression_le_3pct":mae_regression<=.03,
-                "ssim_drop_le_0_01":ssim_regression<=.01,
+                "gradient_regression_within_material_budget":gradient_regression<=regression_limit,
+                "mae_regression_within_material_budget":mae_regression<=regression_limit,
+                "ssim_drop_within_material_budget":ssim_regression<=ssim_limit,
                 "fusion_confidence_valid":0<=fusion["confidence"]<=1,
                 "fusion_agreement_valid":0<=fusion["agreement"]<=1,
                 "base_overshoot_le_5pct":base_raw["overshoot_ratio"]<=.05,
@@ -253,6 +306,8 @@ def main() -> None:
                     "gradient_regression":round(gradient_regression,6),
                     "mae_regression":round(mae_regression,6),
                     "ssim_regression":round(ssim_regression,6),
+                    "material_regression_limit":regression_limit,
+                    "material_ssim_drop_limit":ssim_limit,
                 },
                 "gate":case_gate,
                 "gate_ok":all(case_gate.values()),
