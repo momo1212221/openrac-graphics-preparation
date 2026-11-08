@@ -616,7 +616,7 @@ async function createPack({ai}) {
           shouldGenerateMaterialMaps(prepared.textureClass, prepared.material, state.materialMaps)
         ) {
           try {
-            progress((groupIndex + .86) / workGroups.length, 1, `Material maps · ${baseLabel}`, {sampleRate:false});
+            progress((groupIndex + .82) / workGroups.length, 1, `Material maps · ${baseLabel}`, {sampleRate:false});
             generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic", {curvature:state.materialCurvature});
             stats.materialMapSets += group.members.length;
             for(const member of group.members){
@@ -641,6 +641,7 @@ async function createPack({ai}) {
               error:error instanceof Error?error.message:String(error),
             });
           }
+          progress((groupIndex + .90) / workGroups.length, 1, `Material maps complete · ${baseLabel}`, {sampleRate:groupSampleRate});
         }
         let generatedMips = null;
         if (
@@ -648,7 +649,7 @@ async function createPack({ai}) {
           shouldGenerateMipmaps(prepared.textureClass, prepared.material, state.mipmaps)
         ) {
           try {
-            progress((groupIndex + .92) / workGroups.length, 1, `Mipmaps · ${baseLabel}`, {sampleRate:false});
+            progress((groupIndex + .90) / workGroups.length, 1, `Mipmaps · ${baseLabel}`, {sampleRate:false});
             generatedMips = await generateMipChain(prepared.bytes,{maxLevels:6,minSize:1});
             stats.mipmapSets += group.members.length;
             stats.mipmapLevels += generatedMips.levels.length * group.members.length;
@@ -659,8 +660,10 @@ async function createPack({ai}) {
               error:error instanceof Error?error.message:String(error),
             });
           }
+          progress((groupIndex + .94) / workGroups.length, 1, `Mipmaps complete · ${baseLabel}`, {sampleRate:groupSampleRate});
         }
-        progress((groupIndex + .96) / workGroups.length, 1, `Writing pack · ${baseLabel}`, {sampleRate:false});
+        const writeFraction=state.mipmaps!=="off"?.94:(state.materialMaps!=="off"?.90:.82);
+        progress((groupIndex + writeFraction) / workGroups.length, 1, `Writing pack · ${baseLabel}`, {sampleRate:false});
         for (const member of group.members) {
           await zip.add(packPath(member), prepared.bytes);
           if (generatedMips) {
