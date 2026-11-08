@@ -15,6 +15,7 @@ import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
 import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
 import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
+import {specializedRegistryIdentity} from "../src/specialized-models.js";
 import {buildQualityReport} from "../src/quality-report.js";
 
 const controller = new ModController(request);
@@ -167,13 +168,19 @@ async function createPack({ai}) {
     materialMapSets:0,
     master8xRuns:0,
     failureRejected:0,
+    specializedCnnRuns:0,
+    specializedCnnRejected:0,
     qualityRows:[],
   };
 
   try {
+    let specializedFingerprint="none";
     if (ai) {
       progress(0, 1, "AI preflight · model + 128×128 inference check…");
-      aiReady = await warmAi(state.aiBackend);
+      [aiReady,specializedFingerprint]=await Promise.all([
+        warmAi(state.aiBackend),
+        specializedRegistryIdentity(),
+      ]);
     }
 
     let workGroups = textures.map((texture) => ({members:[texture], verified:true}));
@@ -253,6 +260,7 @@ async function createPack({ai}) {
           sourceColorLock: state.sourceColorLock,
           qualityGuard: state.qualityGuard,
           master8x: state.master8x,
+          specializedFingerprint,
           textureClassOverride: override.textureClass || null,
           materialOverride: override.material || null,
         };
@@ -281,6 +289,9 @@ async function createPack({ai}) {
               failures: hit.failures,
               masterScale: hit.masterScale,
               internalMaster: hit.internalMaster,
+              specializedCnnUsed:hit.specializedCnnUsed,
+              specializedRejected:hit.specializedRejected,
+              specializedModelSha:hit.specializedModelSha,
               errors: [],
               cached: true,
             };
@@ -435,6 +446,8 @@ async function createPack({ai}) {
         if(prepared.material)stats.materials[prepared.material]=(stats.materials[prepared.material]||0)+copies;
         if(prepared.detailCnnUsed)stats.detailCnnRuns++;
         if(prepared.internalMaster)stats.master8xRuns++;
+        if(prepared.specializedCnnUsed)stats.specializedCnnRuns++;
+        if(prepared.specializedRejected)stats.specializedCnnRejected++;
         stats.detailPixels+=prepared.detailPixels||0;
         if(prepared.metrics?.score!==undefined){
           stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
@@ -501,7 +514,7 @@ async function createPack({ai}) {
             await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.11.0",
+              generator:"Graphics preparation 0.12.0",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
@@ -565,6 +578,8 @@ async function createPack({ai}) {
       material_maps_mode: state.materialMaps,
       internal_8x_masters: stats.master8xRuns,
       failure_rejected: stats.failureRejected,
+      specialized_cnn_runs: stats.specializedCnnRuns,
+      specialized_cnn_rejected: stats.specializedCnnRejected,
     };
     if (ai) {
       const qualityReport=buildQualityReport(stats.qualityRows,{limit:20});
@@ -598,6 +613,8 @@ async function createPack({ai}) {
         stats.materialMapSets ? `${stats.materialMapSets} material sidecar sets generated` : "",
         stats.master8xRuns ? `${stats.master8xRuns} important assets used selective 8× internal masters` : "",
         stats.failureRejected ? `${stats.failureRejected} outputs were rejected by automatic failure detection` : "",
+        stats.specializedCnnRuns ? `${stats.specializedCnnRuns} material-specific refinement passes accepted` : "",
+        stats.specializedCnnRejected ? `${stats.specializedCnnRejected} material-specific passes rejected by QA` : "",
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
@@ -873,7 +890,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.11.0 · adaptive standard-launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.12.0 · adaptive standard-launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
