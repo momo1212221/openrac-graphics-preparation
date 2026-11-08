@@ -423,7 +423,8 @@ async function createPack({ai}) {
         ) {
           const currentDetailQuality = prepared.detailQuality || effectiveDetailQuality;
           const refinedQuality = refinedDetailQuality(prepared, currentDetailQuality);
-          if (refinedQuality !== currentDetailQuality) {
+          const promotionOnly = currentDetailQuality === "high" && refinedQuality === "max";
+          if (promotionOnly) {
             try {
               const refined = await upscaleAiMasterPng(source, {
                 mode: state.aiMode,
@@ -438,9 +439,10 @@ async function createPack({ai}) {
                 textureClassOverride: cacheOptions.textureClassOverride,
                 materialOverride: cacheOptions.materialOverride,
               });
-              const promoted = refinedQuality === "max" &&
+              const refinedPolicy = evaluateQuality(refined.metrics, refined);
+              const promoted = refinedPolicy.verdict === "pass" &&
                 (refined.metrics?.score ?? 0) >= (prepared.metrics?.score ?? 0) - 2;
-              const selected = promoted ? refined : chooseBetterQuality(prepared, refined);
+              const selected = promoted ? refined : prepared;
               if (selected === refined) {
                 prepared = {...prepared,...refined,strategy:"ai",attempts:prepared.attempts,errors:prepared.errors,cached:false};
                 stats.warnings.push({
