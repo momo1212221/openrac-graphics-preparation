@@ -63,3 +63,15 @@ test('material validation rejects invalid tangent normals and non-scalar roughne
  assert.ok(q.issues.includes('normal-facing')||q.issues.includes('normal-length'));
  assert.ok(q.issues.includes('roughness-not-scalar'));
 });
+
+
+test('material map derivation includes PBR calibration',()=>{
+ const src=image(8,8,(x,y)=>[90+x*4,92+y*3,95,255]);
+ const stone=deriveMaterialMaps(src,'stone');
+ assert.equal(stone.pbrValidation.ok,true);
+ assert.ok(stone.pbrCalibration.meanMetallic<=.04);
+ assert.ok(stone.pbrCalibration.meanRoughness>=.5);
+ const metal=deriveMaterialMaps(src,'metal');
+ assert.equal(metal.pbrValidation.ok,true);
+ assert.ok(metal.pbrCalibration.meanMetallic>=.7);
+});
