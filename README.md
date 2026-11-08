@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.9.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.10.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.9.1.zip`.
+2. Install `graphics-preparation-0.10.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -177,3 +177,19 @@ When Quality Guard sees a neural result below 45/100, the batch path automatical
 source conservatively (no second CNN, reduced detail context, source colour lock on) and keeps the
 higher-scoring result. A bad aggressive reconstruction therefore does not have to poison a
 multi-thousand-texture pack.
+
+
+## Enhanced material sidecars (0.10.0)
+
+The optional material-map generator derives five deterministic maps from the final high-resolution
+colour reconstruction: normal, roughness, height, ambient occlusion and emissive. The generator is
+material-aware but does not alter the colour texture. Normal vectors are normalized, roughness uses
+conservative material priors plus local structure, AO responds to local valleys, and emissive only
+selects sufficiently bright/saturated candidates.
+
+Sidecars are written as:
+`Materials/<texture-hash>/{normal,roughness,height,ao,emissive}.png` plus `material.json`.
+
+This mode defaults to **Off** because the current public stock launcher predates that pack extension.
+The OpenRAC core integration branch `feat/graphics-max-stack` adds importer/exporter validation and
+renderer lookup while retaining backwards compatibility with ordinary texture packs.

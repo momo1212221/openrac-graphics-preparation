@@ -12,6 +12,7 @@ import {cacheGet, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, tri
 import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
+import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -41,6 +42,7 @@ let state = {
   detailCnn: true,
   sourceColorLock: true,
   qualityGuard: true,
+  materialMaps: "off",
 };
 
 const el = (tag, text, cls) => {
@@ -158,6 +160,7 @@ async function createPack({ai}) {
     detailPixels:0,
     qualityScoreSum:0,
     qualityScoreCount:0,
+    materialMapSets:0,
   };
 
   try {
@@ -254,6 +257,12 @@ async function createPack({ai}) {
               attempts: 0,
               stars: hit.stars,
               microdetails: hit.microdetails,
+              textureClass: hit.textureClass,
+              material: hit.material,
+              detailQuality: hit.detailQuality,
+              metrics: hit.metrics,
+              classification: hit.classification,
+              materialInfo: hit.materialInfo,
               errors: [],
               cached: true,
             };
@@ -356,8 +365,41 @@ async function createPack({ai}) {
             errors:prepared.errors.slice(-3),
           });
         }
+        let generatedMaps = null;
+        if (
+          state.materialMaps !== "off" &&
+          shouldGenerateMaterialMaps(prepared.textureClass, prepared.material, state.materialMaps)
+        ) {
+          try {
+            generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic");
+            stats.materialMapSets += group.members.length;
+          } catch (error) {
+            stats.warnings.push({
+              hashes:group.members.map((member)=>member.hash),
+              strategy:"material-map-failed",
+              error:error instanceof Error?error.message:String(error),
+            });
+          }
+        }
         for (const member of group.members) {
           await zip.add(packPath(member), prepared.bytes);
+          if (generatedMaps) {
+            const root = `Materials/${member.hash}/`;
+            await zip.add(root+"normal.png", generatedMaps.normal);
+            await zip.add(root+"roughness.png", generatedMaps.roughness);
+            await zip.add(root+"height.png", generatedMaps.height);
+            await zip.add(root+"ao.png", generatedMaps.ao);
+            await zip.add(root+"emissive.png", generatedMaps.emissive);
+            const meta = {
+              format:1,
+              generator:"Graphics preparation 0.10.0",
+              material:prepared.material || "generic",
+              textureClass:prepared.textureClass || "diffuse",
+              emissivePixels:generatedMaps.emissivePixels,
+              sourceHash:member.hash,
+            };
+            await zip.add(root+"material.json", encoder.encode(JSON.stringify(meta,null,2)+"\n"));
+          }
           included++;
         }
       } else {
@@ -410,6 +452,8 @@ async function createPack({ai}) {
       detail_pixels: stats.detailPixels,
       materials: stats.materials,
       average_quality_score: stats.qualityScoreCount ? Number((stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)) : null,
+      material_map_sets: stats.materialMapSets,
+      material_maps_mode: state.materialMaps,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -435,6 +479,7 @@ async function createPack({ai}) {
         `classes: ${stats.classes.diffuse} diffuse · ${stats.classes.ui} UI · ${stats.classes.sky} sky · ${stats.classes.normal} normal · ${stats.classes.mask} mask`,
         stats.detailCnnRuns ? `detail CNN used on ${stats.detailCnnRuns} unique sources · ${stats.detailPixels} agreement-gated detail pixels` : "",
         stats.qualityScoreCount ? `average quality score ${(stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)}/100` : "",
+        stats.materialMapSets ? `${stats.materialMapSets} material sidecar sets generated` : "",
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
@@ -530,6 +575,19 @@ function render() {
     state.qualityGuard=value;await savePrefs();render();
   }));
   general.append(guard.row);
+
+  const materialMaps = settingRow(
+    "Enhanced material maps",
+    "Generates Normal/Roughness/Height/AO/Emissive sidecars. Requires an OpenRAC build with Materials/<hash> sidecar support; keep Off for today's stock launcher.",
+  );
+  materialMaps.control.append(select([
+    ["off","Off · stock-compatible"],
+    ["key","Key materials · characters/weapons/world"],
+    ["all","All eligible diffuse materials"],
+  ], state.materialMaps, async(value)=>{
+    state.materialMaps=value;await savePrefs();render();
+  }));
+  general.append(materialMaps.row);
 
   const acceleration = settingRow(
     "AI acceleration",
@@ -687,7 +745,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.9.1 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.10.0 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -704,6 +762,7 @@ async function start() {
       detailCnn: saved.detailCnn !== false,
       sourceColorLock: saved.sourceColorLock !== false,
       qualityGuard: saved.qualityGuard !== false,
+      materialMaps: ["off","key","all"].includes(saved.materialMaps) ? saved.materialMaps : "off",
     };
   }
   if (state.persistentCache) {
