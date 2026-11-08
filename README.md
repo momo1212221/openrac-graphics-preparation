@@ -307,6 +307,10 @@ scalar-channel consistency and edge discontinuity. Results are written into each
 - Quality Guard v4 records regional low-confidence ratio and the 10th-percentile confidence floor and
   uses both when selecting Standard, High or Max reconstruction.
 - Quality Lab exposes regional CNN confidence and alpha-edge metrics for manual QA.
+- PBR material calibration constrains Roughness, Metallic and Specular together by material family,
+  keeping dielectric surfaces near non-metallic values while allowing conductive metal and hybrid
+  weapon surfaces to retain stronger reflections. Calibration and validation are written to the
+  material sidecar and quality report.
 
 Enhanced mipmaps and material sidecars remain optional because the stock launcher does not yet
 consume those extra renderer assets.
