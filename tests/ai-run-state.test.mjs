@@ -34,6 +34,6 @@ test("run store key is game scoped and sanitized",()=>{
 
 
 test("AI run signature is pinned to the strict quality-policy generation",()=>{
-  assert.match(RUN_PIPELINE,/90-94-97-v2/);
-  assert.match(aiRunSignature({}),/90-94-97-v2/);
+  assert.match(RUN_PIPELINE,/90-94-97-v3-alpha/);
+  assert.match(aiRunSignature({}),/90-94-97-v3-alpha/);
 });
