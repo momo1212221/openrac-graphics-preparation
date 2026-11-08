@@ -102,18 +102,44 @@ for arcname,path in sorted(native_files):
 
 out=root/"dist"
 out.mkdir(exist_ok=True)
-archive=out/(m["id"]+"-"+m["version"]+".zip")
-with zipfile.ZipFile(archive,"w",zipfile.ZIP_DEFLATED) as z:
-    manifest_bytes=(json.dumps(m,indent=2)+"\n").encode()
-    all_entries=[("openrac-mod.json",manifest_bytes),*entries]
-    seen=set()
-    for rel,data in all_entries:
-        assert rel not in seen, f"duplicate archive entry: {rel}"
-        seen.add(rel)
-        info=zipfile.ZipInfo(m["id"]+"/"+rel,(2026,1,1,0,0,0))
-        info.compress_type=zipfile.ZIP_DEFLATED
-        info.external_attr=0o100644<<16
-        z.writestr(info,data)
 
-(out/"SHA256SUMS").write_text(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
-print(archive)
+def write_archive(path,manifest,archive_entries):
+    with zipfile.ZipFile(path,"w",zipfile.ZIP_DEFLATED) as z:
+        manifest_bytes=(json.dumps(manifest,indent=2)+"\n").encode()
+        all_entries=[("openrac-mod.json",manifest_bytes),*archive_entries]
+        seen=set()
+        for rel,data in all_entries:
+            assert rel not in seen, f"duplicate archive entry: {rel}"
+            seen.add(rel)
+            info=zipfile.ZipInfo(m["id"]+"/"+rel,(2026,1,1,0,0,0))
+            info.compress_type=zipfile.ZIP_DEFLATED
+            info.external_attr=0o100644<<16
+            z.writestr(info,data)
+
+archives=[]
+archive=out/(m["id"]+"-"+m["version"]+".zip")
+write_archive(archive,m,entries)
+archives.append(archive)
+
+# OpenRAC's launcher installs native mods from a platform-specific release asset:
+# <id>-<version>-<platform>.zip. Build those from the same one-product content,
+# but keep only the selected platform's native library and manifest entry.
+if native_root:
+    native_paths={path for path,_ in native_files}
+    common_entries=[entry for entry in entries if entry[0] not in native_paths]
+    for platform,path in sorted(m["plugin"].items()):
+        selected=[entry for entry in entries if entry[0]==path]
+        assert len(selected)==1, f"missing selected native library for {platform}: {path}"
+        platform_manifest=dict(m)
+        platform_manifest["plugin"]={platform:path}
+        platform_archive=out/f'{m["id"]}-{m["version"]}-{platform}.zip'
+        write_archive(platform_archive,platform_manifest,[*common_entries,*selected])
+        archives.append(platform_archive)
+
+sums="".join(
+    f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
+    for path in sorted(archives,key=lambda p:p.name)
+)
+(out/"SHA256SUMS").write_text(sums)
+for path in archives:
+    print(path)
