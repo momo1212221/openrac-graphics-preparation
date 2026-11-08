@@ -104,6 +104,7 @@ export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
       pbrCalibration:row.pbrCalibration||row.quality?.pbrCalibration||null,
       albedoValidation:row.albedoValidation||row.quality?.albedoValidation||null,
       albedoDelight:row.albedoDelight||row.quality?.albedoDelight||null,
+      heightReconstruction:row.heightReconstruction||row.quality?.heightReconstruction||null,
       seamScores:row.quality?.seamScores||{},
     })),
   };
