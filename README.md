@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.8.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.9.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.8.0.zip`.
+2. Install `graphics-preparation-0.9.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -148,3 +148,20 @@ technical masks bypass generative CNN reconstruction and use technical-safe 4x r
 vectors are re-normalized afterwards. World diffuse and sky textures use the selected detail mode.
 The persistent cache key includes detail quality and coarse texture scope, so older/simpler outputs
 cannot be reused accidentally.
+
+
+## Dual-CNN material detail pipeline (0.9.0)
+
+0.9 bundles a second local CNN, Real-ESRGAN General x4v3, beside the existing x4plus model.
+Both receive the same fixed 128x128 source tile. x4plus remains the reconstruction base; the second
+CNN acts as a fidelity/detail reference. Only its high-frequency residual is injected, and the gain
+is multiplied by per-pixel agreement between the two CNN outputs. Large disagreement is treated as
+possible hallucination and suppresses the extra detail.
+
+Material routing adjusts that contribution for weapon, character, terrain, stone, metal, fabric,
+organic, glass, energy, sky and generic surfaces. Normal/mask/UI safety rules remain in force.
+
+A source-colour lock works in YCbCr: output luminance/detail is kept, while chroma is pulled toward
+the original art. Quality metrics report colour/luma drift, alpha drift, edge gain, CNN agreement and
+an aggregate 0-100 score. High-impact character/weapon/terrain sources are processed first so the
+persistent cache retains the visually important work earliest.

@@ -2,7 +2,7 @@
 const DB_NAME = "openrac-graphics-preparation-ai-cache";
 const DB_VERSION = 1;
 const STORE = "textures";
-const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v2|multiscale-detail-v2";
+const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v3|dual-cnn-v1|quality-guard-v1";
 let dbPromise;
 let sessionDisabled = false;
 let writesSinceTrim = 0;
@@ -66,6 +66,8 @@ export function cacheKey(digest, options = {}) {
     options.preserveStars !== false ? "stars1" : "stars0",
     ["standard","high","max"].includes(options.detailQuality) ? options.detailQuality : "high",
     options.textureScope || "world",
+    options.detailCnn !== false ? "detailcnn1" : "detailcnn0",
+    options.sourceColorLock !== false ? "colorlock1" : "colorlock0",
   ].join("|");
 }
 

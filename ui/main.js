@@ -10,6 +10,7 @@ import {EffectsEditor} from "./effects.js";
 import {buildDuplicatePlan} from "../src/dedup.js";
 import {cacheGet, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, trimCache} from "../src/ai-cache.js";
 import {pathTextureScope} from "../src/texture-classify.js";
+import {prioritizeGroups} from "../src/priority.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -35,6 +36,9 @@ let state = {
   persistentCache: true,
   cacheBudgetMb: 2048,
   detailQuality: "high",
+  detailCnn: true,
+  sourceColorLock: true,
+  qualityGuard: true,
 };
 
 const el = (tag, text, cls) => {
@@ -144,6 +148,11 @@ async function createPack({ai}) {
     aiElapsedMs: 0,
     aiTiles: 0,
     classes: {diffuse:0,ui:0,sky:0,normal:0,mask:0},
+    materials: {},
+    detailCnnRuns:0,
+    detailPixels:0,
+    qualityScoreSum:0,
+    qualityScoreCount:0,
   };
 
   try {
@@ -166,7 +175,7 @@ async function createPack({ai}) {
           progress(done, total, `Duplicate scan · ${done}/${total} · ${snapshot.duplicates} duplicates found`);
         },
       );
-      workGroups = plan.groups;
+      workGroups = prioritizeGroups(plan.groups);
       stats.duplicateTextures = plan.duplicates;
       stats.uniqueSources = plan.uniqueSources;
       stats.duplicateScanUnverified = plan.unverified;
@@ -222,6 +231,8 @@ async function createPack({ai}) {
           preserveMicrodetail: state.preserveMicrodetail,
           preserveStars: state.preserveStars,
           textureScope: pathTextureScope(texturePaths),
+          detailCnn: state.detailCnn,
+          sourceColorLock: state.sourceColorLock,
         };
         let key = null;
         let prepared = null;
@@ -254,6 +265,8 @@ async function createPack({ai}) {
             preserveStars: state.preserveStars,
             backend: state.aiBackend,
             detailQuality: state.detailQuality,
+            detailCnn: state.detailCnn,
+            sourceColorLock: state.sourceColorLock,
             texturePaths,
           }, (tile, totalTiles) => {
             const fraction = (groupIndex + tile / totalTiles) / workGroups.length;
@@ -278,6 +291,15 @@ async function createPack({ai}) {
         stats[prepared.strategy] += copies;
         if (prepared.strategy === "ai" && prepared.skipped) stats.smartSkipped += copies;
         if (prepared.textureClass && prepared.textureClass in stats.classes) stats.classes[prepared.textureClass] += copies;
+        if(prepared.material)stats.materials[prepared.material]=(stats.materials[prepared.material]||0)+copies;
+        if(prepared.detailCnnUsed)stats.detailCnnRuns++;
+        stats.detailPixels+=prepared.detailPixels||0;
+        if(prepared.metrics?.score!==undefined){
+          stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
+          if(state.qualityGuard && prepared.metrics.score<45){
+            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-warning",metrics:prepared.metrics});
+          }
+        }
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
         stats.stars += prepared.stars;
         stats.microdetails += prepared.microdetails;
@@ -342,6 +364,10 @@ async function createPack({ai}) {
       ai_tiles: stats.aiTiles,
       texture_classes: stats.classes,
       detail_quality: state.detailQuality,
+      detail_cnn_runs: stats.detailCnnRuns,
+      detail_pixels: stats.detailPixels,
+      materials: stats.materials,
+      average_quality_score: stats.qualityScoreCount ? Number((stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)) : null,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -365,6 +391,8 @@ async function createPack({ai}) {
         stats.cacheWrites ? `${stats.cacheWrites} new AI results cached for future runs` : "",
         stats.aiRuns && stats.aiElapsedMs ? `AI compute ${(stats.aiElapsedMs / 1000).toFixed(1)}s · ${(stats.aiElapsedMs / stats.aiRuns).toFixed(0)}ms per unique source · ${stats.aiTiles} tiles` : "",
         `classes: ${stats.classes.diffuse} diffuse · ${stats.classes.ui} UI · ${stats.classes.sky} sky · ${stats.classes.normal} normal · ${stats.classes.mask} mask`,
+        stats.detailCnnRuns ? `detail CNN used on ${stats.detailCnnRuns} unique sources · ${stats.detailPixels} agreement-gated detail pixels` : "",
+        stats.qualityScoreCount ? `average quality score ${(stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)}/100` : "",
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
@@ -433,6 +461,33 @@ function render() {
     render();
   }));
   general.append(detailRow.row);
+
+  const dualCnn = settingRow(
+    "Second detail/fidelity CNN",
+    "Runs General-x4v3 beside x4plus and injects only agreement-gated structure. Disagreement is treated as possible hallucination.",
+  );
+  dualCnn.control.append(toggle(state.detailCnn, "Second detail CNN", async(value)=>{
+    state.detailCnn=value;await savePrefs();render();
+  }));
+  general.append(dualCnn.row);
+
+  const colorLock = settingRow(
+    "Preserve source colour",
+    "Locks chroma toward the original texture while keeping CNN luminance/detail, preventing richer detail from changing the art direction.",
+  );
+  colorLock.control.append(toggle(state.sourceColorLock, "Preserve source colour", async(value)=>{
+    state.sourceColorLock=value;await savePrefs();render();
+  }));
+  general.append(colorLock.row);
+
+  const guard = settingRow(
+    "Quality guard",
+    "Scores colour drift, luminance drift, alpha, CNN agreement and excessive edge gain; suspicious outputs are reported.",
+  );
+  guard.control.append(toggle(state.qualityGuard, "Quality guard", async(value)=>{
+    state.qualityGuard=value;await savePrefs();render();
+  }));
+  general.append(guard.row);
 
   const acceleration = settingRow(
     "AI acceleration",
@@ -503,6 +558,8 @@ function render() {
   for (const [title, description, badge] of [
     ["Preflight", "Runs one fixed 128×128 inference before opening the output pack.", "On"],
     ["Exact duplicate check", "Same-size candidates are fingerprinted and confirmed byte-for-byte; identical PNGs are upscaled only once.", "On"],
+    ["Dual-CNN agreement", "x4plus reconstruction is enriched only where the General-x4v3 fidelity CNN agrees; disagreement suppresses detail injection.", "On"],
+    ["Adaptive material routing", "Weapon/character/terrain/stone/metal/fabric/glass/energy/sky classes tune detail gain conservatively.", "On"],
     ["Adaptive texture classes", "UI stays conservative; normal/mask maps use technical-safe upscaling; world/sky textures use CNN detail reconstruction.", "On"],
     ["Lossless trivial bypass", "Fully transparent and exactly uniform textures skip Real-ESRGAN and are enlarged directly.", "On"],
     ["Per-texture retry", "If ONNX fails, the session is released and rebuilt once.", "1 retry"],
@@ -584,7 +641,7 @@ async function start() {
   effectsEditor = new EffectsEditor(controller, info, setMessage);
   await effectsEditor.start();
   document.addEventListener("graphics-effects-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.8.0 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.9.0 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -598,6 +655,9 @@ async function start() {
       persistentCache: saved.persistentCache !== false,
       cacheBudgetMb: [512,1024,2048,4096].includes(Number(saved.cacheBudgetMb)) ? Number(saved.cacheBudgetMb) : 2048,
       detailQuality: ["standard","high","max"].includes(saved.detailQuality) ? saved.detailQuality : "high",
+      detailCnn: saved.detailCnn !== false,
+      sourceColorLock: saved.sourceColorLock !== false,
+      qualityGuard: saved.qualityGuard !== false,
     };
   }
   if (state.persistentCache) {

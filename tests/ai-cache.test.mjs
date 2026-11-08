@@ -4,7 +4,7 @@ import {cacheKey} from '../src/ai-cache.js';
 
 test('cache keys include source digest and all output-affecting detail options',()=>{
   const digest='ab'.repeat(32);
-  const a=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'world',preserveMicrodetail:true,preserveStars:true});
+  const a=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'world',detailCnn:true,sourceColorLock:true,preserveMicrodetail:true,preserveStars:true});
   const b=cacheKey(digest,{mode:'faithful',detailQuality:'high',textureScope:'world',preserveMicrodetail:true,preserveStars:true});
   const c=cacheKey(digest,{mode:'balanced',detailQuality:'max',textureScope:'world',preserveMicrodetail:true,preserveStars:true});
   const d=cacheKey(digest,{mode:'balanced',detailQuality:'high',textureScope:'ui',preserveMicrodetail:true,preserveStars:true});

@@ -5,6 +5,9 @@ import {restoreSourceDetail} from "./detail.js";
 import {MODEL_INPUT, SCALE, blendTile, fillFixedRgbTile, tileGeometry} from "./ai-tile.js";
 import {trivialTexture} from "./ai-analyze.js";
 import {classifyTexture} from "./texture-classify.js";
+import {classifyMaterial} from "./material-classify.js";
+import {fuseCnnOutputs} from "./cnn-fusion.js";
+import {lockSourceChroma, qualityMetrics} from "./quality-metrics.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -12,6 +15,8 @@ let gpuPlainSessionPromise;
 let wasmBytesPromise;
 let gpuBytesPromise;
 let modelPromise;
+let detailModelPromise;
+const detailSessions={wasm:undefined,gpuCapture:undefined,gpuPlain:undefined};
 let activeBackend = null;
 let gpuDisabledForRun = false;
 let gpuCaptureDisabledForRun = false;
@@ -68,7 +73,16 @@ async function gpuRuntimeBytes() {
   return gpuBytesPromise;
 }
 
-async function modelBytes() {
+async function modelBytes(kind="base") {
+  if(kind==="detail"){
+    if(!detailModelPromise){
+      detailModelPromise=fetchBytes(
+        new URL("../models/realesrgan-general-x4v3.onnx",import.meta.url),
+        "Detail/fidelity CNN model",
+      );
+    }
+    return detailModelPromise;
+  }
   if (!modelPromise) {
     modelPromise = fetchBytes(
       new URL("../models/realesrgan-x4plus.onnx", import.meta.url),
@@ -120,6 +134,35 @@ async function createGpuCaptureSession() {
 async function createGpuPlainSession() {
   if (!gpuPlainSessionPromise) gpuPlainSessionPromise = gpuSessionOptions(false);
   return gpuPlainSessionPromise;
+}
+
+async function detailSessionFor(baseRuntime){
+  if(baseRuntime.backend==="wasm"){
+    if(!detailSessions.wasm){
+      detailSessions.wasm=Promise.all([wasmRuntimeBytes(),modelBytes("detail")]).then(async([wasm,model])=>{
+        ortWasm.env.wasm.numThreads=0;ortWasm.env.wasm.proxy=false;ortWasm.env.wasm.wasmBinary=wasm;
+        return ortWasm.InferenceSession.create(model,{executionProviders:["wasm"],graphOptimizationLevel:"all"});
+      });
+    }
+    return {ort:ortWasm,session:await detailSessions.wasm,backend:"wasm"};
+  }
+  if(baseRuntime.backend==="webgpu-capture"&&!gpuCaptureDisabledForRun){
+    if(!detailSessions.gpuCapture){
+      detailSessions.gpuCapture=Promise.all([gpuRuntimeBytes(),modelBytes("detail")]).then(async([wasm,model])=>{
+        ortGpu.env.wasm.numThreads=1;ortGpu.env.wasm.proxy=false;ortGpu.env.wasm.wasmBinary=wasm;
+        return ortGpu.InferenceSession.create(model,{executionProviders:["webgpu"],graphOptimizationLevel:"all",enableGraphCapture:true});
+      });
+    }
+    try{return {ort:ortGpu,session:await detailSessions.gpuCapture,backend:"webgpu-capture"};}catch{}
+  }
+  if(!detailSessions.gpuPlain){
+    detailSessions.gpuPlain=Promise.all([gpuRuntimeBytes(),modelBytes("detail")]).then(async([wasm,model])=>{
+      ortGpu.env.wasm.numThreads=1;ortGpu.env.wasm.proxy=false;ortGpu.env.wasm.wasmBinary=wasm;
+      return ortGpu.InferenceSession.create(model,{executionProviders:["webgpu"],graphOptimizationLevel:"all"});
+    });
+  }
+  try{return {ort:ortGpu,session:await detailSessions.gpuPlain,backend:"webgpu"};}
+  catch{return detailSessionFor({backend:"wasm"});}
 }
 
 async function acquireGpuSession() {
@@ -326,6 +369,8 @@ export async function warmAi(preference = "auto") {
 export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) {
   const mode = ["faithful", "balanced", "enhanced"].includes(options.mode) ? options.mode : "balanced";
   const detailQuality = ["standard","high","max"].includes(options.detailQuality) ? options.detailQuality : "high";
+  const detailCnn = options.detailCnn !== false;
+  const sourceColorLock = options.sourceColorLock !== false;
   const preserveMicrodetail = options.preserveMicrodetail !== false;
   const preserveStars = options.preserveStars !== false;
   const backend = ["auto", "webgpu", "wasm"].includes(options.backend) ? options.backend : "auto";
@@ -347,6 +392,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
 
     const classification = classifyTexture(options.texturePaths || options.texturePath || "", sourceData);
     const textureClass = classification.kind;
+    const materialInfo = classifyMaterial(options.texturePaths || options.texturePath || "", sourceData, textureClass);
+    const material = materialInfo.material;
     const effectiveQuality = textureClass === "ui" ? "standard" : detailQuality;
 
     const trivial = trivialTexture(sourceData);
@@ -362,6 +409,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
         skipped:true,
         skipReason:trivial.reason,
         textureClass,
+        material,
         detailQuality:effectiveQuality,
         elapsedMs:performance.now()-started,
         tiles:0,
@@ -394,6 +442,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
         skipped:true,
         skipReason:textureClass,
         textureClass,
+        material,
         detailQuality:"technical",
         elapsedMs:performance.now()-started,
         tiles:0,
@@ -402,7 +451,12 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
 
     const geometry = tileGeometry(effectiveQuality, textureClass);
     const runtime = await acquireSession(backend);
+    const detailRuntime = detailCnn && effectiveQuality !== "standard" && textureClass !== "ui"
+      ? await detailSessionFor(runtime).catch(()=>null)
+      : null;
     const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
+    const detailInputValues = detailRuntime ? new Float32Array(3 * MODEL_INPUT * MODEL_INPUT) : null;
+    let cnnAgreementSum=0,cnnAgreementTiles=0,detailPixels=0;
     const outputData = new ImageData(output.width, output.height);
     const weights = new Uint16Array(output.width * output.height);
     const xs=[]; for(let x=0;x<source.width;x+=geometry.step)xs.push(x);
@@ -414,7 +468,17 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       for (const x of xs) {
         const coreW = Math.min(geometry.core, source.width - x);
         const coreH = Math.min(geometry.core, source.height - y);
-        const tile = await runTile(sourceData, x, y, coreW, coreH, runtime, inputValues, geometry);
+        let tile = await runTile(sourceData, x, y, coreW, coreH, runtime, inputValues, geometry);
+        if(detailRuntime){
+          try{
+            const detailTile=await runTile(sourceData,x,y,coreW,coreH,detailRuntime,detailInputValues,geometry);
+            const fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
+            tile=fused.image;
+            cnnAgreementSum+=fused.agreement;cnnAgreementTiles++;detailPixels+=fused.detailPixels;
+          }catch{
+            // Detail CNN is optional; the x4plus result remains valid.
+          }
+        }
         blendTile(outputData, weights, tile, x*SCALE, y*SCALE, {
           overlap:geometry.overlap,
           sourceX:x,sourceY:y,
@@ -444,13 +508,23 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       detailQuality: effectiveQuality,
       textureClass,
     });
+    if(sourceColorLock && textureClass!=="normal" && textureClass!=="mask"){
+      lockSourceChroma(sourceData,outData,effectiveQuality==="max"?.82:.70);
+    }
+    const metrics=qualityMetrics(sourceData,outData,{
+      cnnAgreement:cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1,
+    });
     outputCtx.putImageData(outData, 0, 0);
     return {
       bytes:await canvasPng(output),
       ...stats,
       backend:runtime.backend,
       textureClass,
+      material,
       detailQuality:effectiveQuality,
+      detailCnnUsed:!!detailRuntime,
+      detailPixels,
+      metrics,
       elapsedMs:performance.now()-started,
       tiles:total,
     };

@@ -19,6 +19,7 @@ if os.environ.get("OPENRAC_REQUIRE_AI_ASSETS")=="1":
         root/"vendor"/"ort.webgpu.bundle.min.mjs",
         root/"vendor"/"ort-wasm-simd-threaded.asyncify.wasm",
         root/"models"/"realesrgan-x4plus.onnx",
+        root/"models"/"realesrgan-general-x4v3.onnx",
     ]:
         assert path.is_file(), f"missing AI release asset: {path}"
 files=[root/"openrac-mod.json",root/"LICENSE",root/"README.md",*scripts]

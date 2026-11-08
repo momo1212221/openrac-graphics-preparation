@@ -1,13 +1,13 @@
-Graphics preparation 0.8.0 adds High Detail CNN reconstruction without simply sharpening the image.
+Graphics preparation 0.9.0 begins the maximum-quality stack.
 
-- New Detail reconstruction control: Current look / High detail / Max detail.
-- Balanced CNN + High detail is the new default.
-- High: 16px context, 96px core, 8px overlap.
-- Max: 24px context, 80px core, 16px overlap.
-- Overlapping tiles use feather-weighted blending to remove hard tile boundaries.
-- High halves the previous post-sharpen contribution; Max disables that sharpening stage entirely.
-- Extra texture richness comes from multi-scale source residual reconstruction (fine + mid-frequency structure) blended across the 4x output.
-- Conservative texture classification: UI stays on the established path; normal maps and technical masks use safe non-generative upscaling; normal vectors are re-normalized.
-- Sky/world diffuse textures receive the chosen CNN detail reconstruction.
-- Cache keys now include adaptive-context/detail pipeline version, detail quality and texture scope.
-- Keeps WebGPU graph capture, persistent cache, exact duplicate elimination, fail-safe fallback, lighting/baker and particle authoring.
+- Adds a second bundled CNN: Real-ESRGAN General x4v3, pinned by SHA-256.
+- x4plus remains the reconstruction CNN; General-x4v3 acts as a fidelity/detail CNN.
+- Detail fusion injects only the second CNN's local high-frequency residual.
+- Per-pixel CNN disagreement reduces or removes that contribution, providing an anti-hallucination confidence gate.
+- Conservative material routing covers weapon, character, terrain, stone, metal, fabric, organic, glass, energy, sky and generic surfaces.
+- Material-specific detail gains avoid over-processing glass/energy/characters while giving stone/terrain/fabric more reconstruction.
+- Source-colour lock preserves original chroma while keeping reconstructed luminance/detail.
+- Quality guard scores colour drift, luminance drift, alpha drift, edge gain and CNN agreement.
+- Final pack metadata reports material counts, dual-CNN usage, agreement-gated detail pixels and average quality score.
+- Processing is impact-prioritized so character/weapon/terrain work reaches the persistent cache first.
+- Keeps WebGPU graph capture, WASM fallback, exact duplicate elimination, persistent cache, lighting/baker and effects authoring.

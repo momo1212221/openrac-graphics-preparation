@@ -31,6 +31,10 @@ export async function prepareTextureFailSafe(source, {
         tiles: Number(result.tiles) || 0,
         textureClass: result.textureClass ?? null,
         detailQuality: result.detailQuality ?? null,
+        material: result.material ?? null,
+        detailCnnUsed: result.detailCnnUsed === true,
+        detailPixels: Number(result.detailPixels) || 0,
+        metrics: result.metrics ?? null,
         errors,
       };
     } catch (error) {
