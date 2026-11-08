@@ -21,6 +21,20 @@ CUDA is selected automatically when available, then Apple MPS, then CPU.
 python tools/training/prepare_dataset.py /path/to/reference-assets training-data
 ```
 
+For the highest-fidelity specialized training, generate inputs from the same pinned x4plus model
+used by the runtime:
+
+```bash
+python tools/training/prepare_dataset.py /path/to/reference-assets training-data \
+  --base-model models/realesrgan-x4plus.onnx
+```
+
+In this mode each HR target patch is reduced to a PS2-like 4x-low-resolution source, padded into the
+base model's real input tensor, reconstructed through x4plus, and cropped back to the target patch.
+The specialized CNN therefore trains on the **actual base-CNN error distribution it will receive in
+OpenRAC**, rather than only on bicubic re-expansion. The dataset summary and every row record the
+base-model SHA-256.
+
 The dataset builder now protects against common training leakage:
 
 - the 90/5/5 train/validation/test split is based on the **source image content SHA-256**, not the
@@ -93,6 +107,7 @@ degraded input in RGB L1 and gradient L1. The report records:
 
 - exact model SHA-256 and byte size;
 - exact dataset manifest SHA-256;
+- training input pipeline and base-CNN SHA-256 when runtime-aligned inputs were used;
 - held-out split counts and unique source count;
 - aggregate before/after errors;
 - the worst retained examples for inspection.
