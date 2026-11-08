@@ -744,6 +744,8 @@ export async function upscaleAiMasterPng(buffer,options={},onProgress=()=>{}){
       cnnConfidence:master.metrics?.cnnConfidence??master.cnnConfidence??1,
       cnnRejectedRatio:master.metrics?.cnnRejectedRatio??master.cnnRejectedRatio??0,
     });
+    metrics.alphaEdgeCoverageDiff=Number(alphaEdges.coverageErrorPercent||0);
+    metrics.alphaEdgePixels=Number(alphaEdges.edgePixels||0);
     if(master.wrap?.x||master.wrap?.y)metrics.expectSeamless=true;
     const failures=detectOutputFailures(sourceData,finalData,metrics);
     return {
