@@ -241,7 +241,9 @@ async function createPack({ai}) {
       const previous=currentRunProgress();
       if (previous.compatible && previous.completed>0) {
         setMessage(
-          `Existing AI progress detected: ${previous.completed}/${previous.total} textures already prepared. Cached results will be verified and reused automatically.`,
+          state.persistentCache
+            ? `Existing AI progress detected: ${previous.completed}/${previous.total} textures already prepared. Cached results will be verified and reused automatically.`
+            : `Existing AI progress detected: ${previous.completed}/${previous.total} textures were prepared before, but persistent cache is disabled, so missing results will be recomputed.`,
         );
       }
     }
@@ -703,7 +705,9 @@ function render() {
   if (runProgress.compatible && runProgress.completed>0) {
     const runText=runProgress.status==="complete"
       ? `AI check: ${runProgress.completed}/${runProgress.total} textures were already prepared for this game/profile. A new export reuses verified cache entries.`
-      : `Resume available: ${runProgress.completed}/${runProgress.total} textures were already prepared before the last run stopped. Starting again continues via the persistent cache.`;
+      : state.persistentCache
+        ? `Resume available: ${runProgress.completed}/${runProgress.total} textures were already prepared before the last run stopped. Starting again continues via the persistent cache.`
+        : `Previous AI progress found: ${runProgress.completed}/${runProgress.total} textures were prepared, but persistent cache is disabled. Enable it before continuing to reuse finished results.`;
     left.append(el("p",runText,runProgress.status==="complete"?"status-ok":"info-note"));
   } else if (aiRunState && !runProgress.compatible) {
     left.append(el("p","Earlier AI progress exists for this game, but with a different quality profile. Cache entries are revalidated per texture before reuse.","info-note"));
