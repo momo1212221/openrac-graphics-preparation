@@ -8,6 +8,7 @@ import {upscalePng} from "../src/upscale.js";
 import {ZipStream} from "../src/zip.js";
 import {EffectsEditor} from "./effects.js";
 import {buildDuplicatePlan} from "../src/dedup.js";
+import {cacheGet, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, trimCache} from "../src/ai-cache.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -21,6 +22,7 @@ let textures = [];
 let busy = false;
 let aiReady = null;
 let effectsEditor = null;
+let cacheState = {available:false,total:0,entries:0};
 let state = {
   scale: 4,
   edgePreserving: true,
@@ -29,6 +31,8 @@ let state = {
   preserveMicrodetail: true,
   preserveStars: true,
   aiBackend: "auto",
+  persistentCache: true,
+  cacheBudgetMb: 2048,
 };
 
 const el = (tag, text, cls) => {
@@ -131,6 +135,9 @@ async function createPack({ai}) {
     uniqueSources: textures.length,
     duplicateScanUnverified: 0,
     aiRuns: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    cacheWrites: 0,
   };
 
   try {
@@ -202,7 +209,36 @@ async function createPack({ai}) {
       }
 
       if (ai) {
-        const prepared = await prepareTextureFailSafe(source, {
+        const cacheOptions = {
+          mode: state.aiMode,
+          preserveMicrodetail: state.preserveMicrodetail,
+          preserveStars: state.preserveStars,
+        };
+        let key = null;
+        let prepared = null;
+
+        if (state.persistentCache) {
+          const digest = await sourceDigest(source);
+          key = cacheKey(digest, cacheOptions);
+          const hit = await cacheGet(key);
+          if (hit) {
+            stats.cacheHits++;
+            prepared = {
+              bytes: hit.bytes,
+              strategy: "ai",
+              attempts: 0,
+              stars: hit.stars,
+              microdetails: hit.microdetails,
+              errors: [],
+              cached: true,
+            };
+            progress(groupIndex + 1, workGroups.length, `Cache hit · ${baseLabel}`);
+          } else {
+            stats.cacheMisses++;
+          }
+        }
+
+        if (!prepared) prepared = await prepareTextureFailSafe(source, {
           ai: () => upscaleAiPng(source, {
             mode: state.aiMode,
             preserveMicrodetail: state.preserveMicrodetail,
@@ -217,10 +253,19 @@ async function createPack({ai}) {
           retries: 1,
         });
 
+        if (prepared.strategy === "ai" && !prepared.cached && key && state.persistentCache) {
+          const cached = await cachePut(
+            key,
+            prepared,
+            Math.max(256, state.cacheBudgetMb) * 1024 * 1024,
+          );
+          if (cached) stats.cacheWrites++;
+        }
+
         if (prepared.attempts > 1) stats.retried++;
         const copies = group.members.length;
         stats[prepared.strategy] += copies;
-        if (prepared.strategy === "ai") stats.aiRuns++;
+        if (prepared.strategy === "ai" && !prepared.cached) stats.aiRuns++;
         stats.stars += prepared.stars;
         stats.microdetails += prepared.microdetails;
         if (prepared.strategy !== "ai") {
@@ -272,6 +317,9 @@ async function createPack({ai}) {
       exact_duplicates: stats.duplicateTextures,
       duplicate_scan_unverified: stats.duplicateScanUnverified,
       ai_runs: stats.aiRuns,
+      cache_hits: stats.cacheHits,
+      cache_misses: stats.cacheMisses,
+      cache_writes: stats.cacheWrites,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -290,6 +338,8 @@ async function createPack({ai}) {
         `Saved ${saved}.`,
         `${stats.ai}/${textures.length} output textures used Real-ESRGAN in ${stats.aiRuns} unique AI runs`,
         stats.duplicateTextures ? `${stats.duplicateTextures} exact duplicates reused; ${stats.duplicateTextures} repeated AI passes avoided` : "no exact duplicates found",
+        stats.cacheHits ? `${stats.cacheHits} unique sources restored from persistent AI cache` : "",
+        stats.cacheWrites ? `${stats.cacheWrites} new AI results cached for future runs` : "",
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
@@ -359,6 +409,41 @@ function render() {
     render();
   }));
   general.append(acceleration.row);
+
+  const cacheRow = settingRow(
+    "Persistent AI cache",
+    "Stores completed 4× AI results locally in the OpenRAC WebView so retries and later exports can skip Real-ESRGAN.",
+  );
+  cacheRow.control.append(toggle(state.persistentCache, "Persistent AI cache", async (value) => {
+    state.persistentCache = value;
+    await savePrefs();
+    if (value) {
+      await trimCache(Math.max(256, state.cacheBudgetMb) * 1024 * 1024);
+      cacheState = await cacheInfo();
+    }
+    render();
+  }));
+  general.append(cacheRow.row);
+
+  const cacheBudget = settingRow(
+    "AI cache budget",
+    cacheState.available
+      ? `${cacheState.entries} cached results · ${(cacheState.total / 1024 / 1024).toFixed(0)} MB currently used`
+      : "Cache availability is detected at runtime; unsupported WebViews continue without it.",
+  );
+  cacheBudget.control.append(select([
+    [512, "512 MB"],
+    [1024, "1 GB"],
+    [2048, "2 GB"],
+    [4096, "4 GB"],
+  ], state.cacheBudgetMb, async (value) => {
+    state.cacheBudgetMb = Number(value);
+    await savePrefs();
+    await trimCache(state.cacheBudgetMb * 1024 * 1024);
+    cacheState = await cacheInfo();
+    render();
+  }));
+  general.append(cacheBudget.row);
 
   const micro = settingRow("Preserve original micro-detail", "Restores source residual detail after the neural pass instead of letting the model smooth it away.");
   micro.control.append(toggle(state.preserveMicrodetail, "Preserve original micro-detail", async (value) => {
@@ -433,6 +518,15 @@ function render() {
   const fallbackButton = el("button", "Export non-AI fallback pack", "ghost advanced-action");
   fallbackButton.onclick = () => void createPack({ai: false});
   body.append(fallbackButton);
+
+  const clearCacheButton = el("button", "Clear persistent AI cache", "ghost advanced-action");
+  clearCacheButton.onclick = async () => {
+    const ok = await clearAiCache();
+    cacheState = await cacheInfo();
+    setMessage(ok ? "Persistent AI cache cleared." : "Persistent AI cache could not be cleared.", !ok);
+    render();
+  };
+  body.append(clearCacheButton);
   body.append(el("p",
     "Real-ESRGAN always receives fixed 128×128 inputs. A 112×112 core is used with 8 pixels of edge-clamped context. Large textures are processed tile-by-tile and the UI yields between tiles/textures.",
     "muted advanced-note"));
@@ -448,7 +542,7 @@ async function start() {
   effectsEditor = new EffectsEditor(controller, info, setMessage);
   await effectsEditor.start();
   document.addEventListener("graphics-effects-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.7.0 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.7.1 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -459,7 +553,13 @@ async function start() {
       preserveMicrodetail: saved.preserveMicrodetail !== false,
       preserveStars: saved.preserveStars !== false,
       aiBackend: ["auto","webgpu","wasm"].includes(saved.aiBackend) ? saved.aiBackend : "auto",
+      persistentCache: saved.persistentCache !== false,
+      cacheBudgetMb: [512,1024,2048,4096].includes(Number(saved.cacheBudgetMb)) ? Number(saved.cacheBudgetMb) : 2048,
     };
+  }
+  if (state.persistentCache) {
+    await trimCache(state.cacheBudgetMb * 1024 * 1024);
+    cacheState = await cacheInfo();
   }
   await scan();
   setMessage("Ready. Fail-safe standard OpenRAC AI path is available.");

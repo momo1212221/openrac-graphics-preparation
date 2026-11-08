@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.7.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.7.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.7.0.zip`.
+2. Install `graphics-preparation-0.7.1.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -97,3 +97,16 @@ backend. Manual WebGPU-only and WASM-only modes are available for testing.
 The release bundles both ORT execution paths locally. The WebGPU bridge stays single-threaded at the
 WASM boundary so the custom-scheme WebView never needs an external worker/module bootstrap; the
 heavy neural operators execute on WebGPU.
+
+
+## Persistent resume cache (0.7.1)
+
+When IndexedDB and Web Crypto are available, completed neural results are cached locally under the
+mod page's own OpenRAC origin. Cache keys use SHA-256 of the source PNG plus the model/pipeline and
+all output-affecting detail options. A cached result is written directly into a new texture pack
+without running Real-ESRGAN again.
+
+The cache is optional and fail-open: IndexedDB, quota or crypto failures disable it for the session
+and never stop the export. A configurable 512 MB / 1 GB / 2 GB / 4 GB LRU budget evicts old results.
+Only successful AI results are cached; 4x fallback/original outputs are intentionally not cached, so
+a future run can retry the neural path.
