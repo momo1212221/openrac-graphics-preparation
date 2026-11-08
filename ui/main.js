@@ -18,6 +18,7 @@ import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planne
 import {specializedRegistryIdentity} from "../src/specialized-models.js";
 import {buildQualityReport} from "../src/quality-report.js";
 import {aiRunStoreKey,aiRunSignature,beginAiRun,checkpointAiRun,interruptAiRun,completeAiRun,aiRunProgress} from "../src/ai-run-state.js";
+import {PauseGate} from "../src/pause-gate.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -35,6 +36,8 @@ let cacheState = {available:false,total:0,entries:0};
 let qualityLab = null;
 let aiRunState = null;
 let activeAiRun = false;
+const aiPauseGate = new PauseGate();
+let pauseButton = null;
 let state = {
   scale: 4,
   edgePreserving: true,
@@ -67,7 +70,7 @@ function setMessage(text, error = false) {
 
 function setBusy(value) {
   busy = value;
-  document.querySelectorAll("button,input,select").forEach((node) => { node.disabled = value; });
+  document.querySelectorAll("button,input,select").forEach((node) => { node.disabled = value && node.dataset.runControl !== "1"; });
 }
 
 async function savePrefs() { await controller.storeSet("texture-preparation", state); }
@@ -88,6 +91,15 @@ async function storeAiRun(next) {
 async function checkpointCurrentRun(hashes) {
   if (!aiRunState) return;
   await storeAiRun(checkpointAiRun(aiRunState, hashes));
+}
+
+async function pauseAtSafeBoundary(label) {
+  if (!aiPauseGate.requested) return;
+  if (pauseButton) pauseButton.textContent = "Resume AI graphics";
+  progress(0, 1, `Paused after checkpoint · ${label}`);
+  setMessage("AI preparation is paused at a completed texture boundary. The current ZIP stream and cached progress stay intact.");
+  await aiPauseGate.checkpoint();
+  if (pauseButton) pauseButton.textContent = "Pause AI graphics";
 }
 
 window.addEventListener("beforeunload", (event) => {
@@ -605,7 +617,10 @@ async function createPack({ai}) {
           included++;
         }
       }
-      if (ai) await checkpointCurrentRun(group.members.map((member)=>member.hash));
+      if (ai) {
+        await checkpointCurrentRun(group.members.map((member)=>member.hash));
+        await pauseAtSafeBoundary(baseLabel);
+      }
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
@@ -700,7 +715,14 @@ async function createPack({ai}) {
     const text = error instanceof Error ? error.message : String(error);
     setMessage(`Pack output stopped safely: ${text}. Completed AI textures remain cached for resume; no half-finished ZIP was kept.`, true);
   } finally {
-    if (ai) activeAiRun = false;
+    if (ai) {
+      activeAiRun = false;
+      aiPauseGate.reset();
+      if (pauseButton) {
+        pauseButton.hidden = true;
+        pauseButton.textContent = "Pause AI graphics";
+      }
+    }
     setBusy(false);
   }
 }
@@ -727,8 +749,30 @@ function render() {
     left.append(el("p","Earlier AI progress exists for this game, but with a different quality profile. Cache entries are revalidated per texture before reuse.","info-note"));
   }
   const prepareButton = el("button", "Prepare AI graphics", "primary");
-  prepareButton.onclick = () => void createPack({ai: true});
-  prepareCard.append(left, prepareButton);
+  prepareButton.onclick = () => {
+    pauseButton.hidden = false;
+    pauseButton.textContent = "Pause AI graphics";
+    void createPack({ai: true});
+  };
+  pauseButton = el("button", "Pause AI graphics");
+  pauseButton.type = "button";
+  pauseButton.dataset.runControl = "1";
+  pauseButton.hidden = true;
+  pauseButton.onclick = () => {
+    if (!activeAiRun) return;
+    if (aiPauseGate.requested) {
+      aiPauseGate.resume();
+      pauseButton.textContent = "Pause AI graphics";
+      setMessage("AI preparation resumed.");
+    } else {
+      aiPauseGate.request();
+      pauseButton.textContent = "Pause requested…";
+      setMessage("Pause requested. The current texture finishes first; pausing happens at the next safe checkpoint.");
+    }
+  };
+  const runButtons=el("div",undefined,"button-row");
+  runButtons.append(prepareButton,pauseButton);
+  prepareCard.append(left, runButtons);
   const progressWrap = el("div", undefined, "progress span");
   progressWrap.append(el("div", "Ready.", "progress-label"));
   progressWrap.firstChild.id = "progress-text";
