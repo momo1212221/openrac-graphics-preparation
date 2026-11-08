@@ -2,8 +2,8 @@
 import * as ortWasm from "../vendor/ort.wasm.bundle.min.mjs";
 import * as ortGpu from "../vendor/ort.webgpu.bundle.min.mjs";
 import {restoreSourceDetail} from "./detail.js";
-import {MODEL_INPUT, SCALE, blendTile, fillFixedRgbTile, tileGeometry} from "./ai-tile.js";
-import {trivialTexture} from "./ai-analyze.js";
+import {MODEL_INPUT, SCALE, blendTile, fillFixedRgbTile, adaptiveTileGeometry} from "./ai-tile.js";
+import {textureComplexity,trivialTexture} from "./ai-analyze.js";
 import {classifyTexture} from "./texture-classify.js";
 import {classifyMaterial} from "./material-classify.js";
 import {fuseCnnOutputs} from "./cnn-fusion.js";
@@ -547,7 +547,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       };
     }
 
-    const geometry = tileGeometry(effectiveQuality, textureClass);
+    const complexity=textureComplexity(sourceData);
+    const geometry = adaptiveTileGeometry(effectiveQuality, textureClass, complexity);
     const runtime = await acquireSession(backend);
     const detailRuntime = detailCnn && effectiveQuality !== "standard" && textureClass !== "ui"
       ? await detailSessionFor(runtime).catch(()=>null)
@@ -681,6 +682,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       materialInfo,
       elapsedMs:performance.now()-started,
       tiles:total,
+      textureComplexity:complexity,
+      tileGeometry:geometry.name,
     };
   } finally {
     if (typeof image.close === "function") image.close();
