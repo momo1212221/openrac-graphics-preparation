@@ -12,6 +12,7 @@ import {detectTextureWrap} from "./seam.js";
 import {detectOutputFailures} from "./failure-detect.js";
 import {resizePng,upscalePng} from "./upscale.js";
 import {acceptSpecializedRefinement,specializedModelFor,verifySpecializedModelBytes} from "./specialized-models.js";
+import {reconstructAlphaEdges} from "./alpha-reconstruct.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -594,20 +595,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       }
     }
     outputCtx.putImageData(outputData,0,0);
-
-    const alpha = document.createElement("canvas");
-    alpha.width = output.width;
-    alpha.height = output.height;
-    const alphaCtx = alpha.getContext("2d");
-    alphaCtx.imageSmoothingEnabled = true;
-    alphaCtx.imageSmoothingQuality = "high";
-    alphaCtx.drawImage(source, 0, 0, alpha.width, alpha.height);
-    outputCtx.save();
-    outputCtx.globalCompositeOperation = "destination-in";
-    outputCtx.drawImage(alpha, 0, 0);
-    outputCtx.restore();
-
     let outData = outputCtx.getImageData(0, 0, output.width, output.height);
+    const alphaEdges = reconstructAlphaEdges(sourceData,outData);
     const stats = restoreSourceDetail(sourceData, outData, mode, preserveMicrodetail, preserveStars, {
       detailQuality: effectiveQuality,
       textureClass,
@@ -676,6 +665,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       specializedCnnUsed,
       specializedRejected,
       specializedModelSha,
+      alphaEdges,
       metrics,
       failures,
       classification,
@@ -714,6 +704,15 @@ async function imageDataFromPng(buffer){
   }finally{if(typeof image.close==="function")image.close();}
 }
 
+async function imageDataPng(imageData){
+  const canvas=document.createElement("canvas");
+  canvas.width=imageData.width;canvas.height=imageData.height;
+  const ctx=canvas.getContext("2d",{alpha:true});
+  if(!ctx)throw new Error("2D image processing is unavailable");
+  ctx.putImageData(imageData,0,0);
+  return canvasPng(canvas);
+}
+
 /**
  * Selective 8x internal master path.
  * Important small/medium assets are first expanded 2x, reconstructed 4x by the CNN (8x original),
@@ -734,8 +733,10 @@ export async function upscaleAiMasterPng(buffer,options={},onProgress=()=>{}){
       master8x:false,
       detailQuality:"max",
     },onProgress);
-    const finalBytes=await resizePng(master.bytes,dims.width*4,dims.height*4,{smoothing:true});
+    let finalBytes=await resizePng(master.bytes,dims.width*4,dims.height*4,{smoothing:true});
     const [sourceData,finalData]=await Promise.all([imageDataFromPng(buffer),imageDataFromPng(finalBytes)]);
+    const alphaEdges=reconstructAlphaEdges(sourceData,finalData);
+    finalBytes=await imageDataPng(finalData);
     const metrics=qualityMetrics(sourceData,finalData,{
       cnnAgreement:master.metrics?.cnnAgreement??1,
       cnnConfidence:master.metrics?.cnnConfidence??master.cnnConfidence??1,
@@ -746,6 +747,7 @@ export async function upscaleAiMasterPng(buffer,options={},onProgress=()=>{}){
     return {
       ...master,
       bytes:finalBytes,
+      alphaEdges,
       metrics,
       failures,
       masterScale:8,
