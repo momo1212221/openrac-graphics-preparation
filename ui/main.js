@@ -355,6 +355,7 @@ async function createPack({ai}) {
               specializedCnnUsed:hit.specializedCnnUsed,
               specializedRejected:hit.specializedRejected,
               specializedModelSha:hit.specializedModelSha,
+              alphaEdges:hit.alphaEdges,
               errors: [],
               cached: true,
             };
@@ -546,6 +547,7 @@ async function createPack({ai}) {
             specializedCnnUsed:prepared.specializedCnnUsed,
             specializedRejected:prepared.specializedRejected,
             specializedModelSha:prepared.specializedModelSha,
+            alphaEdges:prepared.alphaEdges,
             metrics:prepared.metrics,
             failures:prepared.failures,
           });
