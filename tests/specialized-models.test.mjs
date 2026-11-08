@@ -18,11 +18,20 @@ test('missing or incompatible registry fails open',()=>{
 });
 
 test('specialized refinement is accepted only inside strict QA guardrails',()=>{
-  const base={score:80,hallucinationScore:20,colorDrift:5};
-  assert.equal(acceptSpecializedRefinement(base,{score:79,hallucinationScore:23,colorDrift:7}),true);
-  assert.equal(acceptSpecializedRefinement(base,{score:78.9,hallucinationScore:20,colorDrift:5}),false);
-  assert.equal(acceptSpecializedRefinement(base,{score:82,hallucinationScore:24,colorDrift:5}),false);
-  assert.equal(acceptSpecializedRefinement(base,{score:82,hallucinationScore:20,colorDrift:7.1}),false);
+  const base={
+    score:80,hallucinationScore:20,colorDrift:5,lumaDrift:4,
+    ssim:.82,psnr:28,edgeGain:1.2,alphaCoverageDiff:0,
+  };
+  assert.equal(acceptSpecializedRefinement(base,{
+    score:79.5,hallucinationScore:22,colorDrift:6.4,lumaDrift:5,
+    ssim:.815,psnr:27.2,edgeGain:1.3,alphaCoverageDiff:.5,
+  }),true);
+  assert.equal(acceptSpecializedRefinement(base,{...base,score:79.2}),false);
+  assert.equal(acceptSpecializedRefinement(base,{...base,hallucinationScore:22.1}),false);
+  assert.equal(acceptSpecializedRefinement(base,{...base,colorDrift:6.6}),false);
+  assert.equal(acceptSpecializedRefinement(base,{...base,ssim:.809}),false);
+  assert.equal(acceptSpecializedRefinement(base,{...base,psnr:26.9}),false);
+  assert.equal(acceptSpecializedRefinement(base,{...base,edgeGain:1.6}),false);
 });
 
 
