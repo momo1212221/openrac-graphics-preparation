@@ -251,7 +251,11 @@ export class EffectsEditor {
 
       const copy=node("button","Copy position","ghost");
       copy.type="button";
-      copy.onclick=()=>{this.positionClipboard=[...p.position];this.setMessage(`Copied effect position X ${p.position[0]} · Y ${p.position[1]} · Z ${p.position[2]}`)};
+      copy.onclick=()=>{
+        this.positionClipboard=[...p.position];
+        this.setMessage(`Copied effect position X ${p.position[0]} · Y ${p.position[1]} · Z ${p.position[2]}`);
+        document.dispatchEvent(new CustomEvent("graphics-effects-change"));
+      };
       placementActions.append(copy);
 
       const paste=node("button","Paste position","ghost");
