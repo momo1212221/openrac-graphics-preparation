@@ -36,7 +36,7 @@ export function lockSourceChroma(source,output,strength=.7){
 
 export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAgreement,cnnRejectedRatio=0}={}){
   const sx=output.width/source.width,sy=output.height/source.height;
-  let colorDrift=0,lumaDrift=0,alphaDiff=0,sourceEdge=0,outEdge=0,n=0;
+  let colorDrift=0,lumaDrift=0,alphaDiff=0,sourceEdge=0,outEdge=0,squaredRgbError=0,n=0;
   let srcVisible=0,outVisible=0,sumS=0,sumO=0,sumSS=0,sumOO=0,sumSO=0;
   const srcHist=new Uint32Array(16),outHist=new Uint32Array(16);
   for(let y=0;y<source.height;y++)for(let x=0;x<source.width;x++){
@@ -51,6 +51,9 @@ export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAg
     colorDrift+=(Math.abs(scb-ocb)+Math.abs(scr-ocr))*.5;
     lumaDrift+=Math.abs(sl-ol);
     alphaDiff+=Math.abs(source.data[si+3]-output.data[oi+3]);
+    squaredRgbError+=(source.data[si]-output.data[oi])**2+
+      (source.data[si+1]-output.data[oi+1])**2+
+      (source.data[si+2]-output.data[oi+2])**2;
     if(source.data[si+3]>=16)srcVisible++;
     if(output.data[oi+3]>=16)outVisible++;
     srcHist[Math.min(15,Math.floor(sl/16))]++;
@@ -65,6 +68,8 @@ export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAg
     }
     n++;
   }
+  const mse=n?squaredRgbError/(n*3):0;
+  const psnr=mse>0?10*Math.log10((255*255)/mse):99;
   const edgeGain=sourceEdge>0?outEdge/sourceEdge:1;
   const meanColor=n?colorDrift/n:0,meanLuma=n?lumaDrift/n:0,meanAlpha=n?alphaDiff/n:0;
   let histogramDrift=0;
@@ -115,6 +120,7 @@ export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAg
     cnnConfidence:Number(confidence.toFixed(3)),
     cnnRejectedRatio:Number(rejected.toFixed(3)),
     ssim:Number(clamp(ssim,-1,1).toFixed(4)),
+    psnr:Number(Math.min(99,psnr).toFixed(2)),
     hallucinationScore:Number(hallucinationScore.toFixed(1)),
     seamScore:Number(seamScore.toFixed(2)),
   };
