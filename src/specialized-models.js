@@ -20,9 +20,20 @@ export function normalizeSpecializedRegistry(value){
 
 export function acceptSpecializedRefinement(base,candidate){
   if(!base||!candidate)return false;
-  return Number(candidate.score)>=Number(base.score)-1
-    && Number(candidate.hallucinationScore)<=Number(base.hallucinationScore)+3
-    && Number(candidate.colorDrift)<=Number(base.colorDrift)+2;
+  const scoreOk=Number(candidate.score)>=Number(base.score)-.75;
+  const hallucinationOk=Number(candidate.hallucinationScore)<=Number(base.hallucinationScore)+2;
+  const colorOk=Number(candidate.colorDrift)<=Number(base.colorDrift)+1.5;
+  const lumaOk=base.lumaDrift===undefined||candidate.lumaDrift===undefined||
+    Number(candidate.lumaDrift)<=Number(base.lumaDrift)+2;
+  const ssimOk=base.ssim===undefined||candidate.ssim===undefined||
+    Number(candidate.ssim)>=Number(base.ssim)-.01;
+  const psnrOk=base.psnr===undefined||candidate.psnr===undefined||
+    Number(candidate.psnr)>=Number(base.psnr)-1;
+  const edgeOk=base.edgeGain===undefined||candidate.edgeGain===undefined||
+    Number(candidate.edgeGain)<=Math.max(Number(base.edgeGain)*1.15,Number(base.edgeGain)+.25);
+  const alphaOk=base.alphaCoverageDiff===undefined||candidate.alphaCoverageDiff===undefined||
+    Number(candidate.alphaCoverageDiff)<=Number(base.alphaCoverageDiff)+1;
+  return scoreOk&&hallucinationOk&&colorOk&&lumaOk&&ssimOk&&psnrOk&&edgeOk&&alphaOk;
 }
 
 export async function specializedRegistry(){
