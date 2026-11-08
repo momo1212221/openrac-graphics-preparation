@@ -173,3 +173,31 @@ test('weapon emissive regions are detected before albedo cleanup and remain prot
  )/3;
  assert.ok(delta<20);
 });
+
+
+test('production height pipeline validation rejects metadata drift',()=>{
+ const src=image(12,12,(x,y)=>[85+x*4,82+y*3,78+(x+y)%3,255]);
+ const maps=deriveMaterialMaps(src,'stone');
+ let quality=validateMaterialMaps(maps);
+ assert.equal(quality.heightPipelineValidation.ok,true);
+ assert.equal(quality.heightPipelineValidation.version,2);
+
+ maps.heightPipeline={...maps.heightPipeline,version:1};
+ quality=validateMaterialMaps(maps);
+ assert.equal(quality.ok,false);
+ assert.ok(quality.issues.includes('height-pipeline-version'));
+
+ maps.heightPipeline={...maps.heightPipeline,version:2,order:['upscaled-diffuse','height-merge']};
+ quality=validateMaterialMaps(maps);
+ assert.ok(quality.issues.includes('height-pipeline-order'));
+});
+
+test('curvature metadata must match the actual optional sidecar',()=>{
+ const src=image(10,10,(x,y)=>[100+x*2,94+y*2,88,255]);
+ const maps=deriveMaterialMaps(src,'metal',{curvature:false});
+ let quality=validateMaterialMaps(maps);
+ assert.equal(quality.heightPipelineValidation.ok,true);
+ maps.heightPipeline={...maps.heightPipeline,curvatureEnabled:true};
+ quality=validateMaterialMaps(maps);
+ assert.ok(quality.issues.includes('curvature-stage-mismatch'));
+});
