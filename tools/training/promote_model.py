@@ -35,6 +35,8 @@ def main():
         "l1_improvement":report["l1_improvement"],
         "gradient_improvement":report["gradient_improvement"],
         "dataset_manifest_sha256":report.get("dataset_manifest_sha256"),
+        "dataset_input_pipeline":report.get("dataset_input_pipeline"),
+        "base_model_sha256":report.get("base_model_sha256"),
         "validation_pairs":report.get("pairs"),
         "validation_sources":report.get("unique_sources"),
     }
