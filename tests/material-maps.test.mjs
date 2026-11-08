@@ -158,3 +158,18 @@ test('curvature can be disabled while required material sidecars remain availabl
  assert.ok(maps.height&&maps.normal&&maps.ao&&maps.roughness);
  assert.equal(maps.pbrValidation.ok,true);
 });
+
+
+test('weapon emissive regions are detected before albedo cleanup and remain protected',()=>{
+ const src=image(32,12,(x)=>x<16?[55,50,45,255]:[250,80,20,255]);
+ const maps=deriveMaterialMaps(src,'weapon');
+ assert.ok(maps.emissivePixels>0);
+ const i=(6*32+24)*4;
+ const source=[250,80,20];
+ const delta=(
+   Math.abs(maps.albedo.data[i]-source[0])+
+   Math.abs(maps.albedo.data[i+1]-source[1])+
+   Math.abs(maps.albedo.data[i+2]-source[2])
+ )/3;
+ assert.ok(delta<20);
+});
