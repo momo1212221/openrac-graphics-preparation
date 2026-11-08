@@ -556,7 +556,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       : null;
     const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
     const detailInputValues = detailRuntime ? new Float32Array(3 * MODEL_INPUT * MODEL_INPUT) : null;
-    let cnnAgreementSum=0,cnnConfidenceSum=0,cnnAgreementTiles=0,detailPixels=0,rejectedDetailPixels=0,consideredDetailPixels=0;
+    let cnnAgreementSum=0,cnnConfidenceSum=0,cnnAgreementTiles=0,detailPixels=0,rejectedDetailPixels=0,consideredDetailPixels=0,lowConfidencePixels=0,cnnConfidenceP10=1;
     const outputData = new ImageData(output.width, output.height);
     const weights = new Uint16Array(output.width * output.height);
     const xs=[]; for(let x=0;x<source.width;x+=geometry.step)xs.push(x);
@@ -578,8 +578,10 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
             cnnConfidenceSum+=fused.confidence??fused.agreement;
             cnnAgreementTiles++;
             detailPixels+=fused.detailPixels;
-            rejectedDetailPixels+=fused.rejectedPixels||0; 
+            rejectedDetailPixels+=fused.rejectedPixels||0;
             consideredDetailPixels+=fused.consideredPixels||0;
+            lowConfidencePixels+=fused.lowConfidencePixels||0;
+            cnnConfidenceP10=Math.min(cnnConfidenceP10,Number(fused.confidenceP10??1));
           }catch{
             // Detail CNN is optional; the x4plus result remains valid.
           }
@@ -603,6 +605,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       material,
     });
     const cnnRejectedRatio=consideredDetailPixels?rejectedDetailPixels/consideredDetailPixels:0;
+    const cnnLowConfidenceRatio=consideredDetailPixels?lowConfidencePixels/consideredDetailPixels:0;
     const agreement=cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1;
     const confidence=cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1;
     const baseline=new ImageData(new Uint8ClampedArray(outData.data),outData.width,outData.height);
@@ -618,10 +621,10 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
           const candidate=refined.image;
           if(sourceColorLock)lockSourceChroma(sourceData,candidate,.82);
           const baseMetrics=qualityMetrics(sourceData,baseline,{
-            cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,
+            cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,cnnLowConfidenceRatio,cnnConfidenceP10,
           });
           const candidateMetrics=qualityMetrics(sourceData,candidate,{
-            cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,
+            cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,cnnLowConfidenceRatio,cnnConfidenceP10,
           });
           if(acceptSpecializedRefinement(baseMetrics,candidateMetrics)){
             outData=candidate;
@@ -644,6 +647,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       cnnAgreement:agreement,
       cnnConfidence:confidence,
       cnnRejectedRatio,
+      cnnLowConfidenceRatio,
+      cnnConfidenceP10,
     });
     metrics.alphaEdgeCoverageDiff=Number(alphaEdges.coverageErrorPercent||0);
     metrics.alphaEdgePixels=Number(alphaEdges.edgePixels||0);
@@ -743,6 +748,8 @@ export async function upscaleAiMasterPng(buffer,options={},onProgress=()=>{}){
       cnnAgreement:master.metrics?.cnnAgreement??1,
       cnnConfidence:master.metrics?.cnnConfidence??master.cnnConfidence??1,
       cnnRejectedRatio:master.metrics?.cnnRejectedRatio??master.cnnRejectedRatio??0,
+      cnnLowConfidenceRatio:master.metrics?.cnnLowConfidenceRatio??master.cnnLowConfidenceRatio??0,
+      cnnConfidenceP10:master.metrics?.cnnConfidenceP10??master.cnnConfidenceP10??1,
     });
     metrics.alphaEdgeCoverageDiff=Number(alphaEdges.coverageErrorPercent||0);
     metrics.alphaEdgePixels=Number(alphaEdges.edgePixels||0);
