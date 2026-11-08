@@ -25,12 +25,22 @@ export function refinedDetailQuality(result={},initial="high"){
   if(result.textureClass==="sky")return initial==="max"?"high":initial;
   const metrics=result.metrics||{};
   if(metrics.score===undefined)return initial;
-  if(metrics.cnnAgreement<.48||metrics.colorDrift>20||metrics.edgeGain>3.1)return "standard";
+  const unsafe=
+    Number(metrics.cnnAgreement)<.48||
+    Number(metrics.colorDrift)>20||
+    Number(metrics.edgeGain)>3.1||
+    Number(metrics.hallucinationScore)>65||
+    Number(metrics.alphaCoverageDiff)>6||
+    (metrics.ssim!==undefined&&Number(metrics.ssim)<.55);
+  if(unsafe)return "standard";
   if(Number(metrics.score)<55)return "standard";
   if(
     initial==="high" &&
     Number(metrics.score)>=82 &&
     Number(metrics.cnnAgreement)>=.78 &&
+    Number(metrics.hallucinationScore??0)<=35 &&
+    Number(metrics.alphaCoverageDiff??0)<=2 &&
+    (metrics.ssim===undefined||Number(metrics.ssim)>=.78) &&
     DETAIL_MATERIALS.has(result.material)
   )return "max";
   return initial;
