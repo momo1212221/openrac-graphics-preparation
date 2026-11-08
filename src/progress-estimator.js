@@ -65,7 +65,7 @@ export class ProgressEstimator{
         this.lastSampleAt=now;
         this.lastSampleFraction=fraction;
       }
-    }else if(!sampleRate && fraction>=this.lastSampleFraction){
+    }else if(!sampleRate && fraction>this.lastSampleFraction){
       // Cache hits/skips advance visible progress but must not look like GPU throughput.
       this.lastSampleAt=now;
       this.lastSampleFraction=fraction;
