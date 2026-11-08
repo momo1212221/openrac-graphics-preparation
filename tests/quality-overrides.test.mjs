@@ -10,6 +10,8 @@ test('per-texture quality override controls batch detail quality and No-AI bypas
  assert.match(code,/override\.quality === "no-ai"/);
  assert.match(code,/backend: "manual-no-ai"/);
  assert.match(code,/detailQuality: effectiveDetailQuality/);
+ assert.match(code,/automaticDetailQuality/);
+ assert.match(code,/refinedDetailQuality/);
 });
 
 test('Quality Lab exposes material-map preview and per-hash quality selection',()=>{
