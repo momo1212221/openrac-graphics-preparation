@@ -250,7 +250,7 @@ export async function exportEffectsMod(controller, info, state, levels) {
       author:"Moritz Wallinger",
       description:"Authored runtime lights and particle effects made with Graphics preparation.",
       license:"GPL-3.0-or-later",
-      api:"1.14",
+      api:"1.1",
       type:"script",
       scripts:["main.luau"],
       assets:"assets",

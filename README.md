@@ -55,3 +55,21 @@ verifies the model SHA-256, then packages the runtime, WASM and model into the r
 
 GPL-3.0-or-later for this mod's code. Third-party runtime/model components keep their own licenses.
 No game/disc assets are included.
+
+
+## Lighting, baker and effects (0.6)
+
+Graphics preparation also authors standard Enhanced graphics data:
+
+- runtime point/spot lights in `assets/object-lights.json`;
+- bake-only rectangular lights and GI/probe settings in `probe-bake.json`;
+- particle presets in `graphics-effects.tsv`.
+
+The point/spot lights are read by the official Enhanced renderer from normal mod assets. Particle
+rows are played by **Graphics Effects Runtime**, a normal OpenRAC native mod built against SDK
+1.14.2. It uses props and haze through the public API; it is not a launcher fork.
+
+The stock Mod Tool API deliberately cannot overwrite extracted level source or launch the native
+baker. Therefore **Export baker profile** saves the selected level's merged `probe-bake.json`;
+place it in that exported level and run **Enhanced graphics -> Prepare lighting**. Runtime
+point/spot lights and particle effects do not need a bake.

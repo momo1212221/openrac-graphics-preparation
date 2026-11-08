@@ -1,0 +1,18 @@
+# Graphics Effects Runtime
+
+A normal native OpenRAC mod used by Graphics preparation's particle/effect authoring.
+
+It uses only the official OpenRAC Mod API:
+
+- prop_create / prop_pose / prop_remove for rendered particle meshes;
+- haze_set for heat haze;
+- loaded_level to select level-authored emitters;
+- plugins_folder to read graphics-effects.tsv files from installed authored effect mods.
+
+No launcher fork, service, filesystem bridge or external executable is required.
+
+The companion Graphics preparation page exports a small script/data mod containing
+assets/object-lights.json and graphics-effects.tsv. Enhanced graphics reads the authored
+point/spot lights directly; this runtime reads only the particle/haze rows.
+
+Particles are capped at 192 live props to stay below OpenRAC's shared 256-prop limit.

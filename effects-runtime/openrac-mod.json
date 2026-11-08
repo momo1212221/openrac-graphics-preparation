@@ -1,0 +1,19 @@
+{
+  "format": 2,
+  "id": "graphics-effects-runtime",
+  "name": "Graphics Effects Runtime",
+  "version": "0.1.0",
+  "author": "Moritz Wallinger",
+  "description": "Runtime for particle, glow and haze effects authored by Graphics preparation. Uses only the official OpenRAC mod API.",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/momo1212221/openrac-graphics-preparation",
+  "api": "1.14",
+  "games": {
+    "rac1": ["pal", "ntsc", "pal1", "jp"],
+    "rac2": ["ntsc", "pal", "ntsc2"],
+    "rac3": ["ntsc", "pal"],
+    "rac4": ["ntsc"]
+  },
+  "assets": "assets",
+  "multiplayer": "cosmetic"
+}
