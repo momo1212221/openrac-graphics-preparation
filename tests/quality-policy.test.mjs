@@ -4,7 +4,7 @@ import {QUALITY_POLICY_VERSION,QUALITY_TARGETS,chooseBetterQuality,evaluateQuali
 
 const safe=(score,extra={})=>({
   score,colorDrift:4,lumaDrift:5,alphaDrift:0,alphaCoverageDiff:0,
-  cnnAgreement:.9,cnnConfidence:.85,cnnRejectedRatio:.05,edgeGain:1.2,
+  cnnAgreement:.9,cnnConfidence:.85,cnnRejectedRatio:.05,cnnLowConfidenceRatio:.05,cnnConfidenceP10:.5,edgeGain:1.2,
   ssim:.94,hallucinationScore:8,...extra,
 });
 
@@ -57,7 +57,7 @@ test('highest passing tier respects the render tier cap',()=>{
   assert.equal(highestPassingQuality(safe(95),{textureClass:'diffuse',material:'stone'},'max'),'high');
   assert.equal(highestPassingQuality(safe(92),{textureClass:'diffuse',material:'stone'},'high'),'standard');
   assert.equal(highestPassingQuality(safe(89),{textureClass:'diffuse',material:'stone'},'max'),null);
-  assert.equal(QUALITY_POLICY_VERSION,'90-94-97-v3-alpha');
+  assert.equal(QUALITY_POLICY_VERSION,'90-94-97-v4-regional');
 });
 
 
@@ -109,4 +109,14 @@ test('alpha edge coverage is part of the strict tier gate',()=>{
     detailQuality:'standard',textureClass:'diffuse',material:'character'
   });
   assert.equal(reject.verdict,'reject');
+});
+
+
+test('regional confidence is part of strict tier gate',()=>{
+  const weak=evaluateQuality(safe(97,{cnnLowConfidenceRatio:.7,cnnConfidenceP10:.08}),{
+    detailQuality:'max',textureClass:'diffuse',material:'weapon'
+  });
+  assert.equal(weak.verdict,'retry');
+  assert.ok(weak.reasons.includes('regional low-confidence area'));
+  assert.ok(weak.reasons.includes('weak regional confidence floor'));
 });
