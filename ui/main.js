@@ -471,7 +471,7 @@ async function createPack({ai}) {
 
         if (state.qualityGuard && prepared.metrics?.score!==undefined) {
           const policy=evaluateQuality(prepared.metrics,prepared);
-          if((policy.fallback || prepared.failures?.ok===false) && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped){
+          if((policy.verdict!=="pass" || prepared.failures?.ok===false) && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped){
             prepared.bytes=await upscalePng(source,4,true);
             prepared.strategy="fallback";
             prepared.backend="quality-guard-fallback";
@@ -794,13 +794,13 @@ function render() {
 
   const detailRow = settingRow(
     "Detail reconstruction",
-    "Auto selects Current/High/Max per texture; detail comes from source structure and CNN context, not extra sharpening.",
+    "Auto selects Standard/High/Max per texture with strict quality targets of 90/94/97; detail comes from source structure and CNN context, not extra sharpening.",
   );
   detailRow.control.append(select([
     ["auto", "Auto · per texture"],
-    ["standard", "Current look · fastest"],
-    ["high", "High detail"],
-    ["max", "Max detail · most context"],
+    ["standard", "Standard · quality ≥90"],
+    ["high", "High · quality ≥94"],
+    ["max", "Max · quality ≥97"],
   ], state.detailQuality, async (value) => {
     state.detailQuality = value;
     await savePrefs();
@@ -837,7 +837,7 @@ function render() {
 
   const guard = settingRow(
     "Quality guard",
-    "Scores colour drift, luminance drift, alpha, CNN agreement and excessive edge gain; suspicious outputs are reported.",
+    "Enforces Standard ≥90, High ≥94 and Max ≥97 plus fidelity, CNN-confidence and hallucination limits. Failed AI output is retried conservatively, then rejected to safe 4× fallback.",
   );
   guard.control.append(toggle(state.qualityGuard, "Quality guard", async(value)=>{
     state.qualityGuard=value;await savePrefs();render();
