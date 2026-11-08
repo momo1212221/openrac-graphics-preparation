@@ -17,7 +17,12 @@ const field=(label,value,onchange,{type="number",step="0.1",min,max}={})=>{
   input.type=type;
   input.value=String(value);
   if(type==="number"){input.step=step;if(min!==undefined)input.min=min;if(max!==undefined)input.max=max}
-  input.onchange=()=>onchange(type==="number"?Number(input.value):input.value);
+  input.onchange=()=>{
+    if(type!=="number"){onchange(input.value);return}
+    const next=input.valueAsNumber;
+    if(!Number.isFinite(next)){input.value=String(value);return}
+    onchange(next);
+  };
   wrap.append(input);return wrap;
 };
 const vecFields=(title,value,onchange)=>{
@@ -110,11 +115,10 @@ export class EffectsEditor {
       rain:{preset:"rain",colour:[0.6,0.75,1],alpha:0.55,rate:45,life:1.5,size:0.05,speed:12,spread:5,gravity:-14},
       "heat-haze":{preset:"heat-haze",colour:[1,1,1],alpha:0,rate:0,life:1,size:0,speed:0,spread:0,gravity:0,hazeRadius:3,hazeStrength:0.35},
     };
-    const anchor=this.selectedPlacementInstance();
     this.state.particles.push(normalizeParticle({
       level:this.state.selectedLevel,
       ...presets[preset],
-      ...(anchor?.position?{position:[...anchor.position],placement:"object",anchorObject:anchor.key}:{placement:"unplaced"}),
+      placement:"unplaced",
     }));
     void this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"));
   }

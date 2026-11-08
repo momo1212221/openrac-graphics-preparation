@@ -316,7 +316,7 @@ export function particleConfig(state, levels) {
     "# OpenRAC Graphics Effects Runtime v1",
     "# level\tpreset\tx\ty\tz\tr\tg\tb\ta\trate\tlife\tsize\tspeed\tspread\tgravity\thazeRadius\thazeStrength",
   ];
-  for (const raw of state.particles) {
+  for (const raw of state?.particles || []) {
     const p = normalizeParticle(raw);
     const level = numberByDir.get(p.level);
     if (!Number.isInteger(level) || p.placement === "unplaced") continue;
