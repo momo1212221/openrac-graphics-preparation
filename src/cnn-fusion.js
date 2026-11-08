@@ -133,4 +133,3 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
 }
 
 export const CNN_FUSION_PROFILES=MATERIAL_PROFILE;
-}
