@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.7.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.7.2 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.7.1.zip`.
+2. Install `graphics-preparation-0.7.2.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -110,3 +110,11 @@ The cache is optional and fail-open: IndexedDB, quota or crypto failures disable
 and never stop the export. A configurable 512 MB / 1 GB / 2 GB / 4 GB LRU budget evicts old results.
 Only successful AI results are cached; 4x fallback/original outputs are intentionally not cached, so
 a future run can retry the neural path.
+
+
+## Lossless trivial-texture bypass (0.7.2)
+
+Before neural inference, decoded source pixels are checked for two exact cases: every pixel is fully
+transparent, or every RGBA pixel is identical. Those textures contain no detail for Real-ESRGAN to
+reconstruct, so they are enlarged directly with no smoothing. No approximate variance threshold is
+used; any visible colour/detail variation stays on the AI path.

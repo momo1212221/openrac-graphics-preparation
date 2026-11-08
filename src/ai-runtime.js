@@ -3,6 +3,7 @@ import * as ortWasm from "../vendor/ort.wasm.bundle.min.mjs";
 import * as ortGpu from "../vendor/ort.webgpu.bundle.min.mjs";
 import {restoreSourceDetail} from "./detail.js";
 import {CORE, MODEL_INPUT, PAD, SCALE, fillFixedRgbTile} from "./ai-tile.js";
+import {trivialTexture} from "./ai-analyze.js";
 
 let wasmSessionPromise;
 let gpuSessionPromise;
@@ -295,6 +296,22 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     output.width = source.width * SCALE;
     output.height = source.height * SCALE;
     const outputCtx = output.getContext("2d", {alpha:true, willReadFrequently:true});
+
+    const trivial = trivialTexture(sourceData);
+    if (trivial.trivial) {
+      outputCtx.imageSmoothingEnabled = false;
+      outputCtx.clearRect(0, 0, output.width, output.height);
+      outputCtx.drawImage(source, 0, 0, output.width, output.height);
+      return {
+        bytes: await canvasPng(output),
+        stars: 0,
+        microdetails: 0,
+        backend: "trivial",
+        skipped: true,
+        skipReason: trivial.reason,
+      };
+    }
+
     const runtime = await acquireSession(backend);
     const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
 

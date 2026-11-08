@@ -24,6 +24,9 @@ export async function prepareTextureFailSafe(source, {
         attempts: attempt + 1,
         stars: result.stars ?? 0,
         microdetails: result.microdetails ?? 0,
+        backend: result.backend ?? null,
+        skipped: result.skipped === true,
+        skipReason: result.skipReason ?? null,
         errors,
       };
     } catch (error) {

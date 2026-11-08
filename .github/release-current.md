@@ -1,11 +1,8 @@
-Graphics preparation 0.7.1 adds persistent resume/cache on top of WebGPU and exact duplicate elimination.
+Graphics preparation 0.7.2 adds a lossless trivial-texture bypass.
 
-- Successful Real-ESRGAN results are cached locally in IndexedDB when the standard OpenRAC WebView supports it.
-- SHA-256 source digest + pinned model/pipeline + profile/microdetail/stars options form the cache key.
-- A later export or an interrupted/retried run can reuse completed 4x AI results without re-running inference.
-- Exact duplicates are still collapsed before cache lookup, so one cache hit can serve multiple OpenRAC hashes.
-- Configurable 512 MB / 1 GB / 2 GB / 4 GB cache budget with LRU eviction.
-- Quota/IndexedDB/WebCrypto failures are fail-open: caching disables itself and the normal AI export continues.
-- Only successful AI output is cached; degraded 4x/original fallbacks are not persisted.
-- Adds a Clear persistent AI cache action.
-- Keeps Auto WebGPU -> WASM fallback and all 0.6 lighting/baker/effects features.
+- Fully transparent textures skip Real-ESRGAN.
+- Exactly uniform RGBA textures skip Real-ESRGAN.
+- The bypass is exact, not heuristic: any visible pixel variation stays on the neural path.
+- Bypassed textures use direct unsmoothed 4x enlargement, preserving their source content exactly.
+- Final stats report how many outputs avoided AI through this fast path.
+- Keeps WebGPU -> WASM Auto acceleration, persistent resume cache, exact duplicate elimination and all fail-safe/light/baker/effects features.

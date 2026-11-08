@@ -138,6 +138,7 @@ async function createPack({ai}) {
     cacheHits: 0,
     cacheMisses: 0,
     cacheWrites: 0,
+    smartSkipped: 0,
   };
 
   try {
@@ -253,7 +254,7 @@ async function createPack({ai}) {
           retries: 1,
         });
 
-        if (prepared.strategy === "ai" && !prepared.cached && key && state.persistentCache) {
+        if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped && key && state.persistentCache) {
           const cached = await cachePut(
             key,
             prepared,
@@ -265,7 +266,8 @@ async function createPack({ai}) {
         if (prepared.attempts > 1) stats.retried++;
         const copies = group.members.length;
         stats[prepared.strategy] += copies;
-        if (prepared.strategy === "ai" && !prepared.cached) stats.aiRuns++;
+        if (prepared.strategy === "ai" && prepared.skipped) stats.smartSkipped += copies;
+        if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
         stats.stars += prepared.stars;
         stats.microdetails += prepared.microdetails;
         if (prepared.strategy !== "ai") {
@@ -320,6 +322,7 @@ async function createPack({ai}) {
       cache_hits: stats.cacheHits,
       cache_misses: stats.cacheMisses,
       cache_writes: stats.cacheWrites,
+      smart_skipped: stats.smartSkipped,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -339,6 +342,7 @@ async function createPack({ai}) {
         `${stats.ai}/${textures.length} output textures used Real-ESRGAN in ${stats.aiRuns} unique AI runs`,
         stats.duplicateTextures ? `${stats.duplicateTextures} exact duplicates reused; ${stats.duplicateTextures} repeated AI passes avoided` : "no exact duplicates found",
         stats.cacheHits ? `${stats.cacheHits} unique sources restored from persistent AI cache` : "",
+        stats.smartSkipped ? `${stats.smartSkipped} transparent/uniform outputs bypassed Real-ESRGAN losslessly` : "",
         stats.cacheWrites ? `${stats.cacheWrites} new AI results cached for future runs` : "",
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
@@ -463,6 +467,7 @@ function render() {
   for (const [title, description, badge] of [
     ["Preflight", "Runs one fixed 128×128 inference before opening the output pack.", "On"],
     ["Exact duplicate check", "Same-size candidates are fingerprinted and confirmed byte-for-byte; identical PNGs are upscaled only once.", "On"],
+    ["Lossless trivial bypass", "Fully transparent and exactly uniform textures skip Real-ESRGAN and are enlarged directly.", "On"],
     ["Per-texture retry", "If ONNX fails, the session is released and rebuilt once.", "1 retry"],
     ["Automatic fallback", "If AI still fails, that texture uses deterministic 4× scaling.", "4×"],
     ["Last-resort original", "If even fallback scaling fails, the original PNG is kept instead of aborting the pack.", "Safe"],
@@ -542,7 +547,7 @@ async function start() {
   effectsEditor = new EffectsEditor(controller, info, setMessage);
   await effectsEditor.start();
   document.addEventListener("graphics-effects-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.7.1 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.7.2 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
