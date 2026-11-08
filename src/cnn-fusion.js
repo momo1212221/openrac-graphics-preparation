@@ -70,7 +70,7 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
       agreementSum+=colourAgreement;
       confidenceSum+=confidence;
       count++;
-      if(confidence<.12){rejectedPixels++;continue;}
+      if(confidence<.12 || (colourAgreement>.8 && structure<.18)){rejectedPixels++;continue;}
 
       let used=false;
       for(let c=0;c<3;c++){
