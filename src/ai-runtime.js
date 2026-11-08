@@ -11,6 +11,7 @@ import {lockSourceChroma, qualityMetrics} from "./quality-metrics.js";
 import {detectTextureWrap} from "./seam.js";
 import {detectOutputFailures} from "./failure-detect.js";
 import {resizePng,upscalePng} from "./upscale.js";
+import {acceptSpecializedRefinement,specializedModelFor,verifySpecializedModelBytes} from "./specialized-models.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -20,6 +21,7 @@ let gpuBytesPromise;
 let modelPromise;
 let detailModelPromise;
 const detailSessions={wasm:undefined,gpuCapture:undefined,gpuPlain:undefined};
+const specializedSessions=new Map();
 let activeBackend = null;
 let gpuDisabledForRun = false;
 let gpuCaptureDisabledForRun = false;
@@ -168,6 +170,90 @@ async function detailSessionFor(baseRuntime){
   catch{return detailSessionFor({backend:"wasm"});}
 }
 
+async function specializedSessionFor(material,baseRuntime){
+  const model=await specializedModelFor(material);
+  if(!model)return null;
+  const gpu=String(baseRuntime.backend).startsWith("webgpu");
+  const provider=gpu?"webgpu":"wasm";
+  const key=material+"|"+model.entry.sha256+"|"+provider;
+  if(!specializedSessions.has(key)){
+    specializedSessions.set(key,(async()=>{
+      const bytes=await fetchBytes(model.url,"Specialized "+material+" detail CNN");
+      if(!await verifySpecializedModelBytes(model.entry,bytes)){
+        throw new Error("Specialized "+material+" detail CNN failed SHA-256 verification");
+      }
+      if(gpu){
+        const wasm=await gpuRuntimeBytes();
+        ortGpu.env.wasm.numThreads=1;ortGpu.env.wasm.proxy=false;ortGpu.env.wasm.wasmBinary=wasm;
+        const session=await ortGpu.InferenceSession.create(bytes,{
+          executionProviders:["webgpu"],graphOptimizationLevel:"all",
+        });
+        return {ort:ortGpu,session,backend:"webgpu",sha256:model.entry.sha256,material};
+      }
+      const wasm=await wasmRuntimeBytes();
+      ortWasm.env.wasm.numThreads=0;ortWasm.env.wasm.proxy=false;ortWasm.env.wasm.wasmBinary=wasm;
+      const session=await ortWasm.InferenceSession.create(bytes,{
+        executionProviders:["wasm"],graphOptimizationLevel:"all",
+      });
+      return {ort:ortWasm,session,backend:"wasm",sha256:model.entry.sha256,material};
+    })());
+  }
+  try{return await specializedSessions.get(key);}
+  catch(error){
+    specializedSessions.delete(key);
+    if(gpu)return specializedSessionFor(material,{backend:"wasm"});
+    throw error;
+  }
+}
+
+function croppedSameScaleTensor(tensor,sourceData,sourceX,sourceY,coreW,coreH,pad){
+  const {width,height}=outputShape(tensor);
+  if(width!==MODEL_INPUT||height!==MODEL_INPUT){
+    throw new Error(`unexpected specialized CNN output size ${width}x${height}; expected ${MODEL_INPUT}x${MODEL_INPUT}`);
+  }
+  const plane=width*height;
+  const out=new ImageData(coreW,coreH);
+  let at=0;
+  for(let y=0;y<coreH;y++){
+    let ti=(pad+y)*width+pad;
+    for(let x=0;x<coreW;x++,ti++,at+=4){
+      out.data[at]=Math.max(0,Math.min(255,Math.round(tensor.data[ti]*255)));
+      out.data[at+1]=Math.max(0,Math.min(255,Math.round(tensor.data[plane+ti]*255)));
+      out.data[at+2]=Math.max(0,Math.min(255,Math.round(tensor.data[plane*2+ti]*255)));
+      const si=((sourceY+y)*sourceData.width+sourceX+x)*4;
+      out.data[at+3]=sourceData.data[si+3];
+    }
+  }
+  return out;
+}
+
+async function specializedRefine(sourceData,material,baseRuntime,wrap){
+  const runtime=await specializedSessionFor(material,baseRuntime);
+  if(!runtime)return null;
+  const geometry={pad:16,core:96,step:80};
+  const values=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+  const output=new ImageData(sourceData.width,sourceData.height);
+  const weights=new Uint16Array(sourceData.width*sourceData.height);
+  for(let y=0;y<sourceData.height;y+=geometry.step){
+    for(let x=0;x<sourceData.width;x+=geometry.step){
+      const coreW=Math.min(geometry.core,sourceData.width-x);
+      const coreH=Math.min(geometry.core,sourceData.height-y);
+      fillFixedRgbTile(sourceData,x,y,values,geometry.pad,wrap);
+      const input=new runtime.ort.Tensor("float32",values,[1,3,MODEL_INPUT,MODEL_INPUT]);
+      const outputs=await runtime.session.run({[runtime.session.inputNames[0]]:input});
+      const tile=croppedSameScaleTensor(
+        outputs[runtime.session.outputNames[0]],sourceData,x,y,coreW,coreH,geometry.pad
+      );
+      blendTile(output,weights,tile,x,y,{
+        overlap:4,sourceX:x,sourceY:y,sourceWidth:sourceData.width,sourceHeight:sourceData.height,
+        coreW,coreH,
+      });
+    }
+  }
+  for(let i=3;i<output.data.length;i+=4)output.data[i]=sourceData.data[i];
+  return {image:output,runtime};
+}
+
 async function acquireGpuSession() {
   if (!canUseWebGpu()) {
     throw new Error(lastGpuError
@@ -266,11 +352,15 @@ async function releasePromise(promise) {
   try {
     const value = await promise;
     if (value && typeof value.release === "function") await value.release();
+    else if (value?.session && typeof value.session.release === "function") await value.session.release();
   } catch {}
 }
 
 export async function resetAiSession() {
   preflightKey = "";
+  const specializedPending=[...specializedSessions.values()];
+  specializedSessions.clear();
+  await Promise.all(specializedPending.map(releasePromise));
 
   if (activeBackend === "webgpu-capture") {
     const current = gpuCaptureSessionPromise;
@@ -516,19 +606,53 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     outputCtx.drawImage(alpha, 0, 0);
     outputCtx.restore();
 
-    const outData = outputCtx.getImageData(0, 0, output.width, output.height);
+    let outData = outputCtx.getImageData(0, 0, output.width, output.height);
     const stats = restoreSourceDetail(sourceData, outData, mode, preserveMicrodetail, preserveStars, {
       detailQuality: effectiveQuality,
       textureClass,
       material,
     });
-    if(sourceColorLock && textureClass!=="normal" && textureClass!=="mask"){
-      lockSourceChroma(sourceData,outData,effectiveQuality==="max"?.82:.70);
-    }
     const cnnRejectedRatio=consideredDetailPixels?rejectedDetailPixels/consideredDetailPixels:0;
+    const agreement=cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1;
+    const confidence=cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1;
+    const baseline=new ImageData(new Uint8ClampedArray(outData.data),outData.width,outData.height);
+    if(sourceColorLock && textureClass!=="normal" && textureClass!=="mask"){
+      lockSourceChroma(sourceData,baseline,effectiveQuality==="max"?.82:.70);
+    }
+
+    let specializedCnnUsed=false,specializedRejected=false,specializedModelSha=null;
+    if(effectiveQuality==="max"&&textureClass==="diffuse"){
+      try{
+        const refined=await specializedRefine(outData,material,runtime,wrap);
+        if(refined){
+          const candidate=refined.image;
+          if(sourceColorLock)lockSourceChroma(sourceData,candidate,.82);
+          const baseMetrics=qualityMetrics(sourceData,baseline,{
+            cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,
+          });
+          const candidateMetrics=qualityMetrics(sourceData,candidate,{
+            cnnAgreement:agreement,cnnConfidence:confidence,cnnRejectedRatio,
+          });
+          if(acceptSpecializedRefinement(baseMetrics,candidateMetrics)){
+            outData=candidate;
+            specializedCnnUsed=true;
+            specializedModelSha=refined.runtime.sha256;
+          }else{
+            outData=baseline;
+            specializedRejected=true;
+          }
+        }else{
+          outData=baseline;
+        }
+      }catch{
+        outData=baseline;
+      }
+    }else{
+      outData=baseline;
+    }
     const metrics=qualityMetrics(sourceData,outData,{
-      cnnAgreement:cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1,
-      cnnConfidence:cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1,
+      cnnAgreement:agreement,
+      cnnConfidence:confidence,
       cnnRejectedRatio,
     });
     if(wrap.x||wrap.y)metrics.expectSeamless=true;
@@ -547,7 +671,10 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       rejectedDetailPixels,
       consideredDetailPixels,
       cnnRejectedRatio,
-      cnnConfidence:cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1,
+      cnnConfidence:confidence,
+      specializedCnnUsed,
+      specializedRejected,
+      specializedModelSha,
       metrics,
       failures,
       classification,
