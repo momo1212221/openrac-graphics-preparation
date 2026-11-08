@@ -72,7 +72,7 @@ export function validateMaterialMaps(maps){
     pbrCalibration:maps?.pbrCalibration||null,
     albedoValidation,
     albedoDelight:maps?.albedoDelight||null,
-    heightReconstruction:maps?.heightReconstruction||null,
+    heightPipeline:maps?.heightPipeline||null,
     seamScores:seams,
     worstSeam:Number(Math.max(0,...Object.values(seams)).toFixed(2)),
   };
