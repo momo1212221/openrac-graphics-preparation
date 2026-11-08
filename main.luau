@@ -1,0 +1,8 @@
+-- SPDX-License-Identifier: GPL-3.0-or-later
+-- OpenRAC Launcher 1.0.2 compatibility entry point.
+--
+-- Launcher 1.0.2 refuses a format-2 mod with no native library unless it is
+-- declared as a script mod. Graphics preparation itself does not modify
+-- gameplay: its UI runs in newer launchers and its Ultra/AI work is performed
+-- by the separately started helper. This script intentionally has no hooks,
+-- callbacks, settings changes, file access or other side effects.

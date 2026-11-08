@@ -27,7 +27,7 @@ export class ModController {
       operation,
       game: info.game,
       version: info.version,
-      createdBy: {mod: "graphics-preparation", version: "0.2.0"},
+      createdBy: {mod: "graphics-preparation", version: "0.2.1"},
       options: JSON.parse(JSON.stringify(options ?? {})),
     };
   }

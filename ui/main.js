@@ -118,7 +118,7 @@ function render() {
 
 try {
   info = await controller.info();
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.2.0 · official OpenRAC compatible`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.2.1 · official OpenRAC compatible`;
   render();
   message.textContent = "Ready.";
 } catch (error) {

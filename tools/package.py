@@ -10,7 +10,9 @@ root=Path(__file__).resolve().parents[1]
 m=json.loads((root/"openrac-mod.json").read_text())
 assert set(m["tool"])=={"page"}
 assert (root/m["tool"]["page"]).is_file()
-files=[root/"openrac-mod.json",root/"LICENSE",root/"README.md"]
+scripts=[root/p for p in m.get("scripts",[])]
+assert scripts and all(p.is_file() for p in scripts)
+files=[root/"openrac-mod.json",root/"LICENSE",root/"README.md",*scripts]
 for folder in ["ui","src"]:
     files+=sorted(p for p in (root/folder).rglob("*") if p.is_file())
 out=root/"dist"
