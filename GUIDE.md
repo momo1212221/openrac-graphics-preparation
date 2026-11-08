@@ -1,6 +1,6 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.17.0** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.17.1** mit dem aktuellen **OpenRAC Dev Launcher**.
 
 Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für die normale Nutzung werden **kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm** benötigt.
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.17.0.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.17.1.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
@@ -371,6 +371,13 @@ Stelle **AI Backend -> Auto** ein. Der Mod kann dann auf normales WebGPU oder WA
 ### Verarbeitung wurde unterbrochen
 
 Starte den Export erneut. Wenn **Persistent Cache** aktiviert war, können bereits erfolgreich verarbeitete Quellen wiederverwendet werden.
+
+### Fehler „a bad key“
+
+Dieser Fehler betraf den Resume-Journal-Key bis einschließlich 0.17.0 beziehungsweise den älteren
+0.16.1-Stand. Installiere **Graphics preparation 0.17.1 oder neuer**. Der neue Resume-Key erfüllt
+OpenRACs Store-Key-Regel `[a-z0-9_-]` mit maximal 64 Zeichen. Bereits im Persistent Cache
+gespeicherte AI-Ergebnisse müssen nicht neu berechnet werden.
 
 ### AI ist sehr langsam
 
