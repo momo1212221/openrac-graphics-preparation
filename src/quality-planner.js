@@ -36,6 +36,8 @@ export function refinedDetailQuality(result={},initial="high"){
     Number(metrics.edgeGain??1)>qualityTargetFor("standard").edgeGain||
     Number(metrics.hallucinationScore??0)>qualityTargetFor("standard").hallucination||
     Number(metrics.cnnRejectedRatio??0)>qualityTargetFor("standard").cnnRejectedRatio||
+    Number(metrics.cnnLowConfidenceRatio??0)>qualityTargetFor("standard").cnnLowConfidenceRatio||
+    Number(metrics.cnnConfidenceP10??1)<qualityTargetFor("standard").cnnConfidenceP10||
     Number(metrics.alphaCoverageDiff??0)>qualityTargetFor("standard").alphaCoverageDiff||
     (metrics.ssim!==undefined&&Number(metrics.ssim)<qualityTargetFor("standard").ssim);
 
@@ -55,6 +57,8 @@ export function refinedDetailQuality(result={},initial="high"){
     Number(metrics.cnnConfidence??metrics.cnnAgreement??1)>=.72 &&
     Number(metrics.hallucinationScore??0)<=12 &&
     Number(metrics.cnnRejectedRatio??0)<=.18 &&
+    Number(metrics.cnnLowConfidenceRatio??0)<=.22 &&
+    Number(metrics.cnnConfidenceP10??1)>=.25 &&
     Number(metrics.alphaCoverageDiff??0)<=1 &&
     (metrics.ssim===undefined||Number(metrics.ssim)>=.90) &&
     DETAIL_MATERIALS.has(result.material)
