@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.13.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.14.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.13.0.zip`.
+2. Install `graphics-preparation-0.14.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -290,3 +290,23 @@ scalar-channel consistency and edge discontinuity. Results are written into each
 - CNN training now has executable held-out learning smoke tests and a separate real-model quality
   benchmark workflow in addition to runtime sanity checks.
 - Material-sidecar validation and PSNR reporting from 0.12.2 remain enabled.
+
+
+## Realism asset pipeline (0.14.0)
+
+0.14.0 focuses on source-faithful realism rather than stronger sharpening.
+
+- Coverage-aware alpha reconstruction preserves hard cutout coverage while keeping smoke, glow and
+  other soft-alpha effects continuous. Low-alpha RGB dilation reduces dark or bright fringes around
+  vegetation, particles, fences and similar textures.
+- The direct 4× and selective 8×→4× paths validate alpha-edge coverage after the final resize.
+- Optional enhanced-renderer mipmap sidecars are generated from the final high-resolution texture.
+  Hard cutouts preserve alpha coverage across mip levels to reduce distance popping and shimmering.
+- Dual-CNN fusion now includes regional support. Isolated detail confidence is reduced when the
+  surrounding region does not confirm it, while coherent source-supported texture structure remains.
+- Quality Guard v4 records regional low-confidence ratio and the 10th-percentile confidence floor and
+  uses both when selecting Standard, High or Max reconstruction.
+- Quality Lab exposes regional CNN confidence and alpha-edge metrics for manual QA.
+
+Enhanced mipmaps and material sidecars remain optional because the stock launcher does not yet
+consume those extra renderer assets.
