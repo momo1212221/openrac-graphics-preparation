@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {QUALITY_TARGETS,chooseBetterQuality,evaluateQuality,qualityTargetFor} from '../src/quality-policy.js';
+import {QUALITY_POLICY_VERSION,QUALITY_TARGETS,chooseBetterQuality,evaluateQuality,highestPassingQuality,qualityTargetFor} from '../src/quality-policy.js';
 
 const safe=(score,extra={})=>({
   score,colorDrift:4,lumaDrift:5,alphaDrift:0,alphaCoverageDiff:0,
@@ -48,4 +48,14 @@ test('safer recovery wins when score is nearly equal',()=>{
   const primary={metrics:{score:96,hallucinationScore:58,ssim:.72}};
   const safer={metrics:{score:94.5,hallucinationScore:30,ssim:.84}};
   assert.equal(chooseBetterQuality(primary,safer),safer);
+});
+
+
+test('highest passing tier respects the render tier cap',()=>{
+  assert.equal(highestPassingQuality(safe(98),{textureClass:'diffuse',material:'stone'},'max'),'max');
+  assert.equal(highestPassingQuality(safe(98),{textureClass:'diffuse',material:'stone'},'high'),'high');
+  assert.equal(highestPassingQuality(safe(95),{textureClass:'diffuse',material:'stone'},'max'),'high');
+  assert.equal(highestPassingQuality(safe(92),{textureClass:'diffuse',material:'stone'},'high'),'standard');
+  assert.equal(highestPassingQuality(safe(89),{textureClass:'diffuse',material:'stone'},'max'),null);
+  assert.equal(QUALITY_POLICY_VERSION,'90-94-97-v2');
 });
