@@ -21,6 +21,7 @@ import {specializedRegistryIdentity} from "../src/specialized-models.js";
 import {buildQualityReport} from "../src/quality-report.js";
 import {aiRunStoreKey,aiRunSignature,beginAiRun,checkpointAiRun,interruptAiRun,completeAiRun,aiRunProgress} from "../src/ai-run-state.js";
 import {PauseGate} from "../src/pause-gate.js";
+import {ProgressEstimator,formatDuration} from "../src/progress-estimator.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -39,6 +40,8 @@ let qualityLab = null;
 let aiRunState = null;
 let activeAiRun = false;
 const aiPauseGate = new PauseGate();
+const aiProgressEstimator = new ProgressEstimator();
+let progressTracking = false;
 let pauseButton = null;
 let state = {
   scale: 4,
@@ -99,9 +102,12 @@ async function checkpointCurrentRun(hashes) {
 async function pauseAtSafeBoundary(label) {
   if (!aiPauseGate.requested) return;
   if (pauseButton) pauseButton.textContent = "Resume AI graphics";
-  progress(0, 1, `Paused after checkpoint · ${label}`);
+  if (progressTracking) aiProgressEstimator.pause();
+  const snapshot=aiProgressEstimator.snapshot();
+  progress(snapshot.fraction, 1, `Paused after checkpoint · ${label}`, {sampleRate:false});
   setMessage("AI preparation is paused at a completed texture boundary. The current ZIP stream and cached progress stay intact.");
   await aiPauseGate.checkpoint();
+  if (progressTracking) aiProgressEstimator.resume();
   if (pauseButton) pauseButton.textContent = "Pause AI graphics";
 }
 
@@ -166,11 +172,37 @@ function updateTextures() {
 }
 async function scan() { allDumpFiles = await controller.list("dump"); updateTextures(); render(); }
 
-function progress(done, total, label) {
+function progress(done, total, label, {sampleRate=true}={}) {
   const text = document.querySelector("#progress-text");
   const bar = document.querySelector("#progress-bar");
+  const percentNode = document.querySelector("#progress-percent");
+  const etaNode = document.querySelector("#progress-eta");
+  const elapsedNode = document.querySelector("#progress-elapsed");
+  const rateNode = document.querySelector("#progress-rate");
+  const safeTotal=Math.max(1,Number(total)||1);
+  const fraction=Math.max(0,Math.min(1,Number(done)/safeTotal||0));
+
   if (text) text.textContent = label;
-  if (bar) bar.style.width = total ? `${Math.round(done / total * 100)}%` : "0%";
+  if (bar) bar.style.width = `${(fraction*100).toFixed(1)}%`;
+
+  if (progressTracking) {
+    const snapshot=aiProgressEstimator.update(done,safeTotal,{sampleRate});
+    if(percentNode)percentNode.textContent=`${snapshot.percent.toFixed(snapshot.percent<10?1:0)}%`;
+    if(etaNode)etaNode.textContent=snapshot.fraction>=1
+      ? "Done"
+      : snapshot.etaMs===null
+        ? "Calculating…"
+        : `~${formatDuration(snapshot.etaMs,{compact:true})} left`;
+    if(elapsedNode)elapsedNode.textContent=formatDuration(snapshot.elapsedMs,{compact:true});
+    if(rateNode)rateNode.textContent=snapshot.unitsPerMinute
+      ? `${snapshot.unitsPerMinute.toFixed(snapshot.unitsPerMinute<10?1:0)} textures/min`
+      : "—";
+  } else {
+    if(percentNode)percentNode.textContent=`${(fraction*100).toFixed(fraction<.1?1:0)}%`;
+    if(etaNode)etaNode.textContent=activeAiRun?"Starts with AI…":"—";
+    if(elapsedNode)elapsedNode.textContent="—";
+    if(rateNode)rateNode.textContent="—";
+  }
 }
 
 async function createPack({ai}) {
@@ -277,6 +309,9 @@ async function createPack({ai}) {
         signature:currentRunSignature(),
         hashes:textures.map((texture)=>texture.hash),
       }));
+      aiProgressEstimator.reset(workGroups.length);
+      progressTracking=true;
+      progress(0,1,`AI · 0/${workGroups.length} unique textures · estimating remaining time…`,{sampleRate:false});
     }
 
     let included = 0;
@@ -307,7 +342,7 @@ async function createPack({ai}) {
           strategy:"skipped",
           error:readError instanceof Error ? readError.message : String(readError),
         });
-        progress(groupIndex + 1, workGroups.length, `Skipped unreadable source group · ${baseLabel}`);
+        progress(groupIndex + 1, workGroups.length, `Skipped unreadable source group · ${baseLabel}`, {sampleRate:false});
         continue;
       }
 
@@ -363,7 +398,7 @@ async function createPack({ai}) {
               errors: [],
               cached: true,
             };
-            progress(groupIndex + 1, workGroups.length, `Cache hit · ${baseLabel}`);
+            progress(groupIndex + 1, workGroups.length, `Cache hit · ${baseLabel}`, {sampleRate:false});
           } else {
             stats.cacheMisses++;
           }
@@ -745,7 +780,7 @@ async function createPack({ai}) {
     }
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
-    progress(1, 1, "Texture pack ready");
+    progress(1, 1, "Texture pack ready", {sampleRate:false});
     const saved = await zip.finish();
     zip = null;
 
@@ -804,6 +839,7 @@ async function createPack({ai}) {
   } finally {
     if (ai) {
       activeAiRun = false;
+      progressTracking = false;
       aiPauseGate.reset();
       if (pauseButton) {
         pauseButton.hidden = true;
@@ -863,6 +899,21 @@ function render() {
   const progressWrap = el("div", undefined, "progress span");
   progressWrap.append(el("div", "Ready.", "progress-label"));
   progressWrap.firstChild.id = "progress-text";
+
+  const progressMetrics=el("div",undefined,"progress-metrics");
+  for(const [id,label,value] of [
+    ["progress-percent","Progress","0%"],
+    ["progress-eta","Remaining","—"],
+    ["progress-elapsed","Elapsed","—"],
+    ["progress-rate","Speed","—"],
+  ]){
+    const item=el("div",undefined,"progress-metric");
+    item.append(el("span",label),el("strong",value));
+    item.lastChild.id=id;
+    progressMetrics.append(item);
+  }
+  progressWrap.append(progressMetrics);
+
   const track = el("div", undefined, "progress-track");
   const bar = el("div", undefined, "progress-bar");
   bar.id = "progress-bar";
