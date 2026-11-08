@@ -464,7 +464,7 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       : null;
     const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
     const detailInputValues = detailRuntime ? new Float32Array(3 * MODEL_INPUT * MODEL_INPUT) : null;
-    let cnnAgreementSum=0,cnnAgreementTiles=0,detailPixels=0;
+    let cnnAgreementSum=0,cnnConfidenceSum=0,cnnAgreementTiles=0,detailPixels=0,rejectedDetailPixels=0;
     const outputData = new ImageData(output.width, output.height);
     const weights = new Uint16Array(output.width * output.height);
     const xs=[]; for(let x=0;x<source.width;x+=geometry.step)xs.push(x);
@@ -482,7 +482,11 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
             const detailTile=await runTile(sourceData,x,y,coreW,coreH,detailRuntime,detailInputValues,geometry,wrap);
             const fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
             tile=fused.image;
-            cnnAgreementSum+=fused.agreement;cnnAgreementTiles++;detailPixels+=fused.detailPixels;
+            cnnAgreementSum+=fused.agreement;
+            cnnConfidenceSum+=fused.confidence??fused.agreement;
+            cnnAgreementTiles++;
+            detailPixels+=fused.detailPixels;
+            rejectedDetailPixels+=fused.rejectedPixels||0;
           }catch{
             // Detail CNN is optional; the x4plus result remains valid.
           }
@@ -515,12 +519,14 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     const stats = restoreSourceDetail(sourceData, outData, mode, preserveMicrodetail, preserveStars, {
       detailQuality: effectiveQuality,
       textureClass,
+      material,
     });
     if(sourceColorLock && textureClass!=="normal" && textureClass!=="mask"){
       lockSourceChroma(sourceData,outData,effectiveQuality==="max"?.82:.70);
     }
     const metrics=qualityMetrics(sourceData,outData,{
       cnnAgreement:cnnAgreementTiles?cnnAgreementSum/cnnAgreementTiles:1,
+      cnnConfidence:cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1,
     });
     if(wrap.x||wrap.y)metrics.expectSeamless=true;
     const failures=detectOutputFailures(sourceData,outData,metrics);
@@ -535,6 +541,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       detailQuality:effectiveQuality,
       detailCnnUsed:!!detailRuntime,
       detailPixels,
+      rejectedDetailPixels,
+      cnnConfidence:cnnAgreementTiles?cnnConfidenceSum/cnnAgreementTiles:1,
       metrics,
       failures,
       classification,
@@ -593,7 +601,10 @@ export async function upscaleAiMasterPng(buffer,options={},onProgress=()=>{}){
     },onProgress);
     const finalBytes=await resizePng(master.bytes,dims.width*4,dims.height*4,{smoothing:true});
     const [sourceData,finalData]=await Promise.all([imageDataFromPng(buffer),imageDataFromPng(finalBytes)]);
-    const metrics=qualityMetrics(sourceData,finalData,{cnnAgreement:master.metrics?.cnnAgreement??1});
+    const metrics=qualityMetrics(sourceData,finalData,{
+      cnnAgreement:master.metrics?.cnnAgreement??1,
+      cnnConfidence:master.metrics?.cnnConfidence??master.cnnConfidence??1,
+    });
     if(master.wrap?.x||master.wrap?.y)metrics.expectSeamless=true;
     const failures=detectOutputFailures(sourceData,finalData,metrics);
     return {
