@@ -39,6 +39,32 @@ export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
   const standardCount=scores.filter((score)=>score>=90).length;
   const highCount=scores.filter((score)=>score>=94).length;
   const maxCount=scores.filter((score)=>score>=97).length;
+  const materialGroups=new Map();
+  for(const row of scored){
+    const material=row.material||"unknown";
+    if(!materialGroups.has(material))materialGroups.set(material,[]);
+    materialGroups.get(material).push(finiteScore(row));
+  }
+  const materialBreakdown=[...materialGroups.entries()].map(([material,values])=>{
+    const sorted=[...values].sort((a,b)=>a-b);
+    const standard=sorted.filter((score)=>score>=90).length;
+    const high=sorted.filter((score)=>score>=94).length;
+    const max=sorted.filter((score)=>score>=97).length;
+    return {
+      material,
+      count:sorted.length,
+      average:Number((sorted.reduce((a,b)=>a+b,0)/sorted.length).toFixed(2)),
+      belowStandard:sorted.length-standard,
+      standardRate:rate(standard,sorted.length),
+      highRate:rate(high,sorted.length),
+      maxRate:rate(max,sorted.length),
+      min:Number(sorted[0].toFixed(2)),
+      p50:percentile(sorted,.50),
+      p95:percentile(sorted,.95),
+      p99:percentile(sorted,.99),
+      max:Number(sorted[sorted.length-1].toFixed(2)),
+    };
+  }).sort((a,b)=>a.standardRate-b.standardRate||a.average-b.average||a.material.localeCompare(b.material));
   return {
     version:2,
     generatedBy:"Graphics preparation 0.13.0",
@@ -60,6 +86,7 @@ export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
       max:scores.length?Number(scores[scores.length-1].toFixed(2)):null,
     },
     failureCount:failures.length,
+    materialBreakdown,
     worst,
     best,
     failures,
