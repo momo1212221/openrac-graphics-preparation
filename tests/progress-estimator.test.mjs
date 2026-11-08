@@ -17,7 +17,7 @@ test("estimator reports percentage, rate and ETA after stable samples",()=>{
   now=20_000;
   const s=p.update(20,100);
   assert.equal(Math.round(s.percent),20);
-  assert.ok(s.unitsPerMinute>25&&s.unitsPerMinute<40);
+  assert.ok(s.unitsPerMinute>55&&s.unitsPerMinute<65);
   assert.ok(s.etaMs>70_000&&s.etaMs<100_000);
 });
 
