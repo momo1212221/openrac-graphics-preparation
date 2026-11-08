@@ -1,13 +1,15 @@
-Graphics preparation 0.15.1 is the production-hardening patch for runtime effect placement and the AI/material quality gates.
+Graphics preparation 0.16.0 completes the production staged material reconstruction path.
 
-- Runtime Sparks, Smoke, Mist, Glow, Energy, Rain and Heat Haze now require deliberate placement; new effects no longer auto-snap to a preselected instance.
-- Level-instance snapping uses OpenRAC `placements.json` world transforms for real tie/shrub/moby instances, while manual X/Y/Z remains available.
-- Empty or invalid numeric placement input no longer silently becomes zero; unplaced, malformed or orphaned effects block export with actionable UI.
-- Legacy authoring data preserves coordinates but requires one explicit placement confirmation after migration.
-- Authored effects require Graphics Effects Runtime >=0.1.2.
-- Graphics Effects Runtime 0.1.2 removes live props on level changes, clears haze outside gameplay and applies emitter Gravity as real per-frame acceleration.
-- The native runtime is built and merged successfully for Linux x86_64/AArch64, macOS x86_64/ARM64 and Windows x86_64.
-- The real CNN quality benchmark now compares the fusion in the same RGBA8/ImageData domain used by the browser runtime, eliminating false float-to-8-bit regression signals.
-- Generic second-CNN novelty is disabled for benchmark-fragile Character, Weapon, Glass, Energy and Sky materials; x4plus remains authoritative there.
-- Weapon emissive regions are detected before albedo cleanup so bright saturated emitters stay protected.
-- Standard/High/Max texture gates remain 90/94/97; no quality threshold was weakened.
+- Material generation now follows one fixed order: Upscaled Diffuse -> Albedo Cleanup -> Coarse Height -> Mid Height -> Micro Height -> Height Merge -> Normal From Height -> AO/Roughness -> optional Curvature.
+- Coarse, mid and micro relief are separated before merge; raw diffuse brightness is no longer used directly as absolute height.
+- Normal maps are generated only from merged height with a 3x3 Sobel derivative.
+- AO, Roughness, Cavity and Edgewear are derived from reconstructed relative geometry.
+- Transparent/cutout RGB is excluded from neighbourhood statistics and cannot create false height or normal edges.
+- Bright saturated Weapon/Energy emitters are detected before Albedo Cleanup and protected from de-lighting.
+- Curvature is independently optional and its presence is checked against pipeline metadata.
+- Material pipeline metadata is versioned as v2 and records band energies, merge/surface statistics, emissive protection, curvature state and parallax authoring hints.
+- Material QA validates pipeline order/version, band statistics, height centering/range, AO/Roughness ranges, normal length/facing/tilt and PBR calibration.
+- Quality Lab previews Albedo, Coarse/Mid/Micro Height, merged Height, Normal, Roughness, AO and remaining material sidecars and exposes the production validation result.
+- Intermediate Coarse/Mid/Micro maps remain QA previews and are not added to final texture packs.
+- Standard/High/Max AI texture gates remain 90/94/97; no existing quality threshold was weakened.
+- Runtime effects, placement validation, duplicate elimination, persistent AI cache and CNN quality protections from 0.15.1 remain enabled.
