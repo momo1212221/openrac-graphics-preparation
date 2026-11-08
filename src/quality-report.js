@@ -19,7 +19,7 @@ const compact=(row)=>({
   failures:Array.isArray(row.failures?.issues)?row.failures.issues:[],
 });
 
-export function buildQualityReport(rows,{limit=20}={}){
+export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
   const normalized=(rows||[]).map(compact);
   const scored=normalized.filter((row)=>finiteScore(row)!==null);
   const worst=[...scored].sort((a,b)=>finiteScore(a)-finiteScore(b)||String(a.path).localeCompare(String(b.path))).slice(0,limit);
@@ -28,7 +28,7 @@ export function buildQualityReport(rows,{limit=20}={}){
   const average=scored.length?scored.reduce((sum,row)=>sum+finiteScore(row),0)/scored.length:null;
   return {
     version:1,
-    generatedBy:"Graphics preparation 0.11.0",
+    generatedBy:"Graphics preparation 0.12.2",
     evaluated:normalized.length,
     scored:scored.length,
     averageScore:average==null?null:Number(average.toFixed(2)),
@@ -36,5 +36,17 @@ export function buildQualityReport(rows,{limit=20}={}){
     worst,
     best,
     failures,
+    materialMaps:(materialMaps||[]).map((row)=>({
+      hash:row.hash,
+      path:row.path,
+      material:row.material||null,
+      ok:row.quality?.ok!==false,
+      issues:row.quality?.issues||[],
+      meanNormalLengthError:row.quality?.meanNormalLengthError??null,
+      backwardNormalPercent:row.quality?.backwardNormalPercent??null,
+      worstSeam:row.quality?.worstSeam??null,
+      scalarStats:row.quality?.scalarStats||{},
+      seamScores:row.quality?.seamScores||{},
+    })),
   };
 }
