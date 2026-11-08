@@ -42,8 +42,9 @@ function structureConfidence(base,detail,x,y){
 
 /**
  * Fuses a conservative General-x4v3 CNN with the x4plus reconstruction.
- * Detail is admitted only when colour agreement and local residual structure agree.
- * This suppresses isolated model-only impulses instead of turning them into sharpening halos.
+ * Only incremental high-frequency structure from the detail CNN is admitted when colour
+ * agreement and local residual structure agree. Structure already present in the base CNN
+ * is not added a second time, preventing agreement from becoming artificial sharpening.
  */
 export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={}){
   if(!detail||base.width!==detail.width||base.height!==detail.height)
@@ -77,9 +78,14 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
         const detailResidual=residualAt(detail,x,y,c);
         const baseResidual=residualAt(base,x,y,c);
         if(Math.abs(detailResidual)<1.5)continue;
-        const residualAgreement=clamp01(1-Math.abs(detailResidual-baseResidual)/
+        const detailDelta=detailResidual-baseResidual;
+        if(Math.abs(detailDelta)<1)continue;
+        const residualAgreement=clamp01(1-Math.abs(detailDelta)/
           Math.max(8,Math.abs(detailResidual)+Math.abs(baseResidual)));
-        const supported=.35*detailResidual+.65*(detailResidual*residualAgreement+baseResidual*(1-residualAgreement));
+        // Inject only the extra detail contributed by the fidelity CNN. If both CNNs already
+        // contain the same structure, detailDelta is zero and the base result stays untouched.
+        const noveltyGate=.20+.80*residualAgreement;
+        const supported=detailDelta*noveltyGate;
         const limited=Math.max(-impulseLimit,Math.min(impulseLimit,supported));
         out.data[i+c]=clamp8(base.data[i+c]+limited*gain*confidence);
         used=true;
