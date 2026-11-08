@@ -24,3 +24,14 @@ test('extended metrics expose structural histogram alpha and hallucination signa
   assert.equal(a.alphaCoverageDiff,0);
   assert.ok('seamScore' in a);
 });
+
+
+test('CNN confidence and rejection ratio raise hallucination risk',()=>{
+  const src=image(2,2,100,90,80),out=image(8,8,100,90,80);
+  const trusted=qualityMetrics(src,out,{cnnAgreement:.9,cnnConfidence:.9,cnnRejectedRatio:.05});
+  const suspect=qualityMetrics(src,out,{cnnAgreement:.9,cnnConfidence:.2,cnnRejectedRatio:.8});
+  assert.ok(suspect.hallucinationScore>trusted.hallucinationScore);
+  assert.ok(suspect.score<trusted.score);
+  assert.equal(suspect.cnnConfidence,.2);
+  assert.equal(suspect.cnnRejectedRatio,.8);
+});
