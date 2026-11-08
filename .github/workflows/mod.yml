@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   package:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,4 +20,15 @@ jobs:
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm run prepare:webai
       - run: node --test
-      - run: python tools/package.py
+      - name: Native runtime smoke build
+        run: |
+          python -m pip install ninja
+          echo "SDK=$(python tools/fetch_sdk.py)" >> "$GITHUB_ENV"
+      - name: Configure integrated runtime
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build integrated runtime
+        run: cmake --build build --target graphics_preparation_runtime --parallel
+      - name: Package Linux smoke artifact
+        env:
+          OPENRAC_NATIVE_PACKAGE: build/package/graphics_preparation_runtime
+        run: python tools/package.py

@@ -2,16 +2,13 @@
   "format": 2,
   "id": "graphics-preparation",
   "name": "Graphics preparation",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "author": "OpenRAC fork contributors",
-  "description": "Standard-launcher OpenRAC AI texture preparation with production staged material reconstruction, Real-ESRGAN ONNX and WebGPU/WASM acceleration.",
+  "description": "One-package OpenRAC graphics preparation: AI texture/material authoring plus integrated native particle, glow and haze runtime.",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/momo1212221/openrac-graphics-preparation",
-  "type": "script",
-  "api": "1.1",
-  "scripts": [
-    "main.luau"
-  ],
+  "type": "native",
+  "api": "1.14",
   "games": {
     "rac1": [
       "pal",
@@ -35,5 +32,6 @@
   "tool": {
     "page": "ui/index.html"
   },
-  "multiplayer": "cosmetic"
+  "multiplayer": "cosmetic",
+  "assets": "assets"
 }

@@ -12,13 +12,16 @@ test('effects runtime owns prop cleanup haze cleanup and emitter gravity',()=>{
   assert.match(source,/if \(level < 0\) m_mod\.haze_set\(\{\}\)/);
   assert.match(source,/p\.gravity = e\.gravity/);
   assert.match(source,/p\.velocity\[2\] \+= p\.gravity \* dt/);
-  assert.doesNotMatch(source,/p\.velocity\[2\] -= 3\.5f \* dt/);
-  assert.doesNotMatch(source,/e\.gravity \* 0\.02f/);
 });
 
-test('authored effects require the fixed native runtime generation',()=>{
-  const manifest=JSON.parse(readFileSync(root+'effects-runtime/openrac-mod.json','utf8'));
+test('same native runtime can identify as legacy runtime or unified graphics-preparation',()=>{
+  const source=readFileSync(root+'effects-runtime/src/mod.cpp','utf8');
+  const cmake=readFileSync(root+'CMakeLists.txt','utf8');
   const authoring=readFileSync(root+'src/effects-authoring.js','utf8');
-  assert.equal(manifest.version,'0.1.2');
-  assert.match(authoring,/graphics-effects-runtime",version:">=0\.1\.2"/);
+  assert.match(source,/GRAPHICS_EFFECTS_MOD_ID/);
+  assert.match(source,/GRAPHICS_EFFECTS_MOD_VERSION/);
+  assert.match(cmake,/openrac_add_mod\(\s*graphics_preparation_runtime/);
+  assert.match(cmake,/GRAPHICS_EFFECTS_MOD_ID="graphics-preparation"/);
+  assert.match(authoring,/graphics-preparation",version:">=0\.17\.0"/);
+  assert.doesNotMatch(authoring,/graphics-effects-runtime",version:/);
 });

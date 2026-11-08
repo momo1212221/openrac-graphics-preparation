@@ -280,4 +280,11 @@ void load(openrac::Mod& mod) {
 
 } // namespace
 
-OPENRAC_MOD_CPP("graphics-effects-runtime", "0.1.2", load)
+#ifndef GRAPHICS_EFFECTS_MOD_ID
+#define GRAPHICS_EFFECTS_MOD_ID "graphics-effects-runtime"
+#endif
+#ifndef GRAPHICS_EFFECTS_MOD_VERSION
+#define GRAPHICS_EFFECTS_MOD_VERSION "0.1.2"
+#endif
+
+OPENRAC_MOD_CPP(GRAPHICS_EFFECTS_MOD_ID, GRAPHICS_EFFECTS_MOD_VERSION, load)
