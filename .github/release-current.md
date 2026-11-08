@@ -1,8 +1,8 @@
-Graphics preparation 0.10.3 extends Quality Lab.
+Graphics preparation 0.10.4 adds adaptive quality policy.
 
-- Preview now shows Normal, Roughness, Height, AO and Emissive maps for eligible diffuse outputs.
-- Per-hash quality override: Auto/global, Current, High, Max or No AI.
-- Full batch export respects the same per-hash quality choice.
-- No AI uses the deterministic 4x fallback for that exact texture instead of invoking either CNN.
-- Existing per-hash class/material overrides continue to participate in cache identity.
-- Keeps seam-aware context, dual-CNN detail, persistent cache, quality guard and optional core-side material maps.
+- Replaces the fixed 45/100 batch threshold with a shared material/class-aware policy.
+- Quality Lab shows pass/watch/retry/reject and a recommended action.
+- Weak AI outputs retry conservatively without the detail CNN.
+- Critically bad uncached neural outputs fall back to deterministic 4x instead of shipping a broken reconstruction.
+- Material sidecar metadata now reports the correct generator version.
+- Keeps dual-CNN reconstruction, seam-aware context, per-texture overrides and material previews.
