@@ -42,6 +42,21 @@ jobs:
             "https://huggingface.co/qualcomm/Real-ESRGAN-General-x4v3/resolve/fe119b62b7cb27c3fa5fd3d992122f8e5a3a52c4/Real-ESRGAN-General-x4v3.onnx"
           echo "bea98dff749104082449888501454b85a05ace135c89249599caec7ef2dace23  models/realesrgan-general-x4v3.onnx" | sha256sum -c -
 
+      - name: Install CNN runtime test dependencies
+        run: python -m pip install "numpy>=2.0,<3" "onnxruntime>=1.20,<2"
+
+      - name: Test bundled CNN models
+        run: |
+          python tools/training/test_runtime_models.py             models/realesrgan-x4plus.onnx             models/realesrgan-general-x4v3.onnx             --output cnn-test-report.json
+
+      - name: Upload CNN test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnn-test-report
+          path: cnn-test-report.json
+          if-no-files-found: warn
+
       - name: Test
         run: node --test
 
