@@ -85,3 +85,53 @@ test('material maps include conservative lighting-neutralized albedo',()=>{
  assert.equal(maps.albedoValidation.ok,true);
  assert.ok(maps.albedoDelight.adjustedPixels>0);
 });
+
+
+test('multi-scale height is derived from de-lit albedo and reports reconstruction metadata',()=>{
+ const src=image(48,24,(x)=>x<24?[65,60,55,255]:[155,145,135,255]);
+ const maps=deriveMaterialMaps(src,'stone');
+ assert.equal(maps.heightReconstruction.source,'de-lit-albedo');
+ assert.deepEqual(maps.heightReconstruction.bands,['coarse','mid','micro']);
+ assert.ok(maps.heightReconstruction.profile.normalStrength>=4);
+ assert.ok(maps.heightReconstruction.stats.reliefRange>=0);
+
+ // Absolute brightness is not absolute geometry: away from the illumination boundary both
+ // broad regions should remain close to neutral height.
+ const sample=(x,y)=>maps.height.data[(y*48+x)*4]/255;
+ assert.ok(Math.abs(sample(8,12)-.5)<.08);
+ assert.ok(Math.abs(sample(39,12)-.5)<.08);
+});
+
+test('stone produces more pronounced reconstructed normals than character for the same crack pattern',()=>{
+ const src=image(40,40,(x,y)=>{
+   const crack=(x===19||x===20||y===27);
+   const v=crack?45:125+((x+y)%5)*5;
+   return [v,v,v,255];
+ });
+ const stone=deriveMaterialMaps(src,'stone');
+ const character=deriveMaterialMaps(src,'character');
+ const normalDeviation=(maps)=>{
+   let sum=0,n=0;
+   for(let i=0;i<maps.normal.data.length;i+=4){
+     if(maps.normal.data[i+3]<16)continue;
+     const nx=maps.normal.data[i]/127.5-1;
+     const ny=maps.normal.data[i+1]/127.5-1;
+     sum+=Math.hypot(nx,ny);n++;
+   }
+   return sum/Math.max(1,n);
+ };
+ assert.ok(normalDeviation(stone)>normalDeviation(character)*1.25);
+});
+
+test('height, AO and cavity use reconstructed relative geometry rather than raw darkness',()=>{
+ const src=image(32,32,(x,y)=>{
+   const v=x<16?70:150;
+   const crack=(x===8&&y>6&&y<26)?-35:0;
+   return [Math.max(0,v+crack),Math.max(0,v+crack),Math.max(0,v+crack),255];
+ });
+ const maps=deriveMaterialMaps(src,'stone');
+ const flatDark=(16*32+3)*4;
+ const crack=(16*32+8)*4;
+ assert.ok(maps.cavity.data[crack]>maps.cavity.data[flatDark]);
+ assert.ok(maps.ao.data[crack]<maps.ao.data[flatDark]);
+});
