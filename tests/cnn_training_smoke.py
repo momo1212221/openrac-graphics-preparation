@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import math
 import tempfile
 from pathlib import Path
@@ -138,6 +139,30 @@ def main():
         if float(result.min()) < -1e-5 or float(result.max()) > 1.00001:
             raise AssertionError("ONNX output escaped the expected [0,1] range")
 
+    report={
+        "version":1,
+        "identity_start_max_abs":float((y-x).abs().max()),
+        "identity_selection_score":report["selection_score"],
+        "identity_release_gate_pass":report["release_gate_pass"],
+        "learnable_detail":{
+            "loss_improvement":loss_improvement,
+            "colour_improvement":colour_improvement,
+            "gradient_improvement":gradient_improvement,
+            "flat_mean":float(flat.mean()),
+            "flat_std":float(flat.std()),
+        },
+        "onnx":{
+            "dynamic_shape_ok":True,
+            "finite":True,
+            "range_min":float(result.min()),
+            "range_max":float(result.max()),
+        },
+        "ok":True,
+    }
+    (ROOT/"cnn-training-smoke-report.json").write_text(
+        json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf-8"
+    )
+    print(json.dumps(report,indent=2))
     print(
         "CNN training smoke test passed: identity, fidelity loss, gradients, "
         f"held-out learnable detail ({loss_improvement:.1%} loss / "
