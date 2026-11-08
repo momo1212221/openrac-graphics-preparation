@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {textureFiles, texturePackManifest, outputName, packPath} from '../src/texture-pack.js';
+import {textureFiles, texturePackManifest, outputName, packPath, mipmapPath} from '../src/texture-pack.js';
 
 test('saved OpenRAC texture files are deduplicated by texture hash',()=>{
   const files=[
@@ -10,6 +10,7 @@ test('saved OpenRAC texture files are deduplicated by texture hash',()=>{
   ];
   assert.deepEqual(textureFiles(files).map(x=>x.hash),['aaaaaaaaaaaaaaaa','bbbbbbbbbbbbbbbb']);
   assert.equal(packPath(textureFiles(files)[0]),'Upscaled/aaaaaaaaaaaaaaaa.png');
+  assert.equal(mipmapPath(textureFiles(files)[0],2),'Mipmaps/aaaaaaaaaaaaaaaa/mip2.png');
 });
 
 test('AI pack metadata identifies bundled Real-ESRGAN path',()=>{
