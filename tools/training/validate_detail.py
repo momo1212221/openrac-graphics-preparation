@@ -87,13 +87,23 @@ def main():
         })
 
     n=len(rows)
+    dataset_summary={}
+    summary_path=args.dataset/"dataset-summary.json"
+    if summary_path.is_file():
+        try:
+            dataset_summary=json.loads(summary_path.read_text(encoding="utf-8"))
+        except Exception:
+            dataset_summary={}
+
     result={
-        "version":2,
+        "version":3,
         "material":args.material,
         "pairs":n,
         "unique_sources":len(sources),
         "split_counts":dict(sorted(split_counts.items())),
         "dataset_manifest_sha256":sha256_file(manifest),
+        "dataset_input_pipeline":dataset_summary.get("input_pipeline"),
+        "base_model_sha256":dataset_summary.get("base_model_sha256"),
         "model_sha256":sha256_file(args.model),
         "model_bytes":args.model.stat().st_size,
         "input_name":input_info.name,
