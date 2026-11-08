@@ -167,6 +167,8 @@ async function createPack({ai}) {
     materialMapSets:0,
     master8xRuns:0,
     failureRejected:0,
+    specializedCnnRuns:0,
+    specializedCnnRejected:0,
   };
 
   try {
@@ -285,6 +287,9 @@ async function createPack({ai}) {
               failures: hit.failures,
               masterScale: hit.masterScale,
               internalMaster: hit.internalMaster,
+              specializedCnnUsed:hit.specializedCnnUsed,
+              specializedRejected:hit.specializedRejected,
+              specializedModelSha:hit.specializedModelSha,
               errors: [],
               cached: true,
             };
@@ -439,6 +444,8 @@ async function createPack({ai}) {
         if(prepared.material)stats.materials[prepared.material]=(stats.materials[prepared.material]||0)+copies;
         if(prepared.detailCnnUsed)stats.detailCnnRuns++;
         if(prepared.internalMaster)stats.master8xRuns++;
+        if(prepared.specializedCnnUsed)stats.specializedCnnRuns++;
+        if(prepared.specializedRejected)stats.specializedCnnRejected++;
         stats.detailPixels+=prepared.detailPixels||0;
         if(prepared.metrics?.score!==undefined){
           stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
@@ -554,6 +561,8 @@ async function createPack({ai}) {
       material_maps_mode: state.materialMaps,
       internal_8x_masters: stats.master8xRuns,
       failure_rejected: stats.failureRejected,
+      specialized_cnn_runs: stats.specializedCnnRuns,
+      specialized_cnn_rejected: stats.specializedCnnRejected,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -582,6 +591,8 @@ async function createPack({ai}) {
         stats.materialMapSets ? `${stats.materialMapSets} material sidecar sets generated` : "",
         stats.master8xRuns ? `${stats.master8xRuns} important assets used selective 8× internal masters` : "",
         stats.failureRejected ? `${stats.failureRejected} outputs were rejected by automatic failure detection` : "",
+        stats.specializedCnnRuns ? `${stats.specializedCnnRuns} material-specific refinement passes accepted` : "",
+        stats.specializedCnnRejected ? `${stats.specializedCnnRejected} material-specific passes rejected by QA` : "",
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
