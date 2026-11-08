@@ -98,4 +98,5 @@ test('regional confidence metrics stay high for identical stable output',()=>{
   assert.equal(out.agreement,1);
   assert.ok(out.confidenceP10>=0);
   assert.equal(out.detailPixels,0);
+  assert.equal(out.lowConfidencePixels,0);
 });
