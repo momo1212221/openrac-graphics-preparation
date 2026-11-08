@@ -2,6 +2,7 @@
 """Fast CPU smoke test for the specialized material-detail CNN."""
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import math
@@ -14,6 +15,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from PIL import Image
 
 ROOT=Path(__file__).resolve().parents[1]
 TRAIN=ROOT/"tools"/"training"/"train_detail.py"
@@ -21,6 +23,12 @@ spec=importlib.util.spec_from_file_location("openrac_train_detail",TRAIN)
 train_detail=importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(train_detail)
+
+PREPARE=ROOT/"tools"/"training"/"prepare_dataset.py"
+prepare_spec=importlib.util.spec_from_file_location("openrac_prepare_dataset",PREPARE)
+prepare_dataset=importlib.util.module_from_spec(prepare_spec)
+assert prepare_spec.loader is not None
+prepare_spec.loader.exec_module(prepare_dataset)
 
 def assert_close(a,b,eps=1e-7):
     if not torch.allclose(a,b,atol=eps,rtol=0):
@@ -64,12 +72,12 @@ def main():
     held_x=torch.rand(4,3,16,16)
     held_target=torch.clamp(held_x*.9+.04,0,1)
     loader=DataLoader(TensorDataset(held_x,held_target),batch_size=2,shuffle=False)
-    report=train_detail.evaluate(identity,loader,"cpu",nn.L1Loss(),gradient_weight=.35)
-    if report is None:
+    baseline_report=train_detail.evaluate(identity,loader,"cpu",nn.L1Loss(),gradient_weight=.35)
+    if baseline_report is None:
         raise AssertionError("validation unexpectedly returned no report")
-    if not math.isclose(report["selection_score"],1.0,rel_tol=0,abs_tol=1e-6):
-        raise AssertionError(f"identity baseline selection score is not 1: {report['selection_score']}")
-    if report["release_gate_pass"]:
+    if not math.isclose(baseline_report["selection_score"],1.0,rel_tol=0,abs_tol=1e-6):
+        raise AssertionError(f"identity baseline selection score is not 1: {baseline_report['selection_score']}")
+    if baseline_report["release_gate_pass"]:
         raise AssertionError("identity baseline must not pass the release gate")
 
     # 5) The CNN must actually learn source-derived detail on held-out inputs.
@@ -118,7 +126,43 @@ def main():
             f"std={float(flat.std()):.4f}"
         )
 
-    # 6) Exported ONNX must preserve dynamic spatial dimensions and run on CPU ORT.
+    # 6) Runtime-aligned dataset generation must consume a real 4x ONNX base model,
+    # crop the padded reconstruction back to the requested patch and preserve alpha.
+    class TinyX4(nn.Module):
+        def forward(self,z):
+            return F.interpolate(z,scale_factor=4,mode="bilinear",align_corners=False)
+
+    runtime_aligned_ok=False
+    runtime_aligned_sha=None
+    with tempfile.TemporaryDirectory() as td:
+        base_path=Path(td)/"tiny-x4.onnx"
+        torch.onnx.export(
+            TinyX4().eval(),torch.zeros(1,3,128,128),base_path,
+            input_names=["input"],output_names=["output"],
+            opset_version=18,dynamo=False,
+        )
+        reconstructor=prepare_dataset.BaseCnnReconstructor(base_path)
+        yy,xx=np.indices((128,128))
+        rgba=np.empty((128,128,4),dtype=np.uint8)
+        rgba[...,0]=np.clip(xx*2,0,255)
+        rgba[...,1]=np.clip(yy*2,0,255)
+        rgba[...,2]=96
+        rgba[...,3]=np.where((xx+yy)%9==0,128,255).astype(np.uint8)
+        target_image=Image.fromarray(rgba,"RGBA")
+        reconstructed=reconstructor.reconstruct(target_image,12345)
+        if reconstructed.size!=(128,128):
+            raise AssertionError(f"runtime-aligned reconstruction size mismatch: {reconstructed.size}")
+        if not np.array_equal(
+            np.asarray(reconstructed.getchannel("A")),
+            np.asarray(target_image.getchannel("A")),
+        ):
+            raise AssertionError("runtime-aligned reconstruction did not preserve target alpha")
+        runtime_aligned_sha=hashlib.sha256(base_path.read_bytes()).hexdigest()
+        if reconstructor.sha256!=runtime_aligned_sha:
+            raise AssertionError("runtime-aligned dataset did not retain base model SHA-256")
+        runtime_aligned_ok=True
+
+    # 7) Exported specialized ONNX must preserve dynamic spatial dimensions and run on CPU ORT.
     model=model.eval()
     with tempfile.TemporaryDirectory() as td:
         path=Path(td)/"detail-smoke.onnx"
@@ -142,14 +186,20 @@ def main():
     report={
         "version":1,
         "identity_start_max_abs":float((y-x).abs().max()),
-        "identity_selection_score":report["selection_score"],
-        "identity_release_gate_pass":report["release_gate_pass"],
+        "identity_selection_score":baseline_report["selection_score"],
+        "identity_release_gate_pass":baseline_report["release_gate_pass"],
         "learnable_detail":{
             "loss_improvement":loss_improvement,
             "colour_improvement":colour_improvement,
             "gradient_improvement":gradient_improvement,
             "flat_mean":float(flat.mean()),
             "flat_std":float(flat.std()),
+        },
+        "runtime_aligned_dataset":{
+            "ok":runtime_aligned_ok,
+            "base_model_sha256":runtime_aligned_sha,
+            "size":[128,128],
+            "alpha_preserved":True,
         },
         "onnx":{
             "dynamic_shape_ok":True,
@@ -166,7 +216,8 @@ def main():
     print(
         "CNN training smoke test passed: identity, fidelity loss, gradients, "
         f"held-out learnable detail ({loss_improvement:.1%} loss / "
-        f"{gradient_improvement:.1%} gradient improvement), validation gate and ONNX inference."
+        f"{gradient_improvement:.1%} gradient improvement), runtime-aligned dataset, "
+        "validation gate and ONNX inference."
     )
 
 if __name__=="__main__":
