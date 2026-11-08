@@ -82,6 +82,7 @@ export class QualityLab{
           materialPbr={
             calibration:generated.pbrCalibration,validation:generated.pbrValidation,
             heightPipeline:generated.heightPipeline,
+            quality:generated.quality,
             albedoDelight:generated.albedoDelight,albedoValidation:generated.albedoValidation,
           };
           for(const name of ["albedo","coarseHeight","midHeight","microHeight","height","normal","roughness","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
@@ -162,6 +163,13 @@ export class QualityLab{
         ["Mid energy",this.preview.materialPbr?.heightPipeline?.bands?.mid?.meanAbs??"n/a"],
         ["Micro energy",this.preview.materialPbr?.heightPipeline?.bands?.micro?.meanAbs??"n/a"],
         ["Curvature",this.preview.materialPbr?.heightPipeline?.curvatureEnabled===true?"on":(this.preview.materialPbr?.heightPipeline?"off":"n/a")],
+        ["Normal mean tilt",this.preview.materialPbr?.quality?.normalTilt?.meanDeg!==undefined?this.preview.materialPbr.quality.normalTilt.meanDeg+"°":"n/a"],
+        ["Normal P95 tilt",this.preview.materialPbr?.quality?.normalTilt?.p95Deg!==undefined?this.preview.materialPbr.quality.normalTilt.p95Deg+"°":"n/a"],
+        ["Steep normals",this.preview.materialPbr?.quality?.normalTilt?.steepPercent!==undefined?this.preview.materialPbr.quality.normalTilt.steepPercent+"%":"n/a"],
+        ["Height relief QA",this.preview.materialPbr?.quality?.heightRelief?.range??"n/a"],
+        ["Relief warnings",this.preview.materialPbr?.quality?.reliefWarnings?.join(", ")||"none"],
+        ["Parallax-ready",this.preview.materialPbr?.heightPipeline?.parallaxAuthoring?.ready===true?"yes":(this.preview.materialPbr?.heightPipeline?"no":"n/a")],
+        ["Parallax scale hint",this.preview.materialPbr?.heightPipeline?.parallaxAuthoring?.recommendedScale??"n/a"],
         ["Verdict",policy.verdict],["Specialized CNN",r.specializedCnnUsed?"used":(r.specializedRejected?"rejected":"none")],["Failures",r.failures?.issues?.join(", ")||"none"],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
       section.append(facts);
