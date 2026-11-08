@@ -62,9 +62,10 @@ Training is fidelity-oriented: RGB L1 plus horizontal/vertical gradient consiste
 Laplacian/high-frequency fidelity term. There is no GAN/adversarial or perceptual hallucination
 loss.
 
-Architecture v2 uses a deterministic 1/1/2/1/2/1/3/1 dilation cycle across residual blocks. This
-increases material context without changing input/output resolution or the identity-start safety
-property. Architecture-v1 checkpoints are intentionally rejected by `--resume` so an old model
+Architecture v2 uses a deterministic 1/1/2/1/2/1/3/1 dilation cycle across residual blocks. Each
+dilated 3×3 convolution uses matching dilation padding, so every residual block preserves exact
+spatial dimensions. This increases material context without changing input/output resolution or the
+identity-start safety property. Architecture-v1 checkpoints are intentionally rejected by `--resume` so an old model
 cannot silently continue training under different convolution semantics.
 
 The trainer supports:
@@ -86,7 +87,13 @@ python tools/training/train_detail.py training-data training-output/detail-metal
   --checkpoint training-output/detail-metal.checkpoint.pt
 ```
 
-The checkpoint verifies the material before restoring model and optimizer state.
+The checkpoint verifies the material, architecture/dilation schedule, channel/block count, fidelity
+weights and exact dataset-manifest SHA-256 before restoring model, optimizer and learning-rate
+scheduler state. A resume with changed training data or incompatible hyperparameters is rejected
+instead of silently continuing a different experiment.
+
+Every completed export also writes a sibling `.training.json` provenance file with the ONNX
+SHA-256, dataset-manifest SHA-256, architecture/configuration and best validation score.
 
 ## 4. Train the complete material suite
 
