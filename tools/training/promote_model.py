@@ -5,6 +5,7 @@ import argparse, hashlib, json, shutil
 from pathlib import Path
 
 ALLOWED={"weapon","character","terrain","stone","metal","fabric","organic","glass","energy","sky","generic"}
+PINNED_BASE_X4PLUS_SHA256="a64fb7ec8780e6e67a99cf380067961a0aab618c934171240eea2724217fd304"
 
 def main():
     ap=argparse.ArgumentParser()
@@ -16,6 +17,14 @@ def main():
     material=str(report.get("material",""))
     if material not in ALLOWED: raise SystemExit(f"unsupported material: {material}")
     if report.get("release_candidate") is not True: raise SystemExit("validation is not a release candidate")
+    if int(report.get("version",0))<3:
+        raise SystemExit("validation report is too old; runtime-aligned Laplacian validation is required")
+    if report.get("dataset_input_pipeline")!="base-cnn-reconstruction":
+        raise SystemExit("release promotion requires a runtime-aligned base-CNN reconstruction dataset")
+    if report.get("base_model_sha256")!=PINNED_BASE_X4PLUS_SHA256:
+        raise SystemExit("training base model does not match the pinned runtime x4plus SHA-256")
+    if not (float(report.get("laplacian_improvement",0))>0):
+        raise SystemExit("promotion requires positive Laplacian fidelity improvement")
     digest=hashlib.sha256(args.model.read_bytes()).hexdigest()
     if digest!=report.get("model_sha256"): raise SystemExit("validation SHA-256 does not match model")
     models=args.root/"models";models.mkdir(parents=True,exist_ok=True)
