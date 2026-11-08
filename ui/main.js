@@ -474,6 +474,11 @@ async function createPack({ai}) {
             await zip.add(root+"height.png", generatedMaps.height);
             await zip.add(root+"ao.png", generatedMaps.ao);
             await zip.add(root+"emissive.png", generatedMaps.emissive);
+            await zip.add(root+"specular.png", generatedMaps.specular);
+            await zip.add(root+"metallic.png", generatedMaps.metallic);
+            await zip.add(root+"cavity.png", generatedMaps.cavity);
+            await zip.add(root+"curvature.png", generatedMaps.curvature);
+            await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
               generator:"Graphics preparation 0.10.5",
