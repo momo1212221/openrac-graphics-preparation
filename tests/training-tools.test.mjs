@@ -38,6 +38,9 @@ test('training tools compile and keep release validation separate from runtime p
   assert.match(validator,/base_model_sha256/);
   assert.match(validator,/laplacian_improvement/);
   assert.match(validator,/min-laplacian-improvement/);
+  assert.match(validator,/evaluation_split/);
+  assert.match(validator,/release validation requires an untouched test split/);
+  assert.match(validator,/"version":4/);
 
   const trainer=readFileSync(root+'tools/training/train_detail.py','utf8');
   assert.match(trainer,/--resume/);
