@@ -57,9 +57,9 @@ class Block(nn.Module):
     def __init__(self,c=48,dilation=1):
         super().__init__()
         self.net=nn.Sequential(
-            nn.Conv2d(c,c,3,1,dilation=dilation),
+            nn.Conv2d(c,c,3,1,padding=dilation,dilation=dilation),
             nn.SiLU(),
-            nn.Conv2d(c,c,3,1,dilation=dilation),
+            nn.Conv2d(c,c,3,1,padding=dilation,dilation=dilation),
         )
     def forward(self,x):
         return x+self.net(x)*.2
