@@ -18,6 +18,13 @@ export function normalizeSpecializedRegistry(value){
   return out;
 }
 
+export function acceptSpecializedRefinement(base,candidate){
+  if(!base||!candidate)return false;
+  return Number(candidate.score)>=Number(base.score)-1
+    && Number(candidate.hallucinationScore)<=Number(base.hallucinationScore)+3
+    && Number(candidate.colorDrift)<=Number(base.colorDrift)+2;
+}
+
 export async function specializedRegistry(){
   if(!registryPromise){
     registryPromise=fetch(new URL("../models/specialized-models.json",import.meta.url))
@@ -25,6 +32,34 @@ export async function specializedRegistry(){
       .catch(()=>normalizeSpecializedRegistry(null));
   }
   return registryPromise;
+}
+
+export async function specializedRegistryIdentity(){
+  const registry=await specializedRegistry();
+  const canonical=Object.entries(registry.models||{})
+    .sort(([a],[b])=>a.localeCompare(b))
+    .map(([material,entry])=>material+":"+entry.sha256)
+    .join("|");
+  if(!canonical)return "none";
+  if(typeof crypto!=="undefined"&&crypto.subtle){
+    try{
+      const bytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(canonical));
+      return [...new Uint8Array(bytes)].map((b)=>b.toString(16).padStart(2,"0")).join("");
+    }catch{}
+  }
+  return canonical;
+}
+
+export async function sha256Hex(bytes){
+  if(typeof crypto==="undefined"||!crypto.subtle)throw new Error("SHA-256 is unavailable");
+  const view=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);
+  const digest=await crypto.subtle.digest("SHA-256",view);
+  return [...new Uint8Array(digest)].map((b)=>b.toString(16).padStart(2,"0")).join("");
+}
+
+export async function verifySpecializedModelBytes(entry,bytes){
+  if(!entry||!/^[a-f0-9]{64}$/.test(String(entry.sha256||"")))return false;
+  return (await sha256Hex(bytes))===entry.sha256;
 }
 
 export async function specializedModelFor(material){
