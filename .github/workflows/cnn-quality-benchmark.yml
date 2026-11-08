@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "test/cnn-quality-benchmark-20261108"
     paths:
       - "src/cnn-fusion.js"
       - "src/material-classify.js"
