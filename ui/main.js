@@ -234,9 +234,11 @@ async function createPack({ai}) {
       if (ai) {
         const texturePaths = group.members.map((member)=>member.path);
         const override = qualityLab?.getOverride(primary.hash) || {};
+        const effectiveDetailQuality = ["standard","high","max"].includes(override.quality)
+          ? override.quality : state.detailQuality;
         const cacheOptions = {
           mode: state.aiMode,
-          detailQuality: state.detailQuality,
+          detailQuality: effectiveDetailQuality,
           preserveMicrodetail: state.preserveMicrodetail,
           preserveStars: state.preserveStars,
           textureScope: pathTextureScope(texturePaths),
@@ -276,13 +278,27 @@ async function createPack({ai}) {
           }
         }
 
+        if (!prepared && override.quality === "no-ai") {
+          prepared = {
+            bytes: await upscalePng(source, 4, true),
+            strategy: "fallback",
+            attempts: 0,
+            stars: 0,
+            microdetails: 0,
+            backend: "manual-no-ai",
+            skipped: true,
+            skipReason: "manual-no-ai",
+            errors: [],
+          };
+        }
+
         if (!prepared) prepared = await prepareTextureFailSafe(source, {
           ai: () => upscaleAiPng(source, {
             mode: state.aiMode,
             preserveMicrodetail: state.preserveMicrodetail,
             preserveStars: state.preserveStars,
             backend: state.aiBackend,
-            detailQuality: state.detailQuality,
+            detailQuality: effectiveDetailQuality,
             detailCnn: state.detailCnn,
             sourceColorLock: state.sourceColorLock,
             texturePaths,
@@ -304,7 +320,7 @@ async function createPack({ai}) {
           try {
             const conservative = await upscaleAiPng(source, {
               mode: state.aiMode,
-              detailQuality: state.detailQuality === "max" ? "high" : "standard",
+              detailQuality: effectiveDetailQuality === "max" ? "high" : "standard",
               detailCnn: false,
               sourceColorLock: true,
               preserveMicrodetail: state.preserveMicrodetail,

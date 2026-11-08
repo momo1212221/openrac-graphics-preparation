@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {upscaleAiPng} from "../src/ai-runtime.js";
 import {readFailSafe} from "../src/resilience.js";
+import {upscalePng} from "../src/upscale.js";
+import {generateMaterialMapPngs} from "../src/material-maps.js";
 
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
 const blobUrl=(bytes)=>URL.createObjectURL(new Blob([bytes],{type:"image/png"}));
@@ -34,15 +36,32 @@ export class QualityLab{
       const source=read.bytes;
       const state=this.getSettings();
       const override=this.getOverride(texture.hash);
-      const result=await upscaleAiPng(source,{
-        mode:state.aiMode,detailQuality:state.detailQuality,detailCnn:state.detailCnn,
-        sourceColorLock:state.sourceColorLock,preserveMicrodetail:state.preserveMicrodetail,
-        preserveStars:state.preserveStars,backend:state.aiBackend,texturePaths:[texture.path],
-        textureClassOverride:override.textureClass,materialOverride:override.material,
-      });
+      const detailQuality=["standard","high","max"].includes(override.quality)
+        ? override.quality : state.detailQuality;
+      const result=override.quality==="no-ai"
+        ? {
+            bytes:await upscalePng(source,4,true),backend:"no-ai",textureClass:override.textureClass||"manual",
+            material:override.material||"manual",detailQuality:"no-ai",detailPixels:0,metrics:null,
+          }
+        : await upscaleAiPng(source,{
+            mode:state.aiMode,detailQuality,detailCnn:state.detailCnn,
+            sourceColorLock:state.sourceColorLock,preserveMicrodetail:state.preserveMicrodetail,
+            preserveStars:state.preserveStars,backend:state.aiBackend,texturePaths:[texture.path],
+            textureClassOverride:override.textureClass,materialOverride:override.material,
+          });
       this.clearUrls();
       const original=blobUrl(source),output=blobUrl(result.bytes);this.urls.push(original,output);
-      this.preview={texture,original,output,result};
+      let materialMaps=null;
+      if(result.textureClass==="diffuse"&&result.material&&result.material!=="manual"){
+        try{
+          const generated=await generateMaterialMapPngs(result.bytes,result.material);
+          materialMaps={};
+          for(const name of ["normal","roughness","height","ao","emissive"]){
+            materialMaps[name]=blobUrl(generated[name]);this.urls.push(materialMaps[name]);
+          }
+        }catch{}
+      }
+      this.preview={texture,original,output,result,materialMaps};
       this.setMessage(`Preview ready · ${result.textureClass}/${result.material} · quality ${result.metrics?.score??"n/a"}/100`);
       document.dispatchEvent(new CustomEvent("graphics-quality-lab-change"));
     }catch(error){this.setMessage(error instanceof Error?error.message:String(error),true)}
@@ -75,6 +94,7 @@ export class QualityLab{
       overrides.append(
         make("Texture class",override.textureClass,[["auto","Auto"],["diffuse","Diffuse"],["sky","Sky"],["ui","UI"],["normal","Normal"],["mask","Mask"]],"textureClass"),
         make("Material",override.material,[["auto","Auto"],["generic","Generic"],["weapon","Weapon"],["character","Character"],["terrain","Terrain"],["stone","Stone"],["metal","Metal"],["fabric","Fabric"],["organic","Organic"],["glass","Glass"],["energy","Energy"],["sky","Sky"]],"material"),
+        make("Per-texture quality",override.quality,[["auto","Auto/global"],["standard","Current"],["high","High"],["max","Max"],["no-ai","No AI"]],"quality"),
       );
       section.append(overrides);
     }
@@ -84,6 +104,15 @@ export class QualityLab{
       const before=el("figure");const bi=document.createElement("img");bi.src=this.preview.original;bi.alt="Original texture";before.append(bi,el("figcaption","Original"));
       const after=el("figure");const ai=document.createElement("img");ai.src=this.preview.output;ai.alt="AI texture";after.append(ai,el("figcaption","AI output"));
       view.append(before,after);section.append(view);
+      if(this.preview.materialMaps){
+        const maps=el("div",undefined,"quality-material-maps");
+        for(const name of ["normal","roughness","height","ao","emissive"]){
+          const figure=el("figure");const image=document.createElement("img");
+          image.src=this.preview.materialMaps[name];image.alt=name+" material map";
+          figure.append(image,el("figcaption",name[0].toUpperCase()+name.slice(1)));maps.append(figure);
+        }
+        section.append(maps);
+      }
       const r=this.preview.result,m=r.metrics||{};
       const facts=el("div",undefined,"quality-facts");
       for(const [name,value] of [
