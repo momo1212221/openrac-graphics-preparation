@@ -11,6 +11,7 @@ import {lockSourceChroma, qualityMetrics} from "./quality-metrics.js";
 import {detectTextureWrap} from "./seam.js";
 import {detectOutputFailures} from "./failure-detect.js";
 import {resizePng,upscalePng} from "./upscale.js";
+import {specializedModelFor} from "./specialized-models.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -20,6 +21,7 @@ let gpuBytesPromise;
 let modelPromise;
 let detailModelPromise;
 const detailSessions={wasm:undefined,gpuCapture:undefined,gpuPlain:undefined};
+const specializedSessions=new Map();
 let activeBackend = null;
 let gpuDisabledForRun = false;
 let gpuCaptureDisabledForRun = false;
@@ -168,6 +170,87 @@ async function detailSessionFor(baseRuntime){
   catch{return detailSessionFor({backend:"wasm"});}
 }
 
+async function specializedSessionFor(material,baseRuntime){
+  const model=await specializedModelFor(material);
+  if(!model)return null;
+  const gpu=String(baseRuntime.backend).startsWith("webgpu");
+  const provider=gpu?"webgpu":"wasm";
+  const key=material+"|"+model.entry.sha256+"|"+provider;
+  if(!specializedSessions.has(key)){
+    specializedSessions.set(key,(async()=>{
+      const bytes=await fetchBytes(model.url,"Specialized "+material+" detail CNN");
+      if(gpu){
+        const wasm=await gpuRuntimeBytes();
+        ortGpu.env.wasm.numThreads=1;ortGpu.env.wasm.proxy=false;ortGpu.env.wasm.wasmBinary=wasm;
+        const session=await ortGpu.InferenceSession.create(bytes,{
+          executionProviders:["webgpu"],graphOptimizationLevel:"all",
+        });
+        return {ort:ortGpu,session,backend:"webgpu",sha256:model.entry.sha256,material};
+      }
+      const wasm=await wasmRuntimeBytes();
+      ortWasm.env.wasm.numThreads=0;ortWasm.env.wasm.proxy=false;ortWasm.env.wasm.wasmBinary=wasm;
+      const session=await ortWasm.InferenceSession.create(bytes,{
+        executionProviders:["wasm"],graphOptimizationLevel:"all",
+      });
+      return {ort:ortWasm,session,backend:"wasm",sha256:model.entry.sha256,material};
+    })());
+  }
+  try{return await specializedSessions.get(key);}
+  catch(error){
+    specializedSessions.delete(key);
+    if(gpu)return specializedSessionFor(material,{backend:"wasm"});
+    throw error;
+  }
+}
+
+function croppedSameScaleTensor(tensor,sourceData,sourceX,sourceY,coreW,coreH,pad){
+  const {width,height}=outputShape(tensor);
+  if(width!==MODEL_INPUT||height!==MODEL_INPUT){
+    throw new Error(`unexpected specialized CNN output size ${width}x${height}; expected ${MODEL_INPUT}x${MODEL_INPUT}`);
+  }
+  const plane=width*height;
+  const out=new ImageData(coreW,coreH);
+  let at=0;
+  for(let y=0;y<coreH;y++){
+    let ti=(pad+y)*width+pad;
+    for(let x=0;x<coreW;x++,ti++,at+=4){
+      out.data[at]=Math.max(0,Math.min(255,Math.round(tensor.data[ti]*255)));
+      out.data[at+1]=Math.max(0,Math.min(255,Math.round(tensor.data[plane+ti]*255)));
+      out.data[at+2]=Math.max(0,Math.min(255,Math.round(tensor.data[plane*2+ti]*255)));
+      const si=((sourceY+y)*sourceData.width+sourceX+x)*4;
+      out.data[at+3]=sourceData.data[si+3];
+    }
+  }
+  return out;
+}
+
+async function specializedRefine(sourceData,material,baseRuntime,wrap){
+  const runtime=await specializedSessionFor(material,baseRuntime);
+  if(!runtime)return null;
+  const geometry={pad:16,core:96,step:80};
+  const values=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+  const output=new ImageData(sourceData.width,sourceData.height);
+  const weights=new Uint16Array(sourceData.width*sourceData.height);
+  for(let y=0;y<sourceData.height;y+=geometry.step){
+    for(let x=0;x<sourceData.width;x+=geometry.step){
+      const coreW=Math.min(geometry.core,sourceData.width-x);
+      const coreH=Math.min(geometry.core,sourceData.height-y);
+      fillFixedRgbTile(sourceData,x,y,values,geometry.pad,wrap);
+      const input=new runtime.ort.Tensor("float32",values,[1,3,MODEL_INPUT,MODEL_INPUT]);
+      const outputs=await runtime.session.run({[runtime.session.inputNames[0]]:input});
+      const tile=croppedSameScaleTensor(
+        outputs[runtime.session.outputNames[0]],sourceData,x,y,coreW,coreH,geometry.pad
+      );
+      blendTile(output,weights,tile,x,y,{
+        overlap:4,sourceX:x,sourceY:y,sourceWidth:sourceData.width,sourceHeight:sourceData.height,
+        coreW,coreH,
+      });
+    }
+  }
+  for(let i=3;i<output.data.length;i+=4)output.data[i]=sourceData.data[i];
+  return {image:output,runtime};
+}
+
 async function acquireGpuSession() {
   if (!canUseWebGpu()) {
     throw new Error(lastGpuError
@@ -271,6 +354,9 @@ async function releasePromise(promise) {
 
 export async function resetAiSession() {
   preflightKey = "";
+  const specializedPending=[...specializedSessions.values()];
+  specializedSessions.clear();
+  await Promise.all(specializedPending.map(releasePromise));
 
   if (activeBackend === "webgpu-capture") {
     const current = gpuCaptureSessionPromise;
