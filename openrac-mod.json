@@ -2,7 +2,7 @@
   "format": 2,
   "id": "graphics-preparation",
   "name": "Graphics preparation",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "author": "OpenRAC fork contributors",
   "description": "Standard-launcher OpenRAC AI texture preparation with production staged material reconstruction, Real-ESRGAN ONNX and WebGPU/WASM acceleration.",
   "license": "GPL-3.0-or-later",
