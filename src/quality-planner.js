@@ -29,7 +29,7 @@ export function refinedDetailQuality(result={},initial="high"){
     Number(metrics.cnnAgreement)<.48||
     Number(metrics.colorDrift)>20||
     Number(metrics.edgeGain)>3.1||
-    Number(metrics.hallucinationScore)>65||
+    Number(metrics.hallucinationScore)>65||\n    Number(metrics.cnnRejectedRatio??0)>.45||
     Number(metrics.alphaCoverageDiff)>6||
     (metrics.ssim!==undefined&&Number(metrics.ssim)<.55);
   if(unsafe)return "standard";
@@ -38,7 +38,7 @@ export function refinedDetailQuality(result={},initial="high"){
     initial==="high" &&
     Number(metrics.score)>=82 &&
     Number(metrics.cnnAgreement)>=.78 &&
-    Number(metrics.hallucinationScore??0)<=35 &&
+    Number(metrics.hallucinationScore??0)<=35 &&\n    Number(metrics.cnnRejectedRatio??0)<=.18 &&
     Number(metrics.alphaCoverageDiff??0)<=2 &&
     (metrics.ssim===undefined||Number(metrics.ssim)>=.78) &&
     DETAIL_MATERIALS.has(result.material)
