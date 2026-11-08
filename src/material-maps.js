@@ -78,7 +78,14 @@ export function deriveMaterialMaps(image,material="generic"){
     const r=data[i],g=data[i+1],b=data[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);
     const sat=mx?((mx-mn)/mx):0;
     const threshold=material==="energy"?.48:material==="weapon"?.78:.86;
-    const e=Math.max(0,(center-threshold)/(1-threshold))*Math.max(.15,sat);
+    const peak=mx/255;
+    // Highly saturated energy/projectile colours often have one intentionally hot channel while
+    // their perceptual luminance stays moderate (orange/red plasma). Let the peak channel
+    // participate for those material families without making ordinary colourful diffuse maps glow.
+    const brightness=material==="energy"
+      ? Math.max(center, peak*.72)
+      : material==="weapon" ? Math.max(center, peak*.28+center*.72) : center;
+    const e=Math.max(0,(brightness-threshold)/(1-threshold))*Math.max(.15,sat);
     if(e>.02){
       emissive.data[i]=clamp8(r*e);emissive.data[i+1]=clamp8(g*e);emissive.data[i+2]=clamp8(b*e);
       emissivePixels++;

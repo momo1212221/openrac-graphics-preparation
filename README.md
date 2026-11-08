@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.10.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.10.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.10.0.zip`.
+2. Install `graphics-preparation-0.10.1.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -193,3 +193,11 @@ Sidecars are written as:
 This mode defaults to **Off** because the current public stock launcher predates that pack extension.
 The OpenRAC core integration branch `feat/graphics-max-stack` adds importer/exporter validation and
 renderer lookup while retaining backwards compatibility with ordinary texture packs.
+
+
+### 0.10.1 fixes
+
+- Energy/emissive extraction now recognises saturated hot-channel colours such as orange plasma
+  without lowering the conservative threshold for ordinary diffuse textures.
+- Quality Lab class/material overrides now propagate into the full batch export and its cache key,
+  so preview and final pack use the same routing.

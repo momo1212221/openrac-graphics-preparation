@@ -233,6 +233,7 @@ async function createPack({ai}) {
 
       if (ai) {
         const texturePaths = group.members.map((member)=>member.path);
+        const override = qualityLab?.getOverride(primary.hash) || {};
         const cacheOptions = {
           mode: state.aiMode,
           detailQuality: state.detailQuality,
@@ -241,6 +242,9 @@ async function createPack({ai}) {
           textureScope: pathTextureScope(texturePaths),
           detailCnn: state.detailCnn,
           sourceColorLock: state.sourceColorLock,
+          qualityGuard: state.qualityGuard,
+          textureClassOverride: override.textureClass || null,
+          materialOverride: override.material || null,
         };
         let key = null;
         let prepared = null;
@@ -392,7 +396,7 @@ async function createPack({ai}) {
             await zip.add(root+"emissive.png", generatedMaps.emissive);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.10.0",
+              generator:"Graphics preparation 0.10.1",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
@@ -745,7 +749,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.10.0 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.10.1 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
