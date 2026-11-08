@@ -2,6 +2,8 @@
 
 Graphics preparation 0.12.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
+> **Deutsche Anleitung:** [GUIDE.md](GUIDE.md) – Installation, empfohlene Einstellungen, Quality Lab, Export und Fehlerbehebung.
+
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
 
