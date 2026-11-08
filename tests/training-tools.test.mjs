@@ -47,6 +47,10 @@ test('training tools compile and keep release validation separate from runtime p
   assert.match(trainer,/ARCHITECTURE_VERSION=2/);
   assert.match(trainer,/CONTEXT_DILATIONS/);
   assert.match(trainer,/laplacian_weight/);
+  assert.match(trainer,/padding=dilation/);
+  assert.match(trainer,/scheduler\.state_dict/);
+  assert.match(trainer,/dataset_manifest_sha256/);
+  assert.match(trainer,/\.training\.json/);
 
   const runtimeTest=readFileSync(root+'tools/training/test_runtime_models.py','utf8');
   assert.match(runtimeTest,/edge_contrast_preserved/);
