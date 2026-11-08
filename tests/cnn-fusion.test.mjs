@@ -37,3 +37,15 @@ test('fusion reports how much local CNN detail was rejected',()=>{
   assert.ok(out.rejectedPixels>0);
   assert.ok(out.rejectedPixels/out.consideredPixels>0);
 });
+
+
+test('identical structured CNN outputs are not sharpened twice',()=>{
+  const base=img(5,5,100);
+  base.data.set([150,150,150,255],(2*5+2)*4);
+  const detail={width:base.width,height:base.height,data:new Uint8ClampedArray(base.data)};
+  for(const material of ['stone','metal','character','glass']){
+    const out=fuseCnnOutputs(base,detail,{quality:'max',material});
+    assert.deepEqual([...out.image.data],[...base.data],material);
+    assert.equal(out.detailPixels,0,material);
+  }
+});
