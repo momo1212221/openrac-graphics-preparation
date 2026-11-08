@@ -15,5 +15,5 @@ test('0.6.0 is a stock OpenRAC AI + lighting/effects authoring mod',()=>{
   const first=readFileSync(root+'dist/SHA256SUMS','utf8');
   execFileSync('python3',['tools/package.py'],{cwd:root});
   assert.equal(readFileSync(root+'dist/SHA256SUMS','utf8'),first);
-  assert.match(first,/graphics-preparation-0\.5\.3\.zip/);
+  assert.match(first,/graphics-preparation-0\\.6\\.0\\.zip/);
 });

@@ -80,7 +80,7 @@ std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac
             if (line.empty() || line[0] == '#') continue;
             try {
                 const auto v = split_tabs(line);
-                if (v.size() != 18) throw std::runtime_error("expected 18 tab-separated fields");
+                if (v.size() != 17) throw std::runtime_error("expected 17 tab-separated fields");
                 Emitter e;
                 e.level = std::stoi(v[0]);
                 e.preset = v[1];
