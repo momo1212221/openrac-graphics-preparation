@@ -3,6 +3,7 @@ import {calibratePbrMaps,validatePbrCalibration} from "./pbr-calibration.js";
 import {deriveAlbedoSidecar,validateAlbedoSidecar} from "./albedo-delight.js";
 import {deriveHeightBands,mergeHeightBands,normalFromHeight,deriveHeightSurfaceMaps} from "./material-height.js";
 // SPDX-License-Identifier: GPL-3.0-or-later
+export const MATERIAL_PIPELINE_VERSION=2;
 const clamp8=(v)=>Math.max(0,Math.min(255,Math.round(v)));
 const luma=(r,g,b)=>(54*r+183*g+19*b)/256;
 const idx=(w,x,y)=>(y*w+x)*4;
@@ -198,6 +199,7 @@ export function deriveMaterialMaps(image,material="generic",options={}){
     albedoDelight:{...albedoResult,image:undefined},
     albedoValidation,
     heightPipeline:{
+      version:MATERIAL_PIPELINE_VERSION,
       order:[
         "upscaled-diffuse","albedo-cleanup","coarse-height","mid-height","micro-height",
         "height-merge","normal-from-height","ao-roughness",...(includeCurvature?["curvature"]:[])
