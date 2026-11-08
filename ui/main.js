@@ -662,7 +662,7 @@ async function createPack({ai}) {
           }
           progress((groupIndex + .94) / workGroups.length, 1, `Mipmaps complete · ${baseLabel}`, {sampleRate:groupSampleRate});
         }
-        const writeFraction=state.mipmaps!=="off"?.94:(state.materialMaps!=="off"?.90:.82);
+        const writeFraction=generatedMips?.94:(generatedMaps?.90:.82);
         progress((groupIndex + writeFraction) / workGroups.length, 1, `Writing pack · ${baseLabel}`, {sampleRate:false});
         for (const member of group.members) {
           await zip.add(packPath(member), prepared.bytes);
