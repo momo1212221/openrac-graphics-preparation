@@ -11,6 +11,7 @@ test('training tools compile and keep release validation separate from runtime p
     'tools/training/prepare_dataset.py',
     'tools/training/train_detail.py',
     'tools/training/validate_detail.py',
+    'tools/training/promote_model.py',
   ]){
     execFileSync('python3',['-m','py_compile',file],{cwd:root});
   }
@@ -19,5 +20,7 @@ test('training tools compile and keep release validation separate from runtime p
   assert.match(training,/release_candidate/);
   assert.match(training,/SHA-256/);
   const packageTool=readFileSync(root+'tools/package.py','utf8');
-  assert.doesNotMatch(packageTool,/training-data|detail-metal\.onnx/);
+  assert.doesNotMatch(packageTool,/training-data/);
+  assert.match(packageTool,/specialized-models\.json/);
+  assert.match(packageTool,/release_candidate/);
 });
