@@ -1,6 +1,7 @@
 import {validateMaterialMaps} from "./material-map-quality.js";
 import {calibratePbrMaps,validatePbrCalibration} from "./pbr-calibration.js";
 import {deriveAlbedoSidecar,validateAlbedoSidecar} from "./albedo-delight.js";
+import {deriveMultiScaleHeight} from "./material-height.js";
 // SPDX-License-Identifier: GPL-3.0-or-later
 const clamp8=(v)=>Math.max(0,Math.min(255,Math.round(v)));
 const luma=(r,g,b)=>(54*r+183*g+19*b)/256;
@@ -9,10 +10,6 @@ const idx=(w,x,y)=>(y*w+x)*4;
 const ROUGHNESS=Object.freeze({
   generic:.58,terrain:.76,stone:.72,metal:.28,fabric:.82,organic:.62,character:.52,
   weapon:.34,energy:.22,glass:.10,sky:.72,ui:.55,normal:.5,mask:.5,
-});
-const NORMAL_STRENGTH=Object.freeze({
-  generic:1.0,terrain:1.2,stone:1.35,metal:.8,fabric:1.05,organic:.85,character:.65,
-  weapon:.85,energy:.35,glass:.15,sky:.2,
 });
 
 function rgba(width,height,fill=[0,0,0,255]){
@@ -40,86 +37,125 @@ function localMean(field,w,h,x,y,r=2){
   return n?sum/n:field[y*w+x];
 }
 
-export function deriveMaterialMaps(image,material="generic"){
+function deriveEmissive(image,material){
   const {width:w,height:h,data}=image;
   const lum=luminanceField(image);
-  const height=rgba(w,h),normal=rgba(w,h,[128,128,255,255]),roughness=rgba(w,h),ao=rgba(w,h),emissive=rgba(w,h,[0,0,0,255]),specular=rgba(w,h),metallic=rgba(w,h),cavityMap=rgba(w,h),curvature=rgba(w,h),edgewear=rgba(w,h);
-  const baseR=ROUGHNESS[material]??ROUGHNESS.generic;
-  const normalStrength=NORMAL_STRENGTH[material]??1;
+  const emissive=rgba(w,h,[0,0,0,255]);
   let emissivePixels=0;
+  for(let p=0;p<w*h;p++){
+    const i=p*4;
+    const sourceAlpha=data[i+3];
+    if(sourceAlpha<16){emissive.data[i+3]=sourceAlpha;continue}
+    const center=lum[p];
+    const r=data[i],g=data[i+1],b=data[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+    const sat=mx?((mx-mn)/mx):0;
+    const threshold=material==="energy"?.48:material==="weapon"?.78:.86;
+    const peak=mx/255;
+    const brightness=material==="energy"
+      ? Math.max(center,peak*.72)
+      : material==="weapon" ? Math.max(center,peak*.28+center*.72) : center;
+    const e=Math.max(0,(brightness-threshold)/(1-threshold))*Math.max(.15,sat);
+    if(e>.02){
+      emissive.data[i]=clamp8(r*e);
+      emissive.data[i+1]=clamp8(g*e);
+      emissive.data[i+2]=clamp8(b*e);
+      emissivePixels++;
+    }
+    emissive.data[i+3]=sourceAlpha;
+  }
+  return {emissive,emissivePixels};
+}
+
+/**
+ * Material pipeline:
+ * source colour -> emissive detection -> conservative de-lighted albedo
+ * -> multi-scale relative height -> tangent normal / AO / cavity / curvature / PBR sidecars.
+ * The original colour texture is never replaced by these derived maps.
+ */
+export function deriveMaterialMaps(image,material="generic"){
+  const {width:w,height:h,data}=image;
+
+  // Emission must be detected from the original reconstructed colour before de-lighting.
+  const {emissive,emissivePixels}=deriveEmissive(image,material);
+  const albedoResult=deriveAlbedoSidecar(image,emissive,material);
+  const albedoValidation=validateAlbedoSidecar(albedoResult);
+  const albedo=albedoResult.image;
+
+  // Geometry-like sidecars are intentionally derived from de-lit albedo rather than raw colour.
+  const heightReconstruction=deriveMultiScaleHeight(albedo,material);
+  const heightField=heightReconstruction.heightField;
+  const normal=heightReconstruction.normal;
+  const albedoLum=luminanceField(albedo);
+
+  const height=rgba(w,h),roughness=rgba(w,h),ao=rgba(w,h),specular=rgba(w,h),
+    metallic=rgba(w,h),cavityMap=rgba(w,h),curvature=rgba(w,h),edgewear=rgba(w,h);
+  const baseR=ROUGHNESS[material]??ROUGHNESS.generic;
 
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     const p=y*w+x,i=p*4;
     const sourceAlpha=data[i+3];
-    const center=lum[p];
-    const mean=localMean(lum,w,h,x,y,2);
-    // Height remains mostly source luminance, with a restrained local-structure term.
-    const hv=Math.max(0,Math.min(1,center+(center-mean)*.22));
+    const hv=heightField[p];
     const h8=clamp8(hv*255);
     height.data[i]=height.data[i+1]=height.data[i+2]=h8;height.data[i+3]=sourceAlpha;
 
-    const dx=(fieldAt(lum,w,h,x+1,y)-fieldAt(lum,w,h,x-1,y))*normalStrength;
-    const dy=(fieldAt(lum,w,h,x,y+1)-fieldAt(lum,w,h,x,y-1))*normalStrength;
-    let nx=-dx,ny=-dy,nz=1;
-    const length=Math.hypot(nx,ny,nz)||1;nx/=length;ny/=length;nz/=length;
-    normal.data[i]=clamp8((nx*.5+.5)*255);
-    normal.data[i+1]=clamp8((ny*.5+.5)*255);
-    normal.data[i+2]=clamp8((nz*.5+.5)*255);
-    normal.data[i+3]=sourceAlpha;
+    const albedoCenter=albedoLum[p];
+    const albedoMean=localMean(albedoLum,w,h,x,y,2);
+    const heightMean=localMean(heightField,w,h,x,y,2);
+    const localDetail=Math.min(1,Math.abs(hv-heightMean)*7+Math.abs(albedoCenter-albedoMean)*1.5);
 
-    const localDetail=Math.min(1,Math.abs(center-mean)*4);
-    const rv=Math.max(.04,Math.min(.98,baseR+localDetail*(material==="metal"||material==="glass"?.08:.14)));
+    const rv=Math.max(.04,Math.min(.98,baseR+localDetail*(material==="metal"||material==="glass"?.07:.13)));
     const r8=clamp8(rv*255);
     roughness.data[i]=roughness.data[i+1]=roughness.data[i+2]=r8;roughness.data[i+3]=sourceAlpha;
 
-    // Dark local valleys occlude more; broad brightness is not mistaken for AO.
-    const cavity=Math.max(0,mean-center);
-    const av=Math.max(.35,1-cavity*1.7);
+    // AO and cavity now come from relative reconstructed geometry instead of absolute darkness.
+    const cavity=Math.max(0,heightMean-hv);
+    const av=Math.max(.38,1-cavity*2.2);
     const a8=clamp8(av*255);
     ao.data[i]=ao.data[i+1]=ao.data[i+2]=a8;ao.data[i+3]=sourceAlpha;
 
-    const cavityValue=clamp8(Math.min(1,Math.max(0,(mean-center)*3.2))*255);
+    const cavityValue=clamp8(Math.min(1,cavity*5.0)*255);
     cavityMap.data[i]=cavityMap.data[i+1]=cavityMap.data[i+2]=cavityValue;cavityMap.data[i+3]=sourceAlpha;
+
     const lap=Math.abs(
-      fieldAt(lum,w,h,x-1,y)+fieldAt(lum,w,h,x+1,y)+fieldAt(lum,w,h,x,y-1)+fieldAt(lum,w,h,x,y+1)-center*4
+      fieldAt(heightField,w,h,x-1,y)+fieldAt(heightField,w,h,x+1,y)+
+      fieldAt(heightField,w,h,x,y-1)+fieldAt(heightField,w,h,x,y+1)-hv*4
     );
-    const curvatureValue=clamp8(Math.min(1,lap*2.5)*255);
+    const curvatureValue=clamp8(Math.min(1,lap*4.2)*255);
     curvature.data[i]=curvature.data[i+1]=curvature.data[i+2]=curvatureValue;curvature.data[i+3]=sourceAlpha;
 
     const metalPrior=material==="metal"?.92:material==="weapon"?.62:material==="energy"?.18:.04;
     const metallicValue=clamp8(metalPrior*255);
     metallic.data[i]=metallic.data[i+1]=metallic.data[i+2]=metallicValue;metallic.data[i+3]=sourceAlpha;
+
     const specPrior=material==="glass"?.92:material==="metal"?.78:material==="weapon"?.66:material==="energy"?.72:.28;
     const specValue=clamp8(Math.min(1,specPrior+localDetail*.12)*255);
     specular.data[i]=specular.data[i+1]=specular.data[i+2]=specValue;specular.data[i+3]=sourceAlpha;
-    const edgeValue=clamp8(Math.min(1,lap*1.8+Math.max(0,center-mean)*1.2)*255);
-    edgewear.data[i]=edgewear.data[i+1]=edgewear.data[i+2]=edgeValue;edgewear.data[i+3]=sourceAlpha;
 
-    const r=data[i],g=data[i+1],b=data[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);
-    const sat=mx?((mx-mn)/mx):0;
-    const threshold=material==="energy"?.48:material==="weapon"?.78:.86;
-    const peak=mx/255;
-    // Highly saturated energy/projectile colours often have one intentionally hot channel while
-    // their perceptual luminance stays moderate (orange/red plasma). Let the peak channel
-    // participate for those material families without making ordinary colourful diffuse maps glow.
-    const brightness=material==="energy"
-      ? Math.max(center, peak*.72)
-      : material==="weapon" ? Math.max(center, peak*.28+center*.72) : center;
-    const e=Math.max(0,(brightness-threshold)/(1-threshold))*Math.max(.15,sat);
-    if(e>.02){
-      emissive.data[i]=clamp8(r*e);emissive.data[i+1]=clamp8(g*e);emissive.data[i+2]=clamp8(b*e);
-      emissivePixels++;
-    }
-    emissive.data[i+3]=sourceAlpha;
+    const edgeValue=clamp8(Math.min(1,lap*2.8+Math.max(0,hv-heightMean)*1.6)*255);
+    edgewear.data[i]=edgewear.data[i+1]=edgewear.data[i+2]=edgeValue;edgewear.data[i+3]=sourceAlpha;
   }
 
-  const maps={height,normal,roughness,ao,emissive,specular,metallic,cavity:cavityMap,curvature,edgewear};
-  const pbrCalibration=calibratePbrMaps(maps,image,material);
+  const maps={
+    albedo,height,normal,roughness,ao,emissive,specular,metallic,
+    cavity:cavityMap,curvature,edgewear,
+  };
+  const pbrCalibration=calibratePbrMaps(maps,albedo,material);
   const pbrValidation=validatePbrCalibration(pbrCalibration);
-  const albedoResult=deriveAlbedoSidecar(image,emissive,material);
-  const albedoValidation=validateAlbedoSidecar(albedoResult);
-  maps.albedo=albedoResult.image;
-  return {...maps,emissivePixels,pbrCalibration,pbrValidation,albedoDelight:{...albedoResult,image:undefined},albedoValidation};
+  const heightMetadata={
+    profile:heightReconstruction.profile,
+    stats:heightReconstruction.stats,
+    source:"de-lit-albedo",
+    bands:["coarse","mid","micro"],
+  };
+  return {
+    ...maps,
+    emissivePixels,
+    pbrCalibration,
+    pbrValidation,
+    heightReconstruction:heightMetadata,
+    albedoDelight:{...albedoResult,image:undefined},
+    albedoValidation,
+  };
 }
 
 const imageFromBytes=async(bytes)=>{
@@ -145,10 +181,12 @@ export async function generateMaterialMapPngs(bytes,material="generic"){
     const out={
       emissivePixels:maps.emissivePixels,
       pbrCalibration:maps.pbrCalibration,pbrValidation:maps.pbrValidation,
+      heightReconstruction:maps.heightReconstruction,
       albedoDelight:maps.albedoDelight,albedoValidation:maps.albedoValidation,
       quality:validateMaterialMaps(maps),
     };
-    for(const name of ["albedo","normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"])out[name]=await encode(maps[name]);
+    for(const name of ["albedo","normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"])
+      out[name]=await encode(maps[name]);
     return out;
   }finally{if(typeof image.close==="function")image.close()}
 }
