@@ -181,9 +181,27 @@ export class EffectsEditor {
       const b=node("button","+ "+label,"ghost");b.type="button";b.onclick=()=>this.addParticle(id);presets.append(b);
     }
     particles.append(presets,this.renderParticles());
+    const validLevelDirs=new Set(this.levels.map((row)=>row.dir));
+    const orphaned=this.state.particles.filter((p)=>!validLevelDirs.has(p.level));
+    if(orphaned.length){
+      const orphanBox=node("div",undefined,"effect-orphans");
+      orphanBox.append(node("strong",`${orphaned.length} effect${orphaned.length===1?"":"s"} reference unavailable levels`));
+      orphanBox.append(node("p",orphaned.slice(0,4).map((p)=>`${p.preset} · ${p.level||"no level"}`).join(" · ")+(orphaned.length>4?` · +${orphaned.length-4} more`:""),"placement-note"));
+      const remove=node("button","Remove unavailable effects","ghost");
+      remove.type="button";
+      remove.onclick=async()=>{
+        this.state.particles=this.state.particles.filter((p)=>validLevelDirs.has(p.level));
+        await this.persist();
+        document.dispatchEvent(new CustomEvent("graphics-effects-change"));
+        this.setMessage("Removed runtime effects that referenced unavailable levels.");
+      };
+      orphanBox.append(remove);
+      particles.append(orphanBox);
+    }
     const exportIssues=effectExportIssues(this.state,this.levels);
     if(exportIssues.length){
-      particles.append(node("p",`Export blocked: ${exportIssues.length} placement/level issue${exportIssues.length===1?"":"s"} must be fixed first.`,"placement-warning"));
+      const detail=exportIssues.slice(0,3).join(" · ")+(exportIssues.length>3?` · +${exportIssues.length-3} more`:"");
+      particles.append(node("p",`Export blocked: ${detail}`,"placement-warning"));
     }
     const exportRuntime=node("button","Export runtime effects mod","primary effect-export");exportRuntime.type="button";
     exportRuntime.disabled=exportIssues.length>0;
