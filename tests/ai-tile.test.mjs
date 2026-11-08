@@ -31,10 +31,10 @@ test('tile builder reuses caller buffer',()=>{
 });
 
 test('overlap blending averages competing tile pixels instead of hard overwrite',()=>{
-  const output=new ImageData(4,1);
+  const output={width:4,height:1,data:new Uint8ClampedArray(16)};
   const weights=new Uint16Array(4);
-  const a=new ImageData(3,1);a.data.set([100,0,0,255,100,0,0,255,100,0,0,255]);
-  const b=new ImageData(3,1);b.data.set([200,0,0,255,200,0,0,255,200,0,0,255]);
+  const a={width:3,height:1,data:new Uint8ClampedArray([100,0,0,255,100,0,0,255,100,0,0,255])};
+  const b={width:3,height:1,data:new Uint8ClampedArray([200,0,0,255,200,0,0,255,200,0,0,255])};
   blendTile(output,weights,a,0,0,{overlap:1,sourceX:0,sourceY:0,sourceWidth:2,sourceHeight:1,coreW:1,coreH:1});
   blendTile(output,weights,b,1,0,{overlap:1,sourceX:1,sourceY:0,sourceWidth:2,sourceHeight:1,coreW:1,coreH:1});
   assert.ok(output.data[4] > 100 && output.data[4] < 200);
