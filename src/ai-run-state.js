@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+import {QUALITY_POLICY_VERSION} from "./quality-policy.js";
 const VERSION=1;
-export const RUN_PIPELINE="ai-resume-v1";
+export const RUN_PIPELINE=`ai-resume-v2|policy-${QUALITY_POLICY_VERSION}`;
 
 const clean=(v)=>String(v??"").replace(/[^a-z0-9._-]+/gi,"-").toLowerCase();
 
