@@ -34,6 +34,9 @@ def main():
         "validation":validation.name,
         "l1_improvement":report["l1_improvement"],
         "gradient_improvement":report["gradient_improvement"],
+        "dataset_manifest_sha256":report.get("dataset_manifest_sha256"),
+        "validation_pairs":report.get("pairs"),
+        "validation_sources":report.get("unique_sources"),
     }
     manifest.write_text(json.dumps(data,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     print(json.dumps({"material":material,"model":str(target),"manifest":str(manifest)},indent=2))
