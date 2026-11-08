@@ -27,6 +27,22 @@ export async function specializedRegistry(){
   return registryPromise;
 }
 
+export async function specializedRegistryIdentity(){
+  const registry=await specializedRegistry();
+  const canonical=Object.entries(registry.models||{})
+    .sort(([a],[b])=>a.localeCompare(b))
+    .map(([material,entry])=>material+":"+entry.sha256)
+    .join("|");
+  if(!canonical)return "none";
+  if(typeof crypto!=="undefined"&&crypto.subtle){
+    try{
+      const bytes=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(canonical));
+      return [...new Uint8Array(bytes)].map((b)=>b.toString(16).padStart(2,"0")).join("");
+    }catch{}
+  }
+  return canonical;
+}
+
 export async function specializedModelFor(material){
   const registry=await specializedRegistry();
   const entry=registry.models?.[material]||null;
