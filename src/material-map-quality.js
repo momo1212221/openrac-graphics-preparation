@@ -18,6 +18,10 @@ function edgeMismatch(map){
 
 export function validateMaterialMaps(maps){
   const issues=[];
+  const pbrValidation=maps?.pbrValidation||null;
+  if(pbrValidation?.ok===false){
+    for(const issue of pbrValidation.issues||[])issues.push("pbr-"+issue);
+  }
   let normalError=0,normalCount=0,normalBackward=0;
   const normal=maps?.normal;
   if(normal){
@@ -60,6 +64,8 @@ export function validateMaterialMaps(maps){
     meanNormalLengthError:Number(meanNormalLengthError.toFixed(5)),
     backwardNormalPercent:Number(backwardNormalPercent.toFixed(3)),
     scalarStats,
+    pbrValidation,
+    pbrCalibration:maps?.pbrCalibration||null,
     seamScores:seams,
     worstSeam:Number(Math.max(0,...Object.values(seams)).toFixed(2)),
   };
