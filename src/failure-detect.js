@@ -14,7 +14,8 @@ export function detectOutputFailures(source,output,metrics={}){
   if(metrics.alphaDrift>18)issues.push("alpha-loss");
   if(metrics.edgeGain>3.6)issues.push("over-detail");
   if(metrics.cnnAgreement!==undefined&&metrics.cnnAgreement<.2)issues.push("cnn-disagreement");
-  if(metrics.hallucinationScore!==undefined&&metrics.hallucinationScore>70)issues.push("hallucination-risk");\n  if(metrics.cnnRejectedRatio!==undefined&&metrics.cnnRejectedRatio>.6)issues.push("cnn-local-rejection");
+  if(metrics.hallucinationScore!==undefined&&metrics.hallucinationScore>70)issues.push("hallucination-risk");
+  if(metrics.cnnRejectedRatio!==undefined&&metrics.cnnRejectedRatio>.6)issues.push("cnn-local-rejection");
   if(metrics.expectSeamless===true&&metrics.seamScore!==undefined&&metrics.seamScore>35)issues.push("seam-risk");
   return {ok:issues.length===0,issues,visiblePixels:visible,opaquePixels:opaque};
 }
