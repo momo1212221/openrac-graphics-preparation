@@ -681,6 +681,9 @@ async function createPack({ai}) {
       failure_rejected: stats.failureRejected,
       specialized_cnn_runs: stats.specializedCnnRuns,
       specialized_cnn_rejected: stats.specializedCnnRejected,
+      quality_tier_downgraded: stats.qualityDowngraded,
+      quality_recovery_attempts: stats.qualityRecoveryAttempts,
+      quality_recovered: stats.qualityRecovered,
     };
     if (ai) {
       const qualityReport=buildQualityReport(stats.qualityRows,{limit:20,materialMaps:stats.materialQualityRows});
@@ -703,6 +706,8 @@ async function createPack({ai}) {
 
     if (ai) {
       const degraded = stats.fallback + stats.original + stats.unreadable;
+      const qualitySummary=buildQualityReport(stats.qualityRows,{limit:20,materialMaps:stats.materialQualityRows});
+      const weakestMaterial=qualitySummary.materialBreakdown?.[0]||null;
       const summary = [
         `Saved ${saved}.`,
         `${stats.ai}/${textures.length} output textures used Real-ESRGAN in ${stats.aiRuns} unique AI runs`,
@@ -714,6 +719,11 @@ async function createPack({ai}) {
         `classes: ${stats.classes.diffuse} diffuse · ${stats.classes.ui} UI · ${stats.classes.sky} sky · ${stats.classes.normal} normal · ${stats.classes.mask} mask`,
         stats.detailCnnRuns ? `detail CNN used on ${stats.detailCnnRuns} unique sources · ${stats.detailPixels} agreement-gated detail pixels` : "",
         stats.qualityScoreCount ? `average quality score ${(stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)}/100` : "",
+        qualitySummary.scored ? `${qualitySummary.tiers.standard.rate}% ≥90 Standard · ${qualitySummary.tiers.high.rate}% ≥94 High · ${qualitySummary.tiers.max.rate}% ≥97 Max` : "",
+        weakestMaterial ? `weakest material: ${weakestMaterial.material} · ${weakestMaterial.standardRate}% ≥90 · avg ${weakestMaterial.average}` : "",
+        stats.qualityDowngraded ? `${stats.qualityDowngraded} results kept without rerender by safe tier downgrade` : "",
+        stats.qualityRecoveryAttempts ? `${stats.qualityRecoveryAttempts} material-aware quality recovery attempts` : "",
+        stats.qualityRecovered ? `${stats.qualityRecovered} sub-standard results recovered back to ≥90` : "",
         stats.materialMapSets ? `${stats.materialMapSets} material sidecar sets generated` : "",
         stats.master8xRuns ? `${stats.master8xRuns} important assets used selective 8× internal masters` : "",
         stats.failureRejected ? `${stats.failureRejected} outputs were rejected by automatic failure detection` : "",
