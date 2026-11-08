@@ -95,8 +95,6 @@ std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac
                 e.gravity = std::clamp(number(v[14]), -100.0f, 100.0f);
                 e.haze_radius = std::clamp(number(v[15]), 0.0f, 100.0f);
                 e.haze_strength = std::clamp(number(v[16]), 0.0f, 10.0f);
-                // Field 18 is reserved for forward-compatible effect strength.
-                (void)number(v[17]);
                 out.push_back(std::move(e));
             } catch (const std::exception& error) {
                 mod.warn("ignored " + file.filename().string() + " row " + std::to_string(row) + ": " + error.what());
