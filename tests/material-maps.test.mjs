@@ -201,3 +201,36 @@ test('curvature metadata must match the actual optional sidecar',()=>{
  quality=validateMaterialMaps(maps);
  assert.ok(quality.issues.includes('curvature-stage-mismatch'));
 });
+
+
+test('material QA exposes normal tilt and height relief metrics',()=>{
+ const src=image(32,32,(x,y)=>{
+   const v=(x===15||y===19)?45:120+((x+y)%6)*6;
+   return [v,v,v,255];
+ });
+ const maps=deriveMaterialMaps(src,'stone');
+ const q=validateMaterialMaps(maps);
+ assert.ok(Number.isFinite(q.normalTilt.meanDeg));
+ assert.ok(Number.isFinite(q.normalTilt.p95Deg));
+ assert.ok(q.normalTilt.p95Deg>=q.normalTilt.meanDeg);
+ assert.ok(q.heightRelief&&q.heightRelief.range>=0);
+ assert.ok(Array.isArray(q.reliefWarnings));
+});
+
+test('height pipeline exports explicit parallax authoring metadata without claiming stock renderer support',()=>{
+ const src=image(32,32,(x,y)=>{
+   const v=100+((x*7+y*5)%48);
+   return [v,v,v,255];
+ });
+ const stone=deriveMaterialMaps(src,'stone');
+ assert.equal(stone.heightPipeline.parallaxAuthoring.source,'height.png');
+ assert.equal(stone.heightPipeline.parallaxAuthoring.encoding,'relative-height-0.5-neutral');
+ assert.equal(stone.heightPipeline.parallaxAuthoring.neutralHeight,.5);
+ assert.equal(stone.heightPipeline.parallaxAuthoring.rendererSupportRequired,true);
+ assert.ok(stone.heightPipeline.parallaxAuthoring.recommendedScale>0);
+ assert.equal(stone.heightPipeline.parallaxAuthoring.ready,true);
+
+ const sky=deriveMaterialMaps(src,'sky');
+ assert.equal(sky.heightPipeline.parallaxAuthoring.recommendedScale,0);
+ assert.equal(sky.heightPipeline.parallaxAuthoring.ready,false);
+});
