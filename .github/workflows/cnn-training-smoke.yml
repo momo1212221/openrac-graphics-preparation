@@ -1,0 +1,41 @@
+name: cnn-training-smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/training/**"
+      - "requirements-training.txt"
+      - "tests/cnn_training_smoke.py"
+      - ".github/workflows/cnn-training-smoke.yml"
+  pull_request:
+    paths:
+      - "tools/training/**"
+      - "requirements-training.txt"
+      - "tests/cnn_training_smoke.py"
+      - ".github/workflows/cnn-training-smoke.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-training.txt
+
+      - name: Install CPU training runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.5,<3"
+          python -m pip install "Pillow>=10.4,<12" "onnx>=1.17,<2" "onnxruntime>=1.20,<2" "numpy>=2.0,<3"
+
+      - name: Run specialized CNN smoke test
+        run: python tests/cnn_training_smoke.py
