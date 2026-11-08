@@ -22,3 +22,11 @@ test('Quality Lab exposes material-map preview and per-hash quality selection',(
  assert.match(code,/evaluateQuality/);
  assert.match(code,/\["Verdict",policy\.verdict\]/);
 });
+
+test('batch path exposes selective 8x master and failure rejection',()=>{
+ const code=readFileSync(root+'ui/main.js','utf8');
+ assert.match(code,/upscaleAiMasterPng/);
+ assert.match(code,/master8x/);
+ assert.match(code,/failureRejected/);
+ assert.match(code,/internal_8x_masters/);
+});
