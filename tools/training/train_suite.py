@@ -66,14 +66,19 @@ def main():
 
     for index,material in enumerate(materials):
         train_pairs=sum(v for (m,s),v in counts.items() if s=="train" and (material=="all" or m==material))
-        heldout_pairs=sum(v for (m,s),v in counts.items() if s in ("validation","test") and (material=="all" or m==material))
-        row={"material":material,"train_pairs":train_pairs,"heldout_pairs":heldout_pairs}
+        validation_pairs=sum(v for (m,s),v in counts.items() if s=="validation" and (material=="all" or m==material))
+        test_pairs=sum(v for (m,s),v in counts.items() if s=="test" and (material=="all" or m==material))
+        heldout_pairs=validation_pairs+test_pairs
+        row={
+            "material":material,"train_pairs":train_pairs,"heldout_pairs":heldout_pairs,
+            "validation_pairs":validation_pairs,"test_pairs":test_pairs,
+        }
         if not train_pairs:
             row.update(status="skipped",reason="no training pairs")
             summary.append(row)
             continue
-        if not heldout_pairs:
-            row.update(status="skipped",reason="no validation/test pairs")
+        if not test_pairs:
+            row.update(status="skipped",reason="no untouched test pairs for release validation")
             summary.append(row)
             continue
 
