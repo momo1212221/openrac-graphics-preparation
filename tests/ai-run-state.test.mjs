@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {
-  aiRunSignature,aiRunStoreKey,beginAiRun,checkpointAiRun,interruptAiRun,completeAiRun,aiRunProgress,
+  RUN_PIPELINE,aiRunSignature,aiRunStoreKey,beginAiRun,checkpointAiRun,interruptAiRun,completeAiRun,aiRunProgress,
 } from "../src/ai-run-state.js";
 
 test("AI run journal resumes only the same game/profile",()=>{
@@ -30,4 +30,10 @@ test("interrupted and complete run states are explicit",()=>{
 
 test("run store key is game scoped and sanitized",()=>{
   assert.equal(aiRunStoreKey("RAC 1/NTSC"),"texture-preparation-ai-run-v1:rac-1-ntsc");
+});
+
+
+test("AI run signature is pinned to the strict quality-policy generation",()=>{
+  assert.match(RUN_PIPELINE,/90-94-97-v2/);
+  assert.match(aiRunSignature({}),/90-94-97-v2/);
 });
