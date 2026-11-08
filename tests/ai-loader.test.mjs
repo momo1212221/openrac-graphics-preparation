@@ -30,3 +30,12 @@ test('AI runtime keeps reusable tile buffers and records timings',()=>{
   assert.match(code,/elapsedMs:performance\.now\(\)-started/);
   assert.doesNotMatch(code,/rendered = document\.createElement\("canvas"\)/);
 });
+
+
+test('specialized CNN is fail-open but verifies model bytes before session creation',()=>{
+  const code=readFileSync(root+'src/ai-runtime.js','utf8');
+  assert.match(code,/verifySpecializedModelBytes\(model\.entry,bytes\)/);
+  assert.match(code,/specializedRefine\(outData,material,runtime,wrap\)/);
+  assert.match(code,/acceptSpecializedRefinement/);
+  assert.match(code,/catch\{\s*outData=baseline;\s*\}/);
+});
