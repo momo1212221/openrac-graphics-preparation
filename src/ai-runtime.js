@@ -645,6 +645,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       cnnConfidence:confidence,
       cnnRejectedRatio,
     });
+    metrics.alphaEdgeCoverageDiff=Number(alphaEdges.coverageErrorPercent||0);
+    metrics.alphaEdgePixels=Number(alphaEdges.edgePixels||0);
     if(wrap.x||wrap.y)metrics.expectSeamless=true;
     const failures=detectOutputFailures(sourceData,outData,metrics);
     outputCtx.putImageData(outData, 0, 0);
