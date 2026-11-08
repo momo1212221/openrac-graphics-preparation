@@ -34,9 +34,16 @@ details.advanced{padding:0}details.advanced summary{list-style:none;display:flex
 .effect-subpanel{margin-top:18px;padding:16px;border-radius:10px;background:var(--panel-hi)}.effect-subpanel>strong{display:block;margin-bottom:3px}
 .effect-actions{display:flex;gap:8px;align-items:center;margin-top:16px}.effect-actions.wrap{flex-wrap:wrap}.effect-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
 .effect-card{padding:14px;border:1px solid var(--line);border-radius:10px;background:#211f19}.effect-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.effect-card-head strong{font-size:14px}
+.effect-placement-toolbar{display:grid;grid-template-columns:minmax(260px,.8fr) 1.2fr;gap:14px;align-items:end;margin-top:16px;padding:14px;border-radius:10px;background:var(--panel-hi)}
+.effect-placement-toolbar p{margin:0;padding:9px 11px;border-radius:8px;background:rgba(255,255,255,.025);font-size:12px}
+.effect-placement{margin-top:12px;padding:12px;border:1px solid rgba(242,201,85,.20);border-radius:9px;background:rgba(242,201,85,.035)}
+.effect-placement-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.effect-placement-head strong{font-size:13px}
+.placement-actions{margin-top:10px}
+.placement-note{color:var(--soft)}.placement-ready{color:var(--ok)}.placement-warning{margin:10px 0 0;color:var(--gold);font-size:12px;font-weight:650}
+.placement-unavailable{opacity:.5}
 .effect-export{margin-top:16px}
-@media(max-width:800px){.effect-grid.four,.effect-grid.two{grid-template-columns:1fr 1fr}.effect-vector{grid-template-columns:1fr 1fr}.effect-vector-title{grid-column:1/-1}}
-@media(max-width:520px){.effect-grid.four,.effect-grid.two,.effect-vector{grid-template-columns:1fr}}
+@media(max-width:800px){.effect-grid.four,.effect-grid.two,.effect-placement-toolbar{grid-template-columns:1fr 1fr}.effect-vector{grid-template-columns:1fr 1fr}.effect-vector-title{grid-column:1/-1}}
+@media(max-width:520px){.effect-grid.four,.effect-grid.two,.effect-vector,.effect-placement-toolbar{grid-template-columns:1fr}}
 
 /* Quality Lab */
 .quality-controls{display:flex;gap:10px;align-items:center;margin-top:16px}.quality-select{flex:1;min-width:0}
