@@ -584,6 +584,7 @@ async function createPack({ai}) {
               stats.materialQualityRows.push({
                 hash:member.hash,path:member.path,material:prepared.material,quality:generatedMaps.quality,
                 pbrCalibration:generatedMaps.pbrCalibration,pbrValidation:generatedMaps.pbrValidation,
+                albedoDelight:generatedMaps.albedoDelight,albedoValidation:generatedMaps.albedoValidation,
               });
             }
             if(generatedMaps.quality?.ok===false){
@@ -642,6 +643,7 @@ async function createPack({ai}) {
           }
           if (generatedMaps) {
             const root = `Materials/${member.hash}/`;
+            await zip.add(root+"albedo.png", generatedMaps.albedo);
             await zip.add(root+"normal.png", generatedMaps.normal);
             await zip.add(root+"roughness.png", generatedMaps.roughness);
             await zip.add(root+"height.png", generatedMaps.height);
@@ -660,6 +662,8 @@ async function createPack({ai}) {
               emissivePixels:generatedMaps.emissivePixels,
               pbrCalibration:generatedMaps.pbrCalibration,
               pbrValidation:generatedMaps.pbrValidation,
+              albedoDelight:generatedMaps.albedoDelight,
+              albedoValidation:generatedMaps.albedoValidation,
               quality:generatedMaps.quality,
               sourceHash:member.hash,
             };
