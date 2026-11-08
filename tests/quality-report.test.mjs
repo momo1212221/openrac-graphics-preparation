@@ -64,3 +64,19 @@ test('quality report exposes 90/94/97 distribution and p99',()=>{
   assert.equal(report.belowStandardCount,1);
   assert.ok(report.percentiles.p99>98);
 });
+
+
+test('quality report identifies weak material classes',()=>{
+  const stoneA=row('stone-a',95);
+  const stoneB=row('stone-b',92);
+  const glassA={...row('glass-a',88),material:'glass'};
+  const glassB={...row('glass-b',91),material:'glass'};
+  const report=buildQualityReport([stoneA,stoneB,glassA,glassB]);
+  const glass=report.materialBreakdown.find((x)=>x.material==='glass');
+  const stone=report.materialBreakdown.find((x)=>x.material==='stone');
+  assert.equal(glass.count,2);
+  assert.equal(glass.standardRate,50);
+  assert.equal(glass.belowStandard,1);
+  assert.equal(stone.standardRate,100);
+  assert.equal(report.materialBreakdown[0].material,'glass');
+});
