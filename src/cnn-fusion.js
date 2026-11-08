@@ -77,8 +77,6 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
         const detailResidual=residualAt(detail,x,y,c);
         const baseResidual=residualAt(base,x,y,c);
         if(Math.abs(detailResidual)<1.5)continue;
-
-        // Prefer detail supported by both networks. A detail-only impulse is heavily damped.
         const residualAgreement=clamp01(1-Math.abs(detailResidual-baseResidual)/
           Math.max(8,Math.abs(detailResidual)+Math.abs(baseResidual)));
         const supported=.35*detailResidual+.65*(detailResidual*residualAgreement+baseResidual*(1-residualAgreement));
@@ -95,5 +93,6 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
     confidence:count?confidenceSum/count:1,
     detailPixels,
     rejectedPixels,
+    consideredPixels:count,
   };
 }
