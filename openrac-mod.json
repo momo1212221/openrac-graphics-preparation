@@ -2,19 +2,35 @@
   "format": 2,
   "id": "graphics-preparation",
   "name": "Graphics preparation",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "author": "OpenRAC fork contributors",
-  "description": "Standard-launcher OpenRAC AI texture preparation with bundled Real-ESRGAN ONNX with WebGPU/WASM auto acceleration and adaptive high-detail CNN reconstruction.",
+  "description": "Standard-launcher OpenRAC AI texture preparation with production staged material reconstruction, Real-ESRGAN ONNX and WebGPU/WASM acceleration.",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/momo1212221/openrac-graphics-preparation",
   "type": "script",
   "api": "1.1",
-  "scripts": ["main.luau"],
+  "scripts": [
+    "main.luau"
+  ],
   "games": {
-    "rac1": ["pal", "ntsc", "pal1", "jp"],
-    "rac2": ["ntsc", "pal", "ntsc2"],
-    "rac3": ["ntsc", "pal"],
-    "rac4": ["ntsc"]
+    "rac1": [
+      "pal",
+      "ntsc",
+      "pal1",
+      "jp"
+    ],
+    "rac2": [
+      "ntsc",
+      "pal",
+      "ntsc2"
+    ],
+    "rac3": [
+      "ntsc",
+      "pal"
+    ],
+    "rac4": [
+      "ntsc"
+    ]
   },
   "tool": {
     "page": "ui/index.html"
