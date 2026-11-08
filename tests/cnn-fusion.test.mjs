@@ -49,3 +49,32 @@ test('identical structured CNN outputs are not sharpened twice',()=>{
     assert.equal(out.detailPixels,0,material);
   }
 });
+
+
+test('flat model-only microtexture is more strongly suppressed on fragile materials',()=>{
+  const base=img(9,9,100),detail=img(9,9,100);
+  for(let y=0;y<9;y++)for(let x=0;x<9;x++){
+    const i=(y*9+x)*4;
+    const d=(x+y)%2===0?12:-12;
+    detail.data[i]=detail.data[i+1]=detail.data[i+2]=100+d;
+  }
+  const stone=fuseCnnOutputs(base,detail,{quality:'max',material:'stone'});
+  const glass=fuseCnnOutputs(base,detail,{quality:'max',material:'glass'});
+  const character=fuseCnnOutputs(base,detail,{quality:'max',material:'character'});
+  const maxDelta=(out)=>Math.max(...Array.from({length:81},(_,p)=>Math.abs(out.image.data[p*4]-100)));
+  assert.ok(maxDelta(glass)<=maxDelta(stone));
+  assert.ok(maxDelta(character)<=maxDelta(stone));
+  assert.ok(glass.confidence<=stone.confidence);
+  assert.ok(character.confidence<=stone.confidence);
+});
+
+test('real base structure still allows conservative detail refinement',()=>{
+  const base=img(7,7,100),detail=img(7,7,100);
+  const c=(3*7+3)*4;
+  base.data.set([128,128,128,255],c);
+  detail.data.set([142,142,142,255],c);
+  const stone=fuseCnnOutputs(base,detail,{quality:'max',material:'stone'});
+  assert.ok(stone.detailPixels>0);
+  assert.ok(stone.image.data[c]>=base.data[c]);
+  assert.ok(stone.image.data[c]-base.data[c]<20);
+});
