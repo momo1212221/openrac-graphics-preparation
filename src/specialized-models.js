@@ -50,6 +50,18 @@ export async function specializedRegistryIdentity(){
   return canonical;
 }
 
+export async function sha256Hex(bytes){
+  if(typeof crypto==="undefined"||!crypto.subtle)throw new Error("SHA-256 is unavailable");
+  const view=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);
+  const digest=await crypto.subtle.digest("SHA-256",view);
+  return [...new Uint8Array(digest)].map((b)=>b.toString(16).padStart(2,"0")).join("");
+}
+
+export async function verifySpecializedModelBytes(entry,bytes){
+  if(!entry||!/^[a-f0-9]{64}$/.test(String(entry.sha256||"")))return false;
+  return (await sha256Hex(bytes))===entry.sha256;
+}
+
 export async function specializedModelFor(material){
   const registry=await specializedRegistry();
   const entry=registry.models?.[material]||null;
