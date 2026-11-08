@@ -107,7 +107,7 @@ export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAg
     histogramDrift:Number(histogramDrift.toFixed(2)),
     edgeGain:Number(edgeGain.toFixed(2)),
     microdetailGain:Number(Math.max(0,edgeGain-1).toFixed(2)),
-    cnnAgreement:Number(cnnAgreement.toFixed(3)),
+    cnnAgreement:Number(cnnAgreement.toFixed(3)),\n    cnnConfidence:Number(cnnConfidence.toFixed(3)),\n    cnnRejectedRatio:Number(clamp(cnnRejectedRatio,0,1).toFixed(3)),
     cnnConfidence:Number(cnnConfidence.toFixed(3)),
     ssim:Number(clamp(ssim,-1,1).toFixed(4)),
     hallucinationScore:Number(hallucinationScore.toFixed(1)),
