@@ -20,9 +20,9 @@ test('frequency bands preserve flat regions and reconstruct local structure',()=
 
 test('failure detector catches catastrophic and excessive outputs',()=>{
   const src=img(2,2,100),bad=img(8,8,0);
-  const r=detectOutputFailures(src,bad,{edgeGain:4,alphaDrift:0,cnnAgreement:.1,hallucinationScore:80,seamScore:40});
+  const r=detectOutputFailures(src,bad,{edgeGain:4,alphaDrift:0,cnnAgreement:.1,cnnRejectedRatio:.8,hallucinationScore:80,seamScore:40});
   assert.equal(r.ok,false);
   assert.ok(r.issues.includes('black-output'));
   assert.ok(r.issues.includes('over-detail'));
-  assert.ok(r.issues.includes('hallucination-risk'));
+  assert.ok(r.issues.includes('hallucination-risk'));\n  assert.ok(r.issues.includes('cnn-local-rejection'));
 });
