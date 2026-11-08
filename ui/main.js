@@ -15,6 +15,7 @@ import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
 import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
 import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
+import {specializedRegistryIdentity} from "../src/specialized-models.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -169,9 +170,13 @@ async function createPack({ai}) {
   };
 
   try {
+    let specializedFingerprint="none";
     if (ai) {
       progress(0, 1, "AI preflight · model + 128×128 inference check…");
-      aiReady = await warmAi(state.aiBackend);
+      [aiReady,specializedFingerprint]=await Promise.all([
+        warmAi(state.aiBackend),
+        specializedRegistryIdentity(),
+      ]);
     }
 
     let workGroups = textures.map((texture) => ({members:[texture], verified:true}));
@@ -251,6 +256,7 @@ async function createPack({ai}) {
           sourceColorLock: state.sourceColorLock,
           qualityGuard: state.qualityGuard,
           master8x: state.master8x,
+          specializedFingerprint,
           textureClassOverride: override.textureClass || null,
           materialOverride: override.material || null,
         };
