@@ -72,6 +72,39 @@ function deriveEmissiveFromSource(image,material){
   return {emissive,emissivePixels};
 }
 
+export function deriveReliefPreview(maps){
+  const albedo=maps?.albedo,normal=maps?.normal,roughness=maps?.roughness,ao=maps?.ao;
+  if(!albedo||!normal||!roughness||!ao)return null;
+  const {width:w,height:h}=albedo;
+  const out=rgba(w,h,[0,0,0,0]);
+  const lx=-.48,ly=-.52,lz=.706;
+  const hx=lx*.5,hy=ly*.5,hz=(lz+1)*.5;
+  const hlen=Math.hypot(hx,hy,hz)||1;
+  const nhx=hx/hlen,nhy=hy/hlen,nhz=hz/hlen;
+  for(let i=0;i<out.data.length;i+=4){
+    const alpha=albedo.data[i+3];
+    out.data[i+3]=alpha;
+    if(alpha<16)continue;
+    let nx=normal.data[i]/127.5-1,ny=normal.data[i+1]/127.5-1,nz=normal.data[i+2]/127.5-1;
+    const nlen=Math.hypot(nx,ny,nz)||1;nx/=nlen;ny/=nlen;nz/=nlen;
+    const ndotl=Math.max(0,nx*lx+ny*ly+nz*lz);
+    const ndoth=Math.max(0,nx*nhx+ny*nhy+nz*nhz);
+    const a=ao.data[i]/255;
+    const rough=roughness.data[i]/255;
+    const spec=(maps.specular?.data?.[i]??64)/255;
+    const shininess=4+(1-rough)*72;
+    const specular=Math.pow(ndoth,shininess)*spec*.75;
+    const lighting=(.30+.86*ndotl)*(.58+.42*a);
+    const er=(maps.emissive?.data?.[i]??0)/255;
+    const eg=(maps.emissive?.data?.[i+1]??0)/255;
+    const eb=(maps.emissive?.data?.[i+2]??0)/255;
+    out.data[i]=clamp8(albedo.data[i]*lighting+255*(specular+er*.9));
+    out.data[i+1]=clamp8(albedo.data[i+1]*lighting+255*(specular+eg*.9));
+    out.data[i+2]=clamp8(albedo.data[i+2]*lighting+255*(specular+eb*.9));
+  }
+  return out;
+}
+
 /**
  * Production material pipeline:
  *   Upscaled Diffuse
@@ -190,9 +223,11 @@ export function deriveMaterialMaps(image,material="generic",options={}){
 
   const pbrCalibration=calibratePbrMaps(maps,albedo,material);
   const pbrValidation=validatePbrCalibration(pbrCalibration);
+  const reliefPreview=deriveReliefPreview(maps);
 
   return {
     ...maps,
+    reliefPreview,
     emissivePixels,
     pbrCalibration,
     pbrValidation,
@@ -252,7 +287,7 @@ export async function generateMaterialMapPngs(bytes,material="generic",options={
     };
     const names=[
       "albedo","normal","roughness","height","ao","emissive","specular","metallic",
-      "cavity","edgewear","coarseHeight","midHeight","microHeight"
+      "cavity","edgewear","coarseHeight","midHeight","microHeight","reliefPreview"
     ];
     if(maps.curvature)names.push("curvature");
     for(const name of names)out[name]=await encode(maps[name]);
