@@ -1,8 +1,9 @@
-Graphics preparation 0.7.2 adds a lossless trivial-texture bypass.
+Graphics preparation 0.7.3 adds WebGPU graph capture and built-in timing.
 
-- Fully transparent textures skip Real-ESRGAN.
-- Exactly uniform RGBA textures skip Real-ESRGAN.
-- The bypass is exact, not heuristic: any visible pixel variation stays on the neural path.
-- Bypassed textures use direct unsmoothed 4x enlargement, preserving their source content exactly.
-- Final stats report how many outputs avoided AI through this fast path.
-- Keeps WebGPU -> WASM Auto acceleration, persistent resume cache, exact duplicate elimination and all fail-safe/light/baker/effects features.
+- Auto backend order is now WebGPU + graph capture -> plain WebGPU -> optimized WASM.
+- Fixed 128x128 Real-ESRGAN input is suitable for graph capture; successful capture replays GPU command work across repeated tile runs.
+- Capture failure disables only graph capture, not the whole GPU path.
+- Plain WebGPU failure then falls back to WASM in Auto mode.
+- The per-texture fail-safe retry can step down the same hierarchy during a long run.
+- Final stats report AI compute seconds, average ms per unique AI source and total neural tile count.
+- Keeps persistent resume cache, exact duplicate elimination, trivial-texture bypass and all lighting/baker/effects features.

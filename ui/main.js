@@ -139,6 +139,8 @@ async function createPack({ai}) {
     cacheMisses: 0,
     cacheWrites: 0,
     smartSkipped: 0,
+    aiElapsedMs: 0,
+    aiTiles: 0,
   };
 
   try {
@@ -270,6 +272,10 @@ async function createPack({ai}) {
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
         stats.stars += prepared.stars;
         stats.microdetails += prepared.microdetails;
+        if (!prepared.cached) {
+          stats.aiElapsedMs += prepared.elapsedMs || 0;
+          stats.aiTiles += prepared.tiles || 0;
+        }
         if (prepared.strategy !== "ai") {
           stats.warnings.push({
             hashes:group.members.map((member)=>member.hash),
@@ -323,6 +329,8 @@ async function createPack({ai}) {
       cache_misses: stats.cacheMisses,
       cache_writes: stats.cacheWrites,
       smart_skipped: stats.smartSkipped,
+      ai_elapsed_ms: Math.round(stats.aiElapsedMs),
+      ai_tiles: stats.aiTiles,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -344,6 +352,7 @@ async function createPack({ai}) {
         stats.cacheHits ? `${stats.cacheHits} unique sources restored from persistent AI cache` : "",
         stats.smartSkipped ? `${stats.smartSkipped} transparent/uniform outputs bypassed Real-ESRGAN losslessly` : "",
         stats.cacheWrites ? `${stats.cacheWrites} new AI results cached for future runs` : "",
+        stats.aiRuns && stats.aiElapsedMs ? `AI compute ${(stats.aiElapsedMs / 1000).toFixed(1)}s · ${(stats.aiElapsedMs / stats.aiRuns).toFixed(0)}ms per unique source · ${stats.aiTiles} tiles` : "",
         stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
@@ -547,7 +556,7 @@ async function start() {
   effectsEditor = new EffectsEditor(controller, info, setMessage);
   await effectsEditor.start();
   document.addEventListener("graphics-effects-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.7.2 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.7.3 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {

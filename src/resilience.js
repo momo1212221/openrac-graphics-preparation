@@ -27,6 +27,8 @@ export async function prepareTextureFailSafe(source, {
         backend: result.backend ?? null,
         skipped: result.skipped === true,
         skipReason: result.skipReason ?? null,
+        elapsedMs: Number(result.elapsedMs) || 0,
+        tiles: Number(result.tiles) || 0,
         errors,
       };
     } catch (error) {

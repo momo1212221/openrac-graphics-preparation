@@ -6,13 +6,16 @@ import {CORE, MODEL_INPUT, PAD, SCALE, fillFixedRgbTile} from "./ai-tile.js";
 import {trivialTexture} from "./ai-analyze.js";
 
 let wasmSessionPromise;
-let gpuSessionPromise;
+let gpuCaptureSessionPromise;
+let gpuPlainSessionPromise;
 let wasmBytesPromise;
 let gpuBytesPromise;
 let modelPromise;
 let activeBackend = null;
 let gpuDisabledForRun = false;
+let gpuCaptureDisabledForRun = false;
 let lastGpuError = null;
+let lastGpuCaptureError = null;
 let preflightKey = "";
 
 const imageFromBytes = async (buffer) => {
@@ -95,24 +98,56 @@ async function createWasmSession() {
   return wasmSessionPromise;
 }
 
-async function createGpuSession() {
-  if (!gpuSessionPromise) {
-    gpuSessionPromise = Promise.all([gpuRuntimeBytes(), modelBytes()]).then(async ([wasm, model]) => {
-      // The WebGPU bundle uses a WASM async bridge. Keep that bridge single-threaded so the
-      // OpenRAC custom-scheme WebView never needs a worker/module bootstrap; actual inference
-      // runs on WebGPU.
-      ortGpu.env.wasm.numThreads = 1;
-      ortGpu.env.wasm.proxy = false;
-      ortGpu.env.wasm.wasmBinary = wasm;
-      return ortGpu.InferenceSession.create(model, {
-        executionProviders: ["webgpu"],
-        graphOptimizationLevel: "all",
-        enableCpuMemArena: true,
-        enableMemPattern: true,
-      });
-    });
+async function gpuSessionOptions(capture) {
+  const [wasm, model] = await Promise.all([gpuRuntimeBytes(), modelBytes()]);
+  ortGpu.env.wasm.numThreads = 1;
+  ortGpu.env.wasm.proxy = false;
+  ortGpu.env.wasm.wasmBinary = wasm;
+  const session = await ortGpu.InferenceSession.create(model, {
+    executionProviders: ["webgpu"],
+    graphOptimizationLevel: "all",
+    enableGraphCapture: capture,
+  });
+  return session;
+}
+
+async function createGpuCaptureSession() {
+  if (!gpuCaptureSessionPromise) gpuCaptureSessionPromise = gpuSessionOptions(true);
+  return gpuCaptureSessionPromise;
+}
+
+async function createGpuPlainSession() {
+  if (!gpuPlainSessionPromise) gpuPlainSessionPromise = gpuSessionOptions(false);
+  return gpuPlainSessionPromise;
+}
+
+async function acquireGpuSession() {
+  if (!canUseWebGpu()) {
+    throw new Error(lastGpuError
+      ? `WebGPU is unavailable for this run: ${lastGpuError}`
+      : "WebGPU is not exposed by this OpenRAC WebView");
   }
-  return gpuSessionPromise;
+
+  if (!gpuCaptureDisabledForRun) {
+    try {
+      const session = await createGpuCaptureSession();
+      activeBackend = "webgpu-capture";
+      return {ort:ortGpu, session, backend:"webgpu-capture"};
+    } catch (error) {
+      lastGpuCaptureError = error instanceof Error ? error.message : String(error);
+      gpuCaptureDisabledForRun = true;
+    }
+  }
+
+  try {
+    const session = await createGpuPlainSession();
+    activeBackend = "webgpu";
+    return {ort:ortGpu, session, backend:"webgpu"};
+  } catch (error) {
+    lastGpuError = error instanceof Error ? error.message : String(error);
+    gpuDisabledForRun = true;
+    throw error;
+  }
 }
 
 async function acquireSession(preference = "auto") {
@@ -121,31 +156,13 @@ async function acquireSession(preference = "auto") {
     return {ort:ortWasm, session:await createWasmSession(), backend:"wasm"};
   }
 
-  if (preference === "webgpu") {
-    if (!canUseWebGpu()) {
-      throw new Error(lastGpuError
-        ? `WebGPU is unavailable for this run: ${lastGpuError}`
-        : "WebGPU is not exposed by this OpenRAC WebView");
-    }
-    try {
-      const session = await createGpuSession();
-      activeBackend = "webgpu";
-      return {ort:ortGpu, session, backend:"webgpu"};
-    } catch (error) {
-      lastGpuError = error instanceof Error ? error.message : String(error);
-      gpuDisabledForRun = true;
-      throw error;
-    }
-  }
+  if (preference === "webgpu") return acquireGpuSession();
 
   if (canUseWebGpu()) {
     try {
-      const session = await createGpuSession();
-      activeBackend = "webgpu";
-      return {ort:ortGpu, session, backend:"webgpu"};
-    } catch (error) {
-      lastGpuError = error instanceof Error ? error.message : String(error);
-      gpuDisabledForRun = true;
+      return await acquireGpuSession();
+    } catch {
+      // Auto mode continues with WASM.
     }
   }
 
@@ -176,8 +193,8 @@ function croppedTensorImageData(tensor, coreW, coreH) {
   const out = new ImageData(cropW, cropH);
   const dst = out.data;
   const src = tensor.data;
-
   let at = 0;
+
   for (let y = 0; y < cropH; y++) {
     let sourceAt = (cropY + y) * width + cropX;
     for (let x = 0; x < cropW; x++, sourceAt++, at += 4) {
@@ -202,24 +219,30 @@ async function releasePromise(promise) {
   try {
     const value = await promise;
     if (value && typeof value.release === "function") await value.release();
-  } catch {
-    // A failed session is exactly what reset is for.
-  }
+  } catch {}
 }
 
 export async function resetAiSession() {
+  preflightKey = "";
+
+  if (activeBackend === "webgpu-capture") {
+    const current = gpuCaptureSessionPromise;
+    gpuCaptureSessionPromise = undefined;
+    gpuCaptureDisabledForRun = true;
+    await releasePromise(current);
+    return;
+  }
+
   if (activeBackend === "webgpu") {
-    const current = gpuSessionPromise;
-    gpuSessionPromise = undefined;
+    const current = gpuPlainSessionPromise;
+    gpuPlainSessionPromise = undefined;
     gpuDisabledForRun = true;
-    preflightKey = "";
     await releasePromise(current);
     return;
   }
 
   const current = wasmSessionPromise;
   wasmSessionPromise = undefined;
-  preflightKey = "";
   await releasePromise(current);
 }
 
@@ -243,39 +266,60 @@ async function preflight(runtime) {
 }
 
 export async function warmAi(preference = "auto") {
-  let runtime = await acquireSession(preference);
-  try {
-    await preflight(runtime);
-  } catch (error) {
-    if (runtime.backend === "webgpu" && preference === "auto") {
-      lastGpuError = error instanceof Error ? error.message : String(error);
-      await resetAiSession();
-      runtime = await acquireSession("wasm");
+  // Capture -> plain WebGPU -> WASM in Auto mode. Each failed preflight removes only that layer.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let runtime;
+    try {
+      runtime = await acquireSession(preference);
       await preflight(runtime);
-    } else {
+
+      if (runtime.backend === "webgpu-capture") {
+        return {
+          model:"Real-ESRGAN x4plus ONNX",
+          backend:"ONNX Runtime WebGPU · GPU + graph capture",
+          provider:"webgpu",
+          graphCapture:true,
+          webgpu:true,
+          fallbackReason:null,
+        };
+      }
+      if (runtime.backend === "webgpu") {
+        return {
+          model:"Real-ESRGAN x4plus ONNX",
+          backend:"ONNX Runtime WebGPU · GPU",
+          provider:"webgpu",
+          graphCapture:false,
+          webgpu:true,
+          fallbackReason:lastGpuCaptureError,
+        };
+      }
+
+      const threads = Number(ortWasm.env.wasm.numThreads) || 1;
+      return {
+        model:"Real-ESRGAN x4plus ONNX",
+        backend:`ONNX Runtime WASM · ${threads} thread${threads === 1 ? "" : "s"} · CPU fallback`,
+        provider:"wasm",
+        threads,
+        webgpu:false,
+        graphCapture:false,
+        fallbackReason:lastGpuError || lastGpuCaptureError,
+      };
+    } catch (error) {
+      if (runtime?.backend === "webgpu-capture") {
+        lastGpuCaptureError = error instanceof Error ? error.message : String(error);
+        await resetAiSession();
+        continue;
+      }
+      if (runtime?.backend === "webgpu") {
+        lastGpuError = error instanceof Error ? error.message : String(error);
+        await resetAiSession();
+        if (preference === "webgpu") continue;
+        continue;
+      }
       throw error;
     }
   }
-
-  if (runtime.backend === "webgpu") {
-    return {
-      model:"Real-ESRGAN x4plus ONNX",
-      backend:"ONNX Runtime WebGPU · GPU acceleration",
-      provider:"webgpu",
-      webgpu:true,
-      fallbackReason:null,
-    };
-  }
-
-  const threads = Number(ortWasm.env.wasm.numThreads) || 1;
-  return {
-    model:"Real-ESRGAN x4plus ONNX",
-    backend:`ONNX Runtime WASM · ${threads} thread${threads === 1 ? "" : "s"} · CPU fallback`,
-    provider:"wasm",
-    threads,
-    webgpu:false,
-    fallbackReason:lastGpuError,
-  };
+  throw new Error(lastGpuError || lastGpuCaptureError || "AI backend preflight failed");
 }
 
 export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) {
@@ -284,6 +328,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
   const preserveStars = options.preserveStars !== false;
   const backend = ["auto", "webgpu", "wasm"].includes(options.backend) ? options.backend : "auto";
   const image = await imageFromBytes(buffer);
+  const started = performance.now();
+
   try {
     const source = document.createElement("canvas");
     source.width = image.width;
@@ -303,18 +349,19 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       outputCtx.clearRect(0, 0, output.width, output.height);
       outputCtx.drawImage(source, 0, 0, output.width, output.height);
       return {
-        bytes: await canvasPng(output),
-        stars: 0,
-        microdetails: 0,
-        backend: "trivial",
-        skipped: true,
-        skipReason: trivial.reason,
+        bytes:await canvasPng(output),
+        stars:0,
+        microdetails:0,
+        backend:"trivial",
+        skipped:true,
+        skipReason:trivial.reason,
+        elapsedMs:performance.now()-started,
+        tiles:0,
       };
     }
 
     const runtime = await acquireSession(backend);
     const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
-
     const tilesX = Math.ceil(source.width / CORE);
     const tilesY = Math.ceil(source.height / CORE);
     const total = tilesX * tilesY;
@@ -348,7 +395,13 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     const outData = outputCtx.getImageData(0, 0, output.width, output.height);
     const stats = restoreSourceDetail(sourceData, outData, mode, preserveMicrodetail, preserveStars);
     outputCtx.putImageData(outData, 0, 0);
-    return {bytes:await canvasPng(output), ...stats, backend:runtime.backend};
+    return {
+      bytes:await canvasPng(output),
+      ...stats,
+      backend:runtime.backend,
+      elapsedMs:performance.now()-started,
+      tiles:total,
+    };
   } finally {
     if (typeof image.close === "function") image.close();
   }
