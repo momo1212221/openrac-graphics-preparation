@@ -9,7 +9,31 @@ const safeNumber = (value, fallback = 0) => {
   return Number.isFinite(n) ? n : fallback;
 };
 const vec3 = (value, fallback) => Array.from({length:3}, (_,i)=>safeNumber(value?.[i], fallback[i]));
+const finiteVec3 = (value) => {
+  if (!Array.isArray(value) || value.length < 3) return null;
+  const out = value.slice(0,3).map(Number);
+  return out.every(Number.isFinite) ? out : null;
+};
 const clone = (value) => JSON.parse(JSON.stringify(value));
+
+export function manifestObjectPosition(entry = {}) {
+  for (const candidate of [
+    entry.position,
+    entry.translation,
+    entry.origin,
+    entry.transform?.position,
+    entry.transform?.translation,
+  ]) {
+    const position = finiteVec3(candidate);
+    if (position) return position;
+  }
+  const matrix = Array.isArray(entry.matrix) ? entry.matrix : entry.transform?.matrix;
+  if (Array.isArray(matrix) && matrix.length >= 16) {
+    const position = [Number(matrix[12]),Number(matrix[13]),Number(matrix[14])];
+    if (position.every(Number.isFinite)) return position;
+  }
+  return null;
+}
 
 export const DEFAULT_EFFECTS = {
   selectedLevel: "",
@@ -78,10 +102,16 @@ export function normalizeAreaLight(value = {}) {
 
 export function normalizeParticle(value = {}) {
   const presets = ["sparks","smoke","mist","glow","energy","rain","heat-haze"];
+  const explicitPosition = finiteVec3(value.position);
+  const placement = ["manual","object","unplaced"].includes(value.placement)
+    ? value.placement
+    : explicitPosition ? "manual" : "unplaced";
   return {
     level: String(value.level || ""),
     preset: presets.includes(value.preset) ? value.preset : "sparks",
-    position: vec3(value.position,[0,0,0]),
+    placement,
+    anchorObject: String(value.anchorObject || "").slice(0,256),
+    position: explicitPosition || [0,0,0],
     colour: vec3(value.colour,[1,0.55,0.15]).map(v=>Math.max(0,Math.min(4,v))),
     alpha: Math.max(0,Math.min(1,safeNumber(value.alpha,0.9))),
     rate: Math.max(0,Math.min(120,safeNumber(value.rate,12))),
@@ -112,6 +142,7 @@ function objectsFromManifest(manifest) {
         classId:id,
         name:entry.name || key.split("/").pop() || key,
         label:`${layer} ${id} · ${entry.name || key.split("/").pop() || key}`,
+        position:manifestObjectPosition(entry),
       });
     }
   }
@@ -209,7 +240,7 @@ export function particleConfig(state, levels) {
   for (const raw of state.particles) {
     const p = normalizeParticle(raw);
     const level = numberByDir.get(p.level);
-    if (!Number.isInteger(level)) continue;
+    if (!Number.isInteger(level) || p.placement === "unplaced") continue;
     header.push([
       level,p.preset,...p.position,...p.colour,p.alpha,p.rate,p.life,p.size,p.speed,p.spread,p.gravity,p.hazeRadius,p.hazeStrength
     ].map(tsvValue).join("\t"));
@@ -236,6 +267,10 @@ export async function exportBakerProfile(controller, info, state, levelDir, base
 }
 
 export async function exportEffectsMod(controller, info, state, levels) {
+  const unplaced=(state.particles||[]).map(normalizeParticle).filter((p)=>p.placement==="unplaced");
+  if(unplaced.length){
+    throw new Error(`${unplaced.length} runtime effect${unplaced.length===1?"":"s"} still need placement. Set X/Y/Z or use Place at selected object before exporting.`);
+  }
   const id = `graphics-effects-${info.game}-${info.version}`.replace(/[^a-z0-9-]+/g,"-");
   const token = await controller.saveStart(id,"zip");
   if (!token) return null;
