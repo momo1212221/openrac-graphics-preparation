@@ -54,3 +54,27 @@ test('PSNR is maximal for identical output and drops with error',()=>{
  assert.ok(b.psnr<a.psnr);
  assert.ok(Number.isFinite(b.psnr));
 });
+
+
+test('regional low-confidence ratio raises hallucination risk',()=>{
+  const src=image(2,2,100,90,80),out=image(8,8,100,90,80);
+  const stable=qualityMetrics(src,out,{
+    cnnAgreement:.9,cnnConfidence:.9,cnnRejectedRatio:.05,cnnLowConfidenceRatio:.05,cnnConfidenceP10:.5,
+  });
+  const regional=qualityMetrics(src,out,{
+    cnnAgreement:.9,cnnConfidence:.9,cnnRejectedRatio:.05,cnnLowConfidenceRatio:.8,cnnConfidenceP10:.05,
+  });
+  assert.ok(regional.hallucinationScore>stable.hallucinationScore);
+  assert.ok(regional.score<stable.score);
+  assert.equal(regional.cnnLowConfidenceRatio,.8);
+  assert.equal(regional.cnnConfidenceP10,.05);
+});
+
+test('alpha edge coverage compares full output cutout coverage',()=>{
+  const src=image(2,2,100,90,80);
+  src.data[3]=0;
+  const out=image(8,8,100,90,80);
+  const sameCoverage=qualityMetrics(src,out);
+  assert.ok(Number.isFinite(sameCoverage.alphaEdgeCoverageDiff));
+  assert.ok(sameCoverage.alphaEdgeCoverageDiff>=0);
+});
