@@ -7,6 +7,7 @@ import {textureFiles, texturePackManifest, outputName, packPath} from "../src/te
 import {upscalePng} from "../src/upscale.js";
 import {ZipStream} from "../src/zip.js";
 import {EffectsEditor} from "./effects.js";
+import {buildDuplicatePlan} from "../src/dedup.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -125,6 +126,10 @@ async function createPack({ai}) {
     stars: 0,
     microdetails: 0,
     warnings: [],
+    duplicateTextures: 0,
+    uniqueSources: textures.length,
+    duplicateScanUnverified: 0,
+    aiRuns: 0,
   };
 
   try {
@@ -133,25 +138,65 @@ async function createPack({ai}) {
       aiReady = await warmAi();
     }
 
+    let workGroups = textures.map((texture) => ({members:[texture], verified:true}));
+    if (ai) {
+      progress(0, 1, "Duplicate scan · grouping identical PNG contents…");
+      const plan = await buildDuplicatePlan(
+        textures,
+        async (texture) => {
+          const read = await readFailSafe(() => controller.read("dump", texture.path), 2);
+          if (read.attempts > 1) stats.retried++;
+          return read.bytes;
+        },
+        (done, total, snapshot) => {
+          progress(done, total, `Duplicate scan · ${done}/${total} · ${snapshot.duplicates} duplicates found`);
+        },
+      );
+      workGroups = plan.groups;
+      stats.duplicateTextures = plan.duplicates;
+      stats.uniqueSources = plan.uniqueSources;
+      stats.duplicateScanUnverified = plan.unverified;
+      setMessage(
+        plan.duplicates
+          ? `Duplicate scan: ${plan.duplicates} exact duplicate textures found. Only ${plan.uniqueSources} unique sources need processing.`
+          : `Duplicate scan: no exact content duplicates found across ${textures.length} textures.`,
+      );
+    }
+
     const suffix = ai ? `ai-${state.aiMode}-4x` : `${state.scale}x`;
     const token = await controller.saveStart(outputName(info, suffix), "zip");
     if (!token) { setMessage("Save cancelled."); return; }
     zip = new ZipStream(controller, token);
 
     let included = 0;
-    for (let i = 0; i < textures.length; i++) {
-      const texture = textures[i];
-      const baseLabel = `${i + 1}/${textures.length} · ${texture.hash}`;
-      let source;
+    for (let groupIndex = 0; groupIndex < workGroups.length; groupIndex++) {
+      const group = workGroups[groupIndex];
+      const primary = group.members[0];
+      const baseLabel = ai
+        ? `unique ${groupIndex + 1}/${workGroups.length} · ${group.members.length} output${group.members.length === 1 ? "" : "s"} · ${primary.hash}`
+        : `${groupIndex + 1}/${workGroups.length} · ${primary.hash}`;
+      let source = null;
+      let readError = null;
 
-      try {
-        const read = await readFailSafe(() => controller.read("dump", texture.path), 2);
-        source = read.bytes;
-        if (read.attempts > 1) stats.retried++;
-      } catch (error) {
-        stats.unreadable++;
-        stats.warnings.push({hash: texture.hash, strategy: "skipped", error: error instanceof Error ? error.message : String(error)});
-        progress(i + 1, textures.length, `Skipped unreadable texture · ${baseLabel}`);
+      for (const member of group.members) {
+        try {
+          const read = await readFailSafe(() => controller.read("dump", member.path), 2);
+          source = read.bytes;
+          if (read.attempts > 1) stats.retried++;
+          break;
+        } catch (error) {
+          readError = error;
+        }
+      }
+
+      if (!source) {
+        stats.unreadable += group.members.length;
+        stats.warnings.push({
+          hashes:group.members.map((member)=>member.hash),
+          strategy:"skipped",
+          error:readError instanceof Error ? readError.message : String(readError),
+        });
+        progress(groupIndex + 1, workGroups.length, `Skipped unreadable source group · ${baseLabel}`);
         continue;
       }
 
@@ -162,7 +207,7 @@ async function createPack({ai}) {
             preserveMicrodetail: state.preserveMicrodetail,
             preserveStars: state.preserveStars,
           }, (tile, totalTiles) => {
-            const fraction = (i + tile / totalTiles) / textures.length;
+            const fraction = (groupIndex + tile / totalTiles) / workGroups.length;
             progress(fraction, 1, `AI · ${baseLabel} · tile ${tile}/${totalTiles}`);
           }),
           resetAi: resetAiSession,
@@ -171,30 +216,41 @@ async function createPack({ai}) {
         });
 
         if (prepared.attempts > 1) stats.retried++;
-        stats[prepared.strategy]++;
+        const copies = group.members.length;
+        stats[prepared.strategy] += copies;
+        if (prepared.strategy === "ai") stats.aiRuns++;
         stats.stars += prepared.stars;
         stats.microdetails += prepared.microdetails;
         if (prepared.strategy !== "ai") {
           stats.warnings.push({
-            hash: texture.hash,
-            strategy: prepared.strategy,
-            errors: prepared.errors.slice(-3),
+            hashes:group.members.map((member)=>member.hash),
+            strategy:prepared.strategy,
+            errors:prepared.errors.slice(-3),
           });
         }
-        await zip.add(packPath(texture), prepared.bytes);
+        for (const member of group.members) {
+          await zip.add(packPath(member), prepared.bytes);
+          included++;
+        }
       } else {
         let prepared;
         try {
           prepared = await upscalePng(source, state.scale, state.edgePreserving);
         } catch (error) {
           prepared = source;
-          stats.original++;
-          stats.warnings.push({hash: texture.hash, strategy: "original", error: error instanceof Error ? error.message : String(error)});
+          stats.original += group.members.length;
+          stats.warnings.push({
+            hashes:group.members.map((member)=>member.hash),
+            strategy:"original",
+            error:error instanceof Error ? error.message : String(error),
+          });
         }
-        progress(i + 1, textures.length, `Local fallback · ${baseLabel}`);
-        await zip.add(packPath(texture), prepared);
+        progress(groupIndex + 1, workGroups.length, `Local fallback · ${baseLabel}`);
+        for (const member of group.members) {
+          await zip.add(packPath(member), prepared);
+          included++;
+        }
       }
-      included++;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
@@ -210,6 +266,10 @@ async function createPack({ai}) {
       fallback: stats.fallback,
       original: stats.original,
       unreadable: stats.unreadable,
+      unique_sources: stats.uniqueSources,
+      exact_duplicates: stats.duplicateTextures,
+      duplicate_scan_unverified: stats.duplicateScanUnverified,
+      ai_runs: stats.aiRuns,
     };
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
@@ -226,7 +286,9 @@ async function createPack({ai}) {
       const degraded = stats.fallback + stats.original + stats.unreadable;
       const summary = [
         `Saved ${saved}.`,
-        `${stats.ai}/${textures.length} textures used Real-ESRGAN`,
+        `${stats.ai}/${textures.length} output textures used Real-ESRGAN in ${stats.aiRuns} unique AI runs`,
+        stats.duplicateTextures ? `${stats.duplicateTextures} exact duplicates reused; ${stats.duplicateTextures} repeated AI passes avoided` : "no exact duplicates found",
+        stats.duplicateScanUnverified ? `${stats.duplicateScanUnverified} duplicate candidates could not be pre-verified and were processed separately` : "",
         stats.retried ? `${stats.retried} recovered after a retry` : "",
         stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
         stats.original ? `${stats.original} kept original pixels` : "",
@@ -297,6 +359,7 @@ function render() {
   safety.append(el("div", "FAIL-SAFE", "eyebrow"));
   for (const [title, description, badge] of [
     ["Preflight", "Runs one fixed 128×128 inference before opening the output pack.", "On"],
+    ["Exact duplicate check", "Same-size candidates are fingerprinted and confirmed byte-for-byte; identical PNGs are upscaled only once.", "On"],
     ["Per-texture retry", "If ONNX fails, the session is released and rebuilt once.", "1 retry"],
     ["Automatic fallback", "If AI still fails, that texture uses deterministic 4× scaling.", "4×"],
     ["Last-resort original", "If even fallback scaling fails, the original PNG is kept instead of aborting the pack.", "Safe"],
@@ -322,7 +385,7 @@ function render() {
   backend.control.append(el("span", "Standard launcher", "status-ok"));
   assets.append(backend.row);
   assets.append(el("p",
-    "Only output/save failures stop the complete run. Individual decode, inference or scaling problems are isolated to that texture.",
+    "Exact-content duplicates are reused before AI. Only output/save failures stop the complete run; individual decode, inference or scaling problems stay isolated.",
     "info-note"));
   content.append(assets);
 
@@ -367,7 +430,7 @@ async function start() {
   effectsEditor = new EffectsEditor(controller, info, setMessage);
   await effectsEditor.start();
   document.addEventListener("graphics-effects-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.6.0 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.6.1 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {

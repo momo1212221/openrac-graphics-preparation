@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.5.3 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.6.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.5.3.zip`.
+2. Install `graphics-preparation-0.6.1.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -73,3 +73,15 @@ The stock Mod Tool API deliberately cannot overwrite extracted level source or l
 baker. Therefore **Export baker profile** saves the selected level's merged `probe-bake.json`;
 place it in that exported level and run **Enhanced graphics -> Prepare lighting**. Runtime
 point/spot lights and particle effects do not need a bake.
+
+
+## Exact duplicate elimination (0.6.1)
+
+Before a neural run, Graphics preparation now performs an exact-content duplicate pass. Files with
+different sizes are known to be different without reading them twice. Same-size candidates receive
+a fast fingerprint and are then compared byte-for-byte; the fingerprint is never trusted by itself.
+
+Each unique PNG source is sent through Real-ESRGAN only once. The prepared result is immediately
+written to every OpenRAC texture hash that referenced identical bytes, so the implementation does
+not keep an entire 4x texture library in memory. The final summary reports unique sources, exact
+duplicates and how many repeated AI passes were avoided.
