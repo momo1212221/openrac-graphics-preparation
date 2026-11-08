@@ -11,7 +11,7 @@ import {lockSourceChroma, qualityMetrics} from "./quality-metrics.js";
 import {detectTextureWrap} from "./seam.js";
 import {detectOutputFailures} from "./failure-detect.js";
 import {resizePng,upscalePng} from "./upscale.js";
-import {acceptSpecializedRefinement,specializedModelFor} from "./specialized-models.js";
+import {acceptSpecializedRefinement,specializedModelFor,verifySpecializedModelBytes} from "./specialized-models.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -179,6 +179,9 @@ async function specializedSessionFor(material,baseRuntime){
   if(!specializedSessions.has(key)){
     specializedSessions.set(key,(async()=>{
       const bytes=await fetchBytes(model.url,"Specialized "+material+" detail CNN");
+      if(!await verifySpecializedModelBytes(model.entry,bytes)){
+        throw new Error("Specialized "+material+" detail CNN failed SHA-256 verification");
+      }
       if(gpu){
         const wasm=await gpuRuntimeBytes();
         ortGpu.env.wasm.numThreads=1;ortGpu.env.wasm.proxy=false;ortGpu.env.wasm.wasmBinary=wasm;
