@@ -32,3 +32,15 @@ GAN/adversarial, to reduce invented detail.
 
 Training output is intentionally not committed automatically. Models need validation in Quality Lab
 before they can be pinned, hashed and shipped by the release workflow.
+
+
+## Validate before release
+
+```bash
+python tools/training/validate_detail.py training-data models/detail-metal.onnx --material metal \
+  --output models/detail-metal.validation.json
+```
+
+The validator runs only held-out validation/test sources and compares the model against its degraded
+input in both RGB L1 and gradient L1. A model is marked `release_candidate: true` only when both
+error measures improve. The report includes the exact model SHA-256 for later release pinning.
