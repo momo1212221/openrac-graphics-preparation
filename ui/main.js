@@ -13,6 +13,7 @@ import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
+import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -315,7 +316,7 @@ async function createPack({ai}) {
 
         if (
           state.qualityGuard && prepared.strategy === "ai" && !prepared.cached && !prepared.skipped &&
-          prepared.metrics?.score !== undefined && prepared.metrics.score < 45
+          prepared.metrics?.score !== undefined && evaluateQuality(prepared.metrics, prepared).retry
         ) {
           try {
             const conservative = await upscaleAiPng(source, {
@@ -330,7 +331,7 @@ async function createPack({ai}) {
               textureClassOverride: cacheOptions.textureClassOverride,
               materialOverride: cacheOptions.materialOverride,
             });
-            if ((conservative.metrics?.score ?? -1) > prepared.metrics.score) {
+            if (chooseBetterQuality(prepared, conservative) === conservative) {
               prepared.bytes = conservative.bytes;
               prepared.stars = conservative.stars;
               prepared.microdetails = conservative.microdetails;
@@ -367,8 +368,20 @@ async function createPack({ai}) {
         stats.detailPixels+=prepared.detailPixels||0;
         if(prepared.metrics?.score!==undefined){
           stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
-          if(state.qualityGuard && prepared.metrics.score<45){
-            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-warning",metrics:prepared.metrics});
+          if(state.qualityGuard){
+            const policy=evaluateQuality(prepared.metrics,prepared);
+            if(policy.fallback && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped){
+              prepared.bytes=await upscalePng(source,4,true);
+              prepared.strategy="fallback";
+              prepared.backend="quality-guard-fallback";
+              prepared.skipped=true;
+              prepared.skipReason="quality-reject";
+              prepared.detailCnnUsed=false;
+              prepared.detailPixels=0;
+              stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-rejected",metrics:prepared.metrics,policy});
+            }else if(policy.verdict!=="pass"){
+              stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-warning",metrics:prepared.metrics,policy});
+            }
           }
         }
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
@@ -412,7 +425,7 @@ async function createPack({ai}) {
             await zip.add(root+"emissive.png", generatedMaps.emissive);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.10.1",
+              generator:"Graphics preparation 0.10.4",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
