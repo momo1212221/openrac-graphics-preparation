@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 const finiteScore=(row)=>Number.isFinite(Number(row?.metrics?.score))?Number(row.metrics.score):null;
+const rate=(count,total)=>total?Number((count/total*100).toFixed(2)):0;
+const percentile=(sorted,p)=>{
+  if(!sorted.length)return null;
+  const index=(sorted.length-1)*p;
+  const lo=Math.floor(index),hi=Math.ceil(index),mix=index-lo;
+  const value=sorted[lo]*(1-mix)+sorted[hi]*mix;
+  return Number(value.toFixed(2));
+};
 
 const compact=(row)=>({
   hash:row.hash,
@@ -26,12 +34,30 @@ export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
   const best=[...scored].sort((a,b)=>finiteScore(b)-finiteScore(a)||String(a.path).localeCompare(String(b.path))).slice(0,limit);
   const failures=normalized.filter((row)=>row.failures.length||row.strategy==="fallback"||row.strategy==="original");
   const average=scored.length?scored.reduce((sum,row)=>sum+finiteScore(row),0)/scored.length:null;
+  const scores=scored.map(finiteScore).sort((a,b)=>a-b);
+  const standardCount=scores.filter((score)=>score>=90).length;
+  const highCount=scores.filter((score)=>score>=94).length;
+  const maxCount=scores.filter((score)=>score>=97).length;
   return {
-    version:1,
+    version:2,
     generatedBy:"Graphics preparation 0.12.2",
     evaluated:normalized.length,
     scored:scored.length,
     averageScore:average==null?null:Number(average.toFixed(2)),
+    belowStandardCount:scores.length-standardCount,
+    tiers:{
+      standard:{threshold:90,count:standardCount,rate:rate(standardCount,scores.length)},
+      high:{threshold:94,count:highCount,rate:rate(highCount,scores.length)},
+      max:{threshold:97,count:maxCount,rate:rate(maxCount,scores.length)},
+    },
+    percentiles:{
+      min:scores.length?Number(scores[0].toFixed(2)):null,
+      p50:percentile(scores,.50),
+      p90:percentile(scores,.90),
+      p95:percentile(scores,.95),
+      p99:percentile(scores,.99),
+      max:scores.length?Number(scores[scores.length-1].toFixed(2)):null,
+    },
     failureCount:failures.length,
     worst,
     best,
