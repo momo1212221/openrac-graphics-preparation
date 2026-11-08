@@ -10,6 +10,23 @@ const MATERIAL_LIMIT=Object.freeze({
   character:22,weapon:30,energy:20,glass:16,sky:18,ui:10,normal:0,mask:0,
 });
 
+const MATERIAL_PROFILE=Object.freeze({
+  generic:{minConfidence:.12,modelOnlyAllowance:.55,noveltyScale:1.00},
+  terrain:{minConfidence:.10,modelOnlyAllowance:.78,noveltyScale:1.05},
+  stone:{minConfidence:.10,modelOnlyAllowance:.82,noveltyScale:1.08},
+  metal:{minConfidence:.14,modelOnlyAllowance:.52,noveltyScale:.92},
+  fabric:{minConfidence:.11,modelOnlyAllowance:.72,noveltyScale:1.02},
+  organic:{minConfidence:.15,modelOnlyAllowance:.48,noveltyScale:.86},
+  character:{minConfidence:.18,modelOnlyAllowance:.34,noveltyScale:.72},
+  weapon:{minConfidence:.14,modelOnlyAllowance:.56,noveltyScale:.94},
+  energy:{minConfidence:.18,modelOnlyAllowance:.30,noveltyScale:.68},
+  glass:{minConfidence:.22,modelOnlyAllowance:.18,noveltyScale:.48},
+  sky:{minConfidence:.20,modelOnlyAllowance:.24,noveltyScale:.56},
+  ui:{minConfidence:.28,modelOnlyAllowance:.10,noveltyScale:.30},
+  normal:{minConfidence:1,modelOnlyAllowance:0,noveltyScale:0},
+  mask:{minConfidence:1,modelOnlyAllowance:0,noveltyScale:0},
+});
+
 function crossMean(data,width,height,x,y,c){
   const i=(y*width+x)*4+c;
   let sum=0,n=0;
@@ -54,6 +71,7 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
 
   const out={width:base.width,height:base.height,data:new Uint8ClampedArray(base.data)};
   const impulseLimit=MATERIAL_LIMIT[material]??MATERIAL_LIMIT.generic;
+  const profile=MATERIAL_PROFILE[material]??MATERIAL_PROFILE.generic;
   let agreementSum=0,confidenceSum=0,detailPixels=0,rejectedPixels=0,count=0;
 
   for(let y=0;y<base.height;y++){
@@ -67,11 +85,22 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
       )/3;
       const colourAgreement=clamp01(1-disagreement/72);
       const structure=structureConfidence(base,detail,x,y);
-      const confidence=clamp01(colourAgreement*(.25+.75*structure));
+      let baseEnergy=0,detailEnergy=0;
+      for(let c=0;c<3;c++){
+        baseEnergy+=Math.abs(residualAt(base,x,y,c));
+        detailEnergy+=Math.abs(residualAt(detail,x,y,c));
+      }
+      baseEnergy/=3;detailEnergy/=3;
+      const modelOnly=clamp01((detailEnergy-baseEnergy-2)/18);
+      const baseSupport=clamp01((baseEnergy-1)/12);
+      const modelOnlySafety=1-modelOnly*(1-profile.modelOnlyAllowance)*(1-baseSupport);
+      const confidence=clamp01(colourAgreement*(.25+.75*structure)*modelOnlySafety);
       agreementSum+=colourAgreement;
       confidenceSum+=confidence;
       count++;
-      if(confidence<.12 || (structure<.10 && confidence<.20)){rejectedPixels++;continue;}
+      if(confidence<profile.minConfidence || (structure<.10 && confidence<profile.minConfidence+.08)){
+        rejectedPixels++;continue;
+      }
 
       let used=false;
       for(let c=0;c<3;c++){
@@ -84,8 +113,8 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
           Math.max(8,Math.abs(detailResidual)+Math.abs(baseResidual)));
         // Inject only the extra detail contributed by the fidelity CNN. If both CNNs already
         // contain the same structure, detailDelta is zero and the base result stays untouched.
-        const noveltyGate=.20+.80*residualAgreement;
-        const supported=detailDelta*noveltyGate;
+        const noveltyGate=(.20+.80*residualAgreement)*profile.noveltyScale;
+        const supported=detailDelta*noveltyGate*modelOnlySafety;
         const limited=Math.max(-impulseLimit,Math.min(impulseLimit,supported));
         out.data[i+c]=clamp8(base.data[i+c]+limited*gain*confidence);
         used=true;
@@ -101,4 +130,7 @@ export function fuseCnnOutputs(base,detail,{quality="high",material="generic"}={
     rejectedPixels,
     consideredPixels:count,
   };
+}
+
+export const CNN_FUSION_PROFILES=MATERIAL_PROFILE;
 }
