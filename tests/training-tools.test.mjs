@@ -61,4 +61,12 @@ test('training tools compile and keep release validation separate from runtime p
   assert.doesNotMatch(packageTool,/training-data/);
   assert.match(packageTool,/specialized-models\.json/);
   assert.match(packageTool,/release_candidate/);
+  assert.match(packageTool,/base-cnn-reconstruction/);
+  assert.match(packageTool,/PINNED_BASE_X4PLUS_SHA256/);
+  assert.match(packageTool,/laplacian_improvement/);
+
+  const promoteTool=readFileSync(root+'tools/training/promote_model.py','utf8');
+  assert.match(promoteTool,/base-cnn-reconstruction/);
+  assert.match(promoteTool,/PINNED_BASE_X4PLUS_SHA256/);
+  assert.match(promoteTool,/laplacian_improvement/);
 });
