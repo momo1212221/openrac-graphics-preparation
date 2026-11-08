@@ -318,7 +318,7 @@ async function createPack({ai}) {
 
         if (
           state.detailQuality === "auto" && !override.quality &&
-          prepared.strategy === "ai" && !prepared.cached && !prepared.skipped
+          prepared.strategy === "ai" && !prepared.skipped
         ) {
           const refinedQuality = refinedDetailQuality(prepared, effectiveDetailQuality);
           if (refinedQuality !== effectiveDetailQuality) {
@@ -339,7 +339,7 @@ async function createPack({ai}) {
                 (refined.metrics?.score ?? 0) >= (prepared.metrics?.score ?? 0) - 2;
               const selected = promoted ? refined : chooseBetterQuality(prepared, refined);
               if (selected === refined) {
-                prepared = {...prepared,...refined,strategy:"ai",attempts:prepared.attempts,errors:prepared.errors};
+                prepared = {...prepared,...refined,strategy:"ai",attempts:prepared.attempts,errors:prepared.errors,cached:false};
                 stats.warnings.push({
                   hashes:group.members.map((member)=>member.hash),
                   strategy:refinedQuality === "max" ? "quality-promoted" : "quality-refined",
