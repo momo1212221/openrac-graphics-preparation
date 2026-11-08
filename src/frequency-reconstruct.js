@@ -7,7 +7,6 @@ function boxMean(data,w,h,x,y,r,c){
   for(let yy=Math.max(0,y-r);yy<=Math.min(h-1,y+r);yy++){
     for(let xx=Math.max(0,x-r);xx<=Math.min(w-1,x+r);xx++){
       const i=idx(w,xx,yy,c);
-      if(data[i+(3-c)]===0&&c===0){} // keep deterministic traversal; alpha handled by caller
       sum+=data[i];n++;
     }
   }
