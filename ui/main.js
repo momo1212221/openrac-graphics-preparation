@@ -13,6 +13,8 @@ import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
+import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
+import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -38,7 +40,7 @@ let state = {
   aiBackend: "auto",
   persistentCache: true,
   cacheBudgetMb: 2048,
-  detailQuality: "high",
+  detailQuality: "auto",
   detailCnn: true,
   sourceColorLock: true,
   qualityGuard: true,
@@ -235,7 +237,7 @@ async function createPack({ai}) {
         const texturePaths = group.members.map((member)=>member.path);
         const override = qualityLab?.getOverride(primary.hash) || {};
         const effectiveDetailQuality = ["standard","high","max"].includes(override.quality)
-          ? override.quality : state.detailQuality;
+          ? override.quality : automaticDetailQuality(primary, state.detailQuality);
         const cacheOptions = {
           mode: state.aiMode,
           detailQuality: effectiveDetailQuality,
@@ -249,10 +251,11 @@ async function createPack({ai}) {
           materialOverride: override.material || null,
         };
         let key = null;
+        let digest = null;
         let prepared = null;
 
         if (state.persistentCache) {
-          const digest = await sourceDigest(source);
+          digest = await sourceDigest(source);
           key = cacheKey(digest, cacheOptions);
           const hit = await cacheGet(key);
           if (hit) {
@@ -314,13 +317,47 @@ async function createPack({ai}) {
         });
 
         if (
+          state.detailQuality === "auto" && !override.quality &&
+          prepared.strategy === "ai" && !prepared.skipped
+        ) {
+          const refinedQuality = refinedDetailQuality(prepared, effectiveDetailQuality);
+          if (refinedQuality !== effectiveDetailQuality) {
+            try {
+              const refined = await upscaleAiPng(source, {
+                mode: state.aiMode,
+                detailQuality: refinedQuality,
+                detailCnn: state.detailCnn,
+                sourceColorLock: state.sourceColorLock,
+                preserveMicrodetail: state.preserveMicrodetail,
+                preserveStars: state.preserveStars,
+                backend: state.aiBackend,
+                texturePaths,
+                textureClassOverride: cacheOptions.textureClassOverride,
+                materialOverride: cacheOptions.materialOverride,
+              });
+              const promoted = refinedQuality === "max" &&
+                (refined.metrics?.score ?? 0) >= (prepared.metrics?.score ?? 0) - 2;
+              const selected = promoted ? refined : chooseBetterQuality(prepared, refined);
+              if (selected === refined) {
+                prepared = {...prepared,...refined,strategy:"ai",attempts:prepared.attempts,errors:prepared.errors,cached:false};
+                stats.warnings.push({
+                  hashes:group.members.map((member)=>member.hash),
+                  strategy:refinedQuality === "max" ? "quality-promoted" : "quality-refined",
+                  from:effectiveDetailQuality,to:refinedQuality,metrics:refined.metrics,
+                });
+              }
+            } catch {}
+          }
+        }
+
+        if (
           state.qualityGuard && prepared.strategy === "ai" && !prepared.cached && !prepared.skipped &&
-          prepared.metrics?.score !== undefined && prepared.metrics.score < 45
+          prepared.metrics?.score !== undefined && evaluateQuality(prepared.metrics, prepared).retry
         ) {
           try {
             const conservative = await upscaleAiPng(source, {
               mode: state.aiMode,
-              detailQuality: effectiveDetailQuality === "max" ? "high" : "standard",
+              detailQuality: prepared.detailQuality === "max" ? "high" : "standard",
               detailCnn: false,
               sourceColorLock: true,
               preserveMicrodetail: state.preserveMicrodetail,
@@ -330,7 +367,7 @@ async function createPack({ai}) {
               textureClassOverride: cacheOptions.textureClassOverride,
               materialOverride: cacheOptions.materialOverride,
             });
-            if ((conservative.metrics?.score ?? -1) > prepared.metrics.score) {
+            if (chooseBetterQuality(prepared, conservative) === conservative) {
               prepared.bytes = conservative.bytes;
               prepared.stars = conservative.stars;
               prepared.microdetails = conservative.microdetails;
@@ -348,7 +385,24 @@ async function createPack({ai}) {
           } catch {}
         }
 
-        if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped && key && state.persistentCache) {
+        if (state.qualityGuard && prepared.metrics?.score!==undefined) {
+          const policy=evaluateQuality(prepared.metrics,prepared);
+          if(policy.fallback && prepared.strategy==="ai" && !prepared.cached && !prepared.skipped){
+            prepared.bytes=await upscalePng(source,4,true);
+            prepared.strategy="fallback";
+            prepared.backend="quality-guard-fallback";
+            prepared.skipped=true;
+            prepared.skipReason="quality-reject";
+            prepared.detailCnnUsed=false;
+            prepared.detailPixels=0;
+            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-rejected",metrics:prepared.metrics,policy});
+          }else if(policy.verdict!=="pass"){
+            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-warning",metrics:prepared.metrics,policy});
+          }
+        }
+
+        if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped && digest && state.persistentCache) {
+          key = cacheKey(digest, {...cacheOptions, detailQuality:prepared.detailQuality || effectiveDetailQuality});
           const cached = await cachePut(
             key,
             prepared,
@@ -367,9 +421,7 @@ async function createPack({ai}) {
         stats.detailPixels+=prepared.detailPixels||0;
         if(prepared.metrics?.score!==undefined){
           stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
-          if(state.qualityGuard && prepared.metrics.score<45){
-            stats.warnings.push({hashes:group.members.map((member)=>member.hash),strategy:"quality-warning",metrics:prepared.metrics});
-          }
+
         }
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
         stats.stars += prepared.stars;
@@ -412,7 +464,7 @@ async function createPack({ai}) {
             await zip.add(root+"emissive.png", generatedMaps.emissive);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.10.1",
+              generator:"Graphics preparation 0.10.5",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
@@ -556,11 +608,12 @@ function render() {
 
   const detailRow = settingRow(
     "Detail reconstruction",
-    "Adds source-derived material structure and CNN context, not extra sharpening. High is the new recommended mode.",
+    "Auto selects Current/High/Max per texture; detail comes from source structure and CNN context, not extra sharpening.",
   );
   detailRow.control.append(select([
+    ["auto", "Auto · per texture"],
     ["standard", "Current look · fastest"],
-    ["high", "High detail · recommended"],
+    ["high", "High detail"],
     ["max", "Max detail · most context"],
   ], state.detailQuality, async (value) => {
     state.detailQuality = value;
@@ -765,7 +818,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.10.1 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.10.5 · adaptive standard-launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -778,7 +831,7 @@ async function start() {
       aiBackend: ["auto","webgpu","wasm"].includes(saved.aiBackend) ? saved.aiBackend : "auto",
       persistentCache: saved.persistentCache !== false,
       cacheBudgetMb: [512,1024,2048,4096].includes(Number(saved.cacheBudgetMb)) ? Number(saved.cacheBudgetMb) : 2048,
-      detailQuality: ["standard","high","max"].includes(saved.detailQuality) ? saved.detailQuality : "high",
+      detailQuality: ["auto","standard","high","max"].includes(saved.detailQuality) ? saved.detailQuality : "auto",
       detailCnn: saved.detailCnn !== false,
       sourceColorLock: saved.sourceColorLock !== false,
       qualityGuard: saved.qualityGuard !== false,

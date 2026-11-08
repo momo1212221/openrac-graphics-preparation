@@ -10,6 +10,8 @@ test('per-texture quality override controls batch detail quality and No-AI bypas
  assert.match(code,/override\.quality === "no-ai"/);
  assert.match(code,/backend: "manual-no-ai"/);
  assert.match(code,/detailQuality: effectiveDetailQuality/);
+ assert.match(code,/automaticDetailQuality/);
+ assert.match(code,/refinedDetailQuality/);
 });
 
 test('Quality Lab exposes material-map preview and per-hash quality selection',()=>{
@@ -17,4 +19,6 @@ test('Quality Lab exposes material-map preview and per-hash quality selection',(
  assert.match(code,/generateMaterialMapPngs/);
  assert.match(code,/\["normal","roughness","height","ao","emissive"\]/);
  assert.match(code,/\["no-ai","No AI"\]/);
+ assert.match(code,/evaluateQuality/);
+ assert.match(code,/\["Verdict",policy\.verdict\]/);
 });

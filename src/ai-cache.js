@@ -2,7 +2,7 @@
 const DB_NAME = "openrac-graphics-preparation-ai-cache";
 const DB_VERSION = 1;
 const STORE = "textures";
-const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v3|dual-cnn-v1|quality-guard-v1|seam-wrap-v1";
+const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v3|dual-cnn-v1|quality-guard-v2|seam-wrap-v1|auto-quality-v1";
 let dbPromise;
 let sessionDisabled = false;
 let writesSinceTrim = 0;

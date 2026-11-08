@@ -1,8 +1,9 @@
-Graphics preparation 0.10.3 extends Quality Lab.
+Graphics preparation 0.10.5 adds automatic per-texture detail planning.
 
-- Preview now shows Normal, Roughness, Height, AO and Emissive maps for eligible diffuse outputs.
-- Per-hash quality override: Auto/global, Current, High, Max or No AI.
-- Full batch export respects the same per-hash quality choice.
-- No AI uses the deterministic 4x fallback for that exact texture instead of invoking either CNN.
-- Existing per-hash class/material overrides continue to participate in cache identity.
-- Keeps seam-aware context, dual-CNN detail, persistent cache, quality guard and optional core-side material maps.
+- New Auto detail mode chooses Current/High/Max per texture from scope, importance and source size.
+- Important character and weapon assets can receive Max automatically; UI and technical maps stay conservative.
+- Quality metrics can trigger one measured refinement pass after the initial reconstruction.
+- Manual per-texture quality overrides remain authoritative.
+- Adaptive Quality Guard still retries weak results and rejects critically poor uncached neural output.
+- Cache keys now follow the quality actually stored after refinement.
+- Fixes stale material-sidecar and UI version metadata.
