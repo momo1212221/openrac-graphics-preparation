@@ -2,7 +2,7 @@
 const DB_NAME = "openrac-graphics-preparation-ai-cache";
 const DB_VERSION = 1;
 const STORE = "textures";
-const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v3|dual-cnn-v1|quality-guard-v2|seam-wrap-v1|auto-quality-v1";
+const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v3|dual-cnn-v1|quality-guard-v2|seam-wrap-v1|auto-quality-v1|frequency-v2|master8x-v1|failure-v1";
 let dbPromise;
 let sessionDisabled = false;
 let writesSinceTrim = 0;
@@ -69,6 +69,7 @@ export function cacheKey(digest, options = {}) {
     options.detailCnn !== false ? "detailcnn1" : "detailcnn0",
     options.sourceColorLock !== false ? "colorlock1" : "colorlock0",
     options.qualityGuard !== false ? "qguard1" : "qguard0",
+    options.master8x !== false ? "master8x1" : "master8x0",
     options.textureClassOverride || "class-auto",
     options.materialOverride || "material-auto",
   ].join("|");
@@ -108,6 +109,9 @@ export async function cacheGet(key) {
       classification: row.classification || null,
       materialInfo: row.materialInfo || null,
       wrap: row.wrap || null,
+      failures: row.failures || null,
+      masterScale:Number(row.masterScale)||4,
+      internalMaster:row.internalMaster===true,
     };
   } catch {
     sessionDisabled = true;
@@ -167,6 +171,9 @@ export async function cachePut(key, result, maxBytes) {
     classification:result.classification||null,
     materialInfo:result.materialInfo||null,
     wrap:result.wrap||null,
+    failures:result.failures||null,
+    masterScale:Number(result.masterScale)||4,
+    internalMaster:result.internalMaster===true,
     lastUsed:Date.now(),
     created:Date.now(),
   };
