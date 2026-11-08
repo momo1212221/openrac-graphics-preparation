@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
+export const QUALITY_POLICY_VERSION="90-94-97-v2";
+const QUALITY_ORDER=Object.freeze({standard:0,high:1,max:2});
+
 export const QUALITY_TARGETS=Object.freeze({
   standard:Object.freeze({
     score:90,ssim:.80,hallucination:30,colorDrift:12,lumaDrift:16,alphaDrift:3,
@@ -70,6 +73,15 @@ export function evaluateQuality(metrics={},context={}){
     detailQuality,recommendedQuality,reasons,
     target,
   };
+}
+
+export function highestPassingQuality(metrics={},context={},maxTier="max"){
+  const cap=QUALITY_ORDER[maxTier]??QUALITY_ORDER.max;
+  for(const tier of ["max","high","standard"]){
+    if((QUALITY_ORDER[tier]??0)>cap)continue;
+    if(evaluateQuality(metrics,{...context,detailQuality:tier}).verdict==="pass")return tier;
+  }
+  return null;
 }
 
 export function chooseBetterQuality(primary,conservative){
