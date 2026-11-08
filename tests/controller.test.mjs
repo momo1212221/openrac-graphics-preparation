@@ -26,6 +26,6 @@ test('store keys follow the OpenRAC launcher contract', async()=>{
 
   const calls=[];
   const c=new ModController(async(call,args={})=>{calls.push([call,args]);return null;});
-  await assert.rejects(()=>c.storeSet('bad:key',{x:1}),/invalid OpenRAC store key/);
+  assert.throws(()=>c.storeSet('bad:key',{x:1}),/invalid OpenRAC store key/);
   assert.equal(calls.length,0);
 });
