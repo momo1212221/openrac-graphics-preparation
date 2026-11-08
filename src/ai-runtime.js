@@ -390,9 +390,13 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     output.height = source.height * SCALE;
     const outputCtx = output.getContext("2d", {alpha:true, willReadFrequently:true});
 
-    const classification = classifyTexture(options.texturePaths || options.texturePath || "", sourceData);
+    const classification = options.textureClassOverride
+      ? {kind:options.textureClassOverride,confidence:1,reason:"manual override"}
+      : classifyTexture(options.texturePaths || options.texturePath || "", sourceData);
     const textureClass = classification.kind;
-    const materialInfo = classifyMaterial(options.texturePaths || options.texturePath || "", sourceData, textureClass);
+    const materialInfo = options.materialOverride
+      ? {material:options.materialOverride,confidence:1,reason:"manual override"}
+      : classifyMaterial(options.texturePaths || options.texturePath || "", sourceData, textureClass);
     const material = materialInfo.material;
     const effectiveQuality = textureClass === "ui" ? "standard" : detailQuality;
 
@@ -525,6 +529,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       detailCnnUsed:!!detailRuntime,
       detailPixels,
       metrics,
+      classification,
+      materialInfo,
       elapsedMs:performance.now()-started,
       tiles:total,
     };

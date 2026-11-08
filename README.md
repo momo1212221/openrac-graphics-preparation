@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.9.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.9.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.9.0.zip`.
+2. Install `graphics-preparation-0.9.1.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -165,3 +165,15 @@ A source-colour lock works in YCbCr: output luminance/detail is kept, while chro
 the original art. Quality metrics report colour/luma drift, alpha drift, edge gain, CNN agreement and
 an aggregate 0-100 score. High-impact character/weapon/terrain sources are processed first so the
 persistent cache retains the visually important work earliest.
+
+
+## Quality Lab and guarded recovery (0.9.1)
+
+Quality Lab previews any dumped texture before a full export, shows the automatic class/material,
+dual-CNN agreement and quality metrics, and stores optional class/material overrides per texture
+hash. Overrides participate in the persistent-cache key.
+
+When Quality Guard sees a neural result below 45/100, the batch path automatically retries that
+source conservatively (no second CNN, reduced detail context, source colour lock on) and keeps the
+higher-scoring result. A bad aggressive reconstruction therefore does not have to poison a
+multi-thousand-texture pack.

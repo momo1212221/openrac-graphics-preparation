@@ -11,6 +11,7 @@ import {buildDuplicatePlan} from "../src/dedup.js";
 import {cacheGet, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, trimCache} from "../src/ai-cache.js";
 import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
+import {QualityLab} from "./quality-lab.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -25,6 +26,7 @@ let busy = false;
 let aiReady = null;
 let effectsEditor = null;
 let cacheState = {available:false,total:0,entries:0};
+let qualityLab = null;
 let state = {
   scale: 4,
   edgePreserving: true,
@@ -109,7 +111,10 @@ function toggle(checked, label, onchange) {
   return wrap;
 }
 
-function updateTextures() { textures = textureFiles(allDumpFiles, {includeInterface: state.includeInterface}); }
+function updateTextures() {
+  textures = textureFiles(allDumpFiles, {includeInterface: state.includeInterface});
+  qualityLab?.setTextures(textures);
+}
 async function scan() { allDumpFiles = await controller.list("dump"); updateTextures(); render(); }
 
 function progress(done, total, label) {
@@ -268,6 +273,8 @@ async function createPack({ai}) {
             detailCnn: state.detailCnn,
             sourceColorLock: state.sourceColorLock,
             texturePaths,
+            textureClassOverride: cacheOptions.textureClassOverride,
+            materialOverride: cacheOptions.materialOverride,
           }, (tile, totalTiles) => {
             const fraction = (groupIndex + tile / totalTiles) / workGroups.length;
             progress(fraction, 1, `AI · ${baseLabel} · tile ${tile}/${totalTiles}`);
@@ -276,6 +283,41 @@ async function createPack({ai}) {
           fallback: () => upscalePng(source, 4, true),
           retries: 1,
         });
+
+        if (
+          state.qualityGuard && prepared.strategy === "ai" && !prepared.cached && !prepared.skipped &&
+          prepared.metrics?.score !== undefined && prepared.metrics.score < 45
+        ) {
+          try {
+            const conservative = await upscaleAiPng(source, {
+              mode: state.aiMode,
+              detailQuality: state.detailQuality === "max" ? "high" : "standard",
+              detailCnn: false,
+              sourceColorLock: true,
+              preserveMicrodetail: state.preserveMicrodetail,
+              preserveStars: state.preserveStars,
+              backend: state.aiBackend,
+              texturePaths,
+              textureClassOverride: cacheOptions.textureClassOverride,
+              materialOverride: cacheOptions.materialOverride,
+            });
+            if ((conservative.metrics?.score ?? -1) > prepared.metrics.score) {
+              prepared.bytes = conservative.bytes;
+              prepared.stars = conservative.stars;
+              prepared.microdetails = conservative.microdetails;
+              prepared.backend = conservative.backend;
+              prepared.textureClass = conservative.textureClass;
+              prepared.material = conservative.material;
+              prepared.detailQuality = conservative.detailQuality;
+              prepared.detailCnnUsed = false;
+              prepared.detailPixels = 0;
+              prepared.metrics = conservative.metrics;
+              prepared.classification = conservative.classification;
+              prepared.materialInfo = conservative.materialInfo;
+              stats.warnings.push({hashes:group.members.map(m=>m.hash),strategy:"quality-recovered",metrics:conservative.metrics});
+            }
+          } catch {}
+        }
 
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped && key && state.persistentCache) {
           const cached = await cachePut(
@@ -631,6 +673,7 @@ function render() {
     "muted advanced-note"));
   advanced.append(body); content.append(advanced);
 
+  if (qualityLab) content.append(qualityLab.render());
   if (effectsEditor) {
     for (const section of effectsEditor.render()) content.append(section);
   }
@@ -640,8 +683,11 @@ async function start() {
   info = await controller.info();
   effectsEditor = new EffectsEditor(controller, info, setMessage);
   await effectsEditor.start();
+  qualityLab = new QualityLab(controller, () => ({...state}), setMessage);
+  await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.9.0 · fail-safe standard launcher AI`;
+  document.addEventListener("graphics-quality-lab-change", () => render());
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.9.1 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {

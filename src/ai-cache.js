@@ -68,6 +68,9 @@ export function cacheKey(digest, options = {}) {
     options.textureScope || "world",
     options.detailCnn !== false ? "detailcnn1" : "detailcnn0",
     options.sourceColorLock !== false ? "colorlock1" : "colorlock0",
+    options.qualityGuard !== false ? "qguard1" : "qguard0",
+    options.textureClassOverride || "class-auto",
+    options.materialOverride || "material-auto",
   ].join("|");
 }
 
@@ -100,6 +103,10 @@ export async function cacheGet(key) {
       size: Number(row.size) || row.bytes.byteLength || 0,
       textureClass: row.textureClass || null,
       detailQuality: row.detailQuality || null,
+      material: row.material || null,
+      metrics: row.metrics || null,
+      classification: row.classification || null,
+      materialInfo: row.materialInfo || null,
     };
   } catch {
     sessionDisabled = true;
@@ -154,6 +161,10 @@ export async function cachePut(key, result, maxBytes) {
     microdetails:Number(result.microdetails)||0,
     textureClass:result.textureClass||null,
     detailQuality:result.detailQuality||null,
+    material:result.material||null,
+    metrics:result.metrics||null,
+    classification:result.classification||null,
+    materialInfo:result.materialInfo||null,
     lastUsed:Date.now(),
     created:Date.now(),
   };

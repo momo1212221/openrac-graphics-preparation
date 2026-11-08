@@ -1,13 +1,10 @@
-Graphics preparation 0.9.0 begins the maximum-quality stack.
+Graphics preparation 0.9.1 adds interactive QA and guarded automatic recovery.
 
-- Adds a second bundled CNN: Real-ESRGAN General x4v3, pinned by SHA-256.
-- x4plus remains the reconstruction CNN; General-x4v3 acts as a fidelity/detail CNN.
-- Detail fusion injects only the second CNN's local high-frequency residual.
-- Per-pixel CNN disagreement reduces or removes that contribution, providing an anti-hallucination confidence gate.
-- Conservative material routing covers weapon, character, terrain, stone, metal, fabric, organic, glass, energy, sky and generic surfaces.
-- Material-specific detail gains avoid over-processing glass/energy/characters while giving stone/terrain/fabric more reconstruction.
-- Source-colour lock preserves original chroma while keeping reconstructed luminance/detail.
-- Quality guard scores colour drift, luminance drift, alpha drift, edge gain and CNN agreement.
-- Final pack metadata reports material counts, dual-CNN usage, agreement-gated detail pixels and average quality score.
-- Processing is impact-prioritized so character/weapon/terrain work reaches the persistent cache first.
-- Keeps WebGPU graph capture, WASM fallback, exact duplicate elimination, persistent cache, lighting/baker and effects authoring.
+- Quality Lab previews any dumped texture as Original vs AI output.
+- Shows texture class, material route, 0-100 quality score, CNN agreement, colour drift, edge gain, detail pixels and backend.
+- Per-hash manual texture-class and material overrides are persisted through the standard Mod Tool store.
+- Overrides invalidate the AI cache identity so stale results cannot be reused.
+- Quality Guard now actively recovers suspicious outputs: scores below 45/100 trigger one conservative rerun without the second CNN and with reduced detail context.
+- The better-scoring output wins; the batch continues normally.
+- Cached rows now retain metrics/material/classification metadata.
+- Keeps the dual-CNN ensemble, material routing, source-colour lock, WebGPU graph capture, cache, deduplication, baker and effects authoring.
