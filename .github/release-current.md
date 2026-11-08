@@ -1,12 +1,13 @@
-Graphics preparation 0.5.3 makes the stock-launcher AI pipeline fail-safe.
+Graphics preparation 0.6.0 adds lighting, Enhanced Baker authoring and particle/effect authoring to the same standard-launcher page.
 
-- Keeps the fixed 128x128 Real-ESRGAN inputs from 0.5.2.
-- Runs an actual 128x128 -> 512x512 model preflight before the output pack is opened.
-- Retries failed OpenRAC asset reads once.
-- On an ONNX inference failure, releases/rebuilds the AI session and retries that texture once.
-- If AI still fails, only that texture falls back to deterministic edge-preserving 4x scaling.
-- If 4x scaling also fails, the original PNG is preserved in the pack.
-- Unreadable source textures are skipped and counted rather than killing the run.
-- The final pack manifest records requested/included/AI/retry/fallback/original/unreadable counts.
-- ZIP/disk output errors still stop safely and cancel the incomplete save, because continuing after an uncertain append could corrupt the archive.
-- Still uses the standard OpenRAC Dev Launcher only: no custom launcher, Python helper or external app.
+- Keeps the fail-safe Real-ESRGAN pipeline from 0.5.3.
+- Reads exported OpenRAC levels and builds an object selector from their manifests.
+- Point and spot lights export as the official Enhanced renderer object-lights.json format.
+- Supports object/bone-local position, colour, intensity, range and spot cone/direction.
+- Adds bake-only rectangular area lights using probe-bake.json area_lights.
+- Exposes sky intensity/weight, surface emission gain, environment-probe resolution/count/spacing.
+- Preserves existing probe-bake.json fields while applying authored changes.
+- Particle presets: sparks, smoke, mist, glow, energy, rain and heat haze.
+- Exports a normal OpenRAC runtime-effects mod for point/spot lights and particle configuration.
+- The companion graphics-effects-runtime native mod uses only the official OpenRAC mod SDK; no custom launcher is required.
+- The stock Mod Tool API still cannot overwrite extracted level files or press Prepare lighting, so bake profiles are saved for the built-in Enhanced graphics -> Prepare lighting workflow.

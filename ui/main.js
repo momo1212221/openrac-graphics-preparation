@@ -6,6 +6,7 @@ import {prepareTextureFailSafe, readFailSafe} from "../src/resilience.js";
 import {textureFiles, texturePackManifest, outputName, packPath} from "../src/texture-pack.js";
 import {upscalePng} from "../src/upscale.js";
 import {ZipStream} from "../src/zip.js";
+import {EffectsEditor} from "./effects.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -18,6 +19,7 @@ let allDumpFiles = [];
 let textures = [];
 let busy = false;
 let aiReady = null;
+let effectsEditor = null;
 let state = {
   scale: 4,
   edgePreserving: true,
@@ -354,11 +356,18 @@ function render() {
     "Real-ESRGAN always receives fixed 128×128 inputs. A 112×112 core is used with 8 pixels of edge-clamped context. Large textures are processed tile-by-tile and the UI yields between tiles/textures.",
     "muted advanced-note"));
   advanced.append(body); content.append(advanced);
+
+  if (effectsEditor) {
+    for (const section of effectsEditor.render()) content.append(section);
+  }
 }
 
 async function start() {
   info = await controller.info();
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.5.3 · fail-safe standard launcher AI`;
+  effectsEditor = new EffectsEditor(controller, info, setMessage);
+  await effectsEditor.start();
+  document.addEventListener("graphics-effects-change", () => render());
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.6.0 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {

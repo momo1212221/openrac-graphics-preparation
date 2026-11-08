@@ -26,3 +26,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visi
 .status-ok,.status-warn{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:750}.status-ok{background:rgba(169,223,115,.12);color:var(--ok)}.status-warn{background:rgba(242,201,85,.12);color:var(--gold)}
 details.advanced{padding:0}details.advanced summary{list-style:none;display:flex;align-items:center;justify-content:space-between;padding:20px 22px;color:#f4d67d;font-size:12px;font-weight:800;letter-spacing:.09em;cursor:pointer}details.advanced summary::-webkit-details-marker{display:none}.chevron{color:var(--soft);font-size:18px;transition:transform .15s ease}details[open] .chevron{transform:rotate(180deg)}.advanced-body{padding:0 22px 22px}.advanced-action{margin-top:16px}.advanced-note{margin-top:14px;font-size:12px}
 @media(max-width:700px){body{padding:20px 18px 36px}.prepare-panel{grid-template-columns:1fr}.primary{width:100%}.setting-row{align-items:flex-start;flex-direction:column}.setting-control{width:100%;justify-content:flex-start}.segmented,.select{width:100%}.segmented button{flex:1;min-width:0}}
+
+/* Lighting / baker / particle authoring */
+.effect-grid{display:grid;gap:10px;margin-top:12px}.effect-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.effect-grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.effect-field{display:flex;flex-direction:column;gap:5px;color:var(--soft);font-size:12px}.effect-field input,.effect-field select{min-height:36px;width:100%;border:0;border-radius:8px;background:var(--control);color:var(--text);padding:7px 10px;font:inherit}
+.effect-vector{display:grid;grid-template-columns:90px repeat(3,minmax(0,1fr));gap:8px;align-items:end;margin-top:10px}.effect-vector-title{align-self:center;color:var(--soft);font-size:12px}
+.effect-subpanel{margin-top:18px;padding:16px;border-radius:10px;background:var(--panel-hi)}.effect-subpanel>strong{display:block;margin-bottom:3px}
+.effect-actions{display:flex;gap:8px;align-items:center;margin-top:16px}.effect-actions.wrap{flex-wrap:wrap}.effect-list{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.effect-card{padding:14px;border:1px solid var(--line);border-radius:10px;background:#211f19}.effect-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.effect-card-head strong{font-size:14px}
+.effect-export{margin-top:16px}
+@media(max-width:800px){.effect-grid.four,.effect-grid.two{grid-template-columns:1fr 1fr}.effect-vector{grid-template-columns:1fr 1fr}.effect-vector-title{grid-column:1/-1}}
+@media(max-width:520px){.effect-grid.four,.effect-grid.two,.effect-vector{grid-template-columns:1fr}}
