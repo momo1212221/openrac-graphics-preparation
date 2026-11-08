@@ -11,6 +11,7 @@ test('training tools compile and keep release validation separate from runtime p
     'tools/training/prepare_dataset.py',
     'tools/training/train_detail.py',
     'tools/training/train_suite.py',
+    'tools/training/test_runtime_models.py',
     'tools/training/validate_detail.py',
     'tools/training/promote_model.py',
   ]){
@@ -34,6 +35,11 @@ test('training tools compile and keep release validation separate from runtime p
   assert.match(trainer,/WeightedRandomSampler/);
   assert.match(trainer,/ReduceLROnPlateau/);
   assert.match(trainer,/best_validation_loss/);
+
+  const runtimeTest=readFileSync(root+'tools/training/test_runtime_models.py','utf8');
+  assert.match(runtimeTest,/edge_contrast_preserved/);
+  assert.match(runtimeTest,/deterministic_cpu/);
+  assert.match(runtimeTest,/raw_abs_max <= 4\.0/);
 
   const suite=readFileSync(root+'tools/training/train_suite.py','utf8');
   assert.match(suite,/validate_detail\.py/);
