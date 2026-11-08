@@ -14,6 +14,7 @@ import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
 import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
+import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -39,7 +40,7 @@ let state = {
   aiBackend: "auto",
   persistentCache: true,
   cacheBudgetMb: 2048,
-  detailQuality: "high",
+  detailQuality: "auto",
   detailCnn: true,
   sourceColorLock: true,
   qualityGuard: true,
@@ -236,7 +237,7 @@ async function createPack({ai}) {
         const texturePaths = group.members.map((member)=>member.path);
         const override = qualityLab?.getOverride(primary.hash) || {};
         const effectiveDetailQuality = ["standard","high","max"].includes(override.quality)
-          ? override.quality : state.detailQuality;
+          ? override.quality : automaticDetailQuality(primary, state.detailQuality);
         const cacheOptions = {
           mode: state.aiMode,
           detailQuality: effectiveDetailQuality,
@@ -313,6 +314,40 @@ async function createPack({ai}) {
           fallback: () => upscalePng(source, 4, true),
           retries: 1,
         });
+
+        if (
+          state.detailQuality === "auto" && !override.quality &&
+          prepared.strategy === "ai" && !prepared.cached && !prepared.skipped
+        ) {
+          const refinedQuality = refinedDetailQuality(prepared, effectiveDetailQuality);
+          if (refinedQuality !== effectiveDetailQuality) {
+            try {
+              const refined = await upscaleAiPng(source, {
+                mode: state.aiMode,
+                detailQuality: refinedQuality,
+                detailCnn: state.detailCnn,
+                sourceColorLock: state.sourceColorLock,
+                preserveMicrodetail: state.preserveMicrodetail,
+                preserveStars: state.preserveStars,
+                backend: state.aiBackend,
+                texturePaths,
+                textureClassOverride: cacheOptions.textureClassOverride,
+                materialOverride: cacheOptions.materialOverride,
+              });
+              const promoted = refinedQuality === "max" &&
+                (refined.metrics?.score ?? 0) >= (prepared.metrics?.score ?? 0) - 2;
+              const selected = promoted ? refined : chooseBetterQuality(prepared, refined);
+              if (selected === refined) {
+                prepared = {...prepared,...refined,strategy:"ai",attempts:prepared.attempts,errors:prepared.errors};
+                stats.warnings.push({
+                  hashes:group.members.map((member)=>member.hash),
+                  strategy:refinedQuality === "max" ? "quality-promoted" : "quality-refined",
+                  from:effectiveDetailQuality,to:refinedQuality,metrics:refined.metrics,
+                });
+              }
+            } catch {}
+          }
+        }
 
         if (
           state.qualityGuard && prepared.strategy === "ai" && !prepared.cached && !prepared.skipped &&
@@ -572,8 +607,9 @@ function render() {
     "Adds source-derived material structure and CNN context, not extra sharpening. High is the new recommended mode.",
   );
   detailRow.control.append(select([
+    ["auto", "Auto · per texture"],
     ["standard", "Current look · fastest"],
-    ["high", "High detail · recommended"],
+    ["high", "High detail"],
     ["max", "Max detail · most context"],
   ], state.detailQuality, async (value) => {
     state.detailQuality = value;
@@ -778,7 +814,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.10.1 · fail-safe standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.10.5 · adaptive standard-launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -791,7 +827,7 @@ async function start() {
       aiBackend: ["auto","webgpu","wasm"].includes(saved.aiBackend) ? saved.aiBackend : "auto",
       persistentCache: saved.persistentCache !== false,
       cacheBudgetMb: [512,1024,2048,4096].includes(Number(saved.cacheBudgetMb)) ? Number(saved.cacheBudgetMb) : 2048,
-      detailQuality: ["standard","high","max"].includes(saved.detailQuality) ? saved.detailQuality : "high",
+      detailQuality: ["auto","standard","high","max"].includes(saved.detailQuality) ? saved.detailQuality : "auto",
       detailCnn: saved.detailCnn !== false,
       sourceColorLock: saved.sourceColorLock !== false,
       qualityGuard: saved.qualityGuard !== false,
