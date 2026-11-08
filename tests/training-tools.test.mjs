@@ -36,12 +36,17 @@ test('training tools compile and keep release validation separate from runtime p
   const validator=readFileSync(root+'tools/training/validate_detail.py','utf8');
   assert.match(validator,/dataset_input_pipeline/);
   assert.match(validator,/base_model_sha256/);
+  assert.match(validator,/laplacian_improvement/);
+  assert.match(validator,/min-laplacian-improvement/);
 
   const trainer=readFileSync(root+'tools/training/train_detail.py','utf8');
   assert.match(trainer,/--resume/);
   assert.match(trainer,/WeightedRandomSampler/);
   assert.match(trainer,/ReduceLROnPlateau/);
-  assert.match(trainer,/best_validation_loss/);
+  assert.match(trainer,/best_validation_loss|best_validation_score/);
+  assert.match(trainer,/ARCHITECTURE_VERSION=2/);
+  assert.match(trainer,/CONTEXT_DILATIONS/);
+  assert.match(trainer,/laplacian_weight/);
 
   const runtimeTest=readFileSync(root+'tools/training/test_runtime_models.py','utf8');
   assert.match(runtimeTest,/edge_contrast_preserved/);
