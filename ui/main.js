@@ -464,6 +464,9 @@ async function createPack({ai}) {
             backend:prepared.backend,
             masterScale:prepared.masterScale,
             cached:prepared.cached,
+            specializedCnnUsed:prepared.specializedCnnUsed,
+            specializedRejected:prepared.specializedRejected,
+            specializedModelSha:prepared.specializedModelSha,
             metrics:prepared.metrics,
             failures:prepared.failures,
           });

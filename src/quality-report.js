@@ -12,6 +12,9 @@ const compact=(row)=>({
   backend:row.backend||null,
   masterScale:Number(row.masterScale)||4,
   cached:row.cached===true,
+  specializedCnnUsed:row.specializedCnnUsed===true,
+  specializedRejected:row.specializedRejected===true,
+  specializedModelSha:row.specializedModelSha||null,
   metrics:row.metrics||null,
   failures:Array.isArray(row.failures?.issues)?row.failures.issues:[],
 });

@@ -5,6 +5,8 @@ import {buildQualityReport} from '../src/quality-report.js';
 const row=(hash,score,failures=[])=>({
   hash,path:hash+'.png',strategy:'ai',textureClass:'diffuse',material:'stone',
   detailQuality:'high',backend:'wasm',masterScale:4,metrics:{score},failures:{issues:failures},
+  specializedCnnUsed:hash==='a',specializedRejected:hash==='b',
+  specializedModelSha:hash==='a'?'c'.repeat(64):null,
 });
 
 test('quality report ranks best/worst and keeps detected failures',()=>{
@@ -15,6 +17,9 @@ test('quality report ranks best/worst and keeps detected failures',()=>{
   assert.equal(report.failureCount,1);
   assert.deepEqual(report.failures[0].failures,['hallucination-risk']);
   assert.equal(report.averageScore,69);
+  assert.equal(report.best[0].specializedCnnUsed,true);
+  assert.equal(report.best[0].specializedModelSha,'c'.repeat(64));
+  assert.equal(report.failures[0].specializedRejected,true);
 });
 
 test('fallback outputs are retained even without a score',()=>{
