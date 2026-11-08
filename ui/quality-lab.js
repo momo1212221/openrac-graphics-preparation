@@ -77,7 +77,7 @@ export class QualityLab{
       let materialPbr=null;
       if(resultToShow.textureClass==="diffuse"&&resultToShow.material&&resultToShow.material!=="manual"){
         try{
-          const generated=await generateMaterialMapPngs(resultToShow.bytes,resultToShow.material,{curvature:state.materialCurvature!==false});
+          const generated=await generateMaterialMapPngs(resultToShow.bytes,resultToShow.material,{curvature:state.materialCurvature!==false,qaPreview:true});
           materialMaps={};
           materialPbr={
             calibration:generated.pbrCalibration,validation:generated.pbrValidation,
