@@ -7,6 +7,7 @@ import zipfile
 from pathlib import Path
 
 root=Path(__file__).resolve().parents[1]
+PINNED_BASE_X4PLUS_SHA256="a64fb7ec8780e6e67a99cf380067961a0aab618c934171240eea2724217fd304"
 m=json.loads((root/"openrac-mod.json").read_text())
 assert set(m["tool"])=={"page"}
 assert (root/m["tool"]["page"]).is_file()
@@ -40,6 +41,13 @@ if specialized:
         report=json.loads(validation.read_text())
         assert report.get("release_candidate") is True
         assert report.get("model_sha256")==digest
+        assert int(report.get("version",0))>=3, f"outdated specialized validation report: {model.name}"
+        assert report.get("dataset_input_pipeline")=="base-cnn-reconstruction", \
+            f"specialized model was not trained on runtime-aligned x4plus inputs: {model.name}"
+        assert report.get("base_model_sha256")==PINNED_BASE_X4PLUS_SHA256, \
+            f"specialized model base-CNN SHA mismatch: {model.name}"
+        assert float(report.get("laplacian_improvement",0))>0, \
+            f"specialized model lacks positive Laplacian improvement: {model.name}"
 
 files=[root/"openrac-mod.json",root/"LICENSE",root/"README.md",*scripts]
 for folder in ["ui","src","vendor","models"]:
