@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Build a deterministic official-OpenRAC mod ZIP and a separately runnable helper script."""
+"""Build a deterministic installable OpenRAC mod ZIP."""
 import hashlib
 import json
-import shutil
 import zipfile
 from pathlib import Path
 
@@ -25,10 +24,5 @@ with zipfile.ZipFile(archive,"w",zipfile.ZIP_DEFLATED) as z:
         info.compress_type=zipfile.ZIP_DEFLATED
         info.external_attr=0o100644<<16
         z.writestr(info,p.read_bytes())
-helper=out/"openrac-graphics-helper.py"
-shutil.copyfile(root/"helper"/"openrac_graphics_helper.py",helper)
-helper.chmod(0o755)
-artifacts=[archive,helper]
-(out/"SHA256SUMS").write_text("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in artifacts))
+(out/"SHA256SUMS").write_text(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
 print(archive)
-print(helper)

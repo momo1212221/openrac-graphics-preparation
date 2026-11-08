@@ -1,72 +1,50 @@
 # Graphics preparation
 
-A companion tool for the official OpenRAC launcher.
+Integrated texture preparation for the official OpenRAC launcher.
 
-Version 0.2.1 keeps the documented OpenRAC mod-tool page API and adds a harmless script fallback
-so the package can also be installed by OpenRAC Launcher 1.0.2, which otherwise mistakes a page-only
-mod for an unbuilt native mod.
+Version 0.3.0 removes the Python-helper requirement for the normal texture-upscale flow. The mod
+page now reads OpenRAC's own saved texture assets through the documented mod-tool API, upscales them
+locally, and writes a standard OpenRAC texture-pack ZIP.
 
-## Compatibility with OpenRAC
+## What it does
 
-- **Launcher 1.0.2:** the package installs through the no-op `main.luau` compatibility entry point.
-  Launcher 1.0.2 does not expose a mod's own `tool.page`, so use the external helper for Ultra/AI
-  texture jobs on that launcher.
-- **Launcher builds with mod-tool pages:** the **Graphics preparation** page opens inside the Mods tab
-  and can export helper jobs through the documented sandboxed API.
+- uses the same compact settings-page structure as OpenRAC's Enhanced graphics page;
+- reads the textures OpenRAC saved while you played;
+- prepares them at 2x or 4x;
+- can preserve hard edges for HUD, fonts and stylised textures;
+- streams the result into a normal OpenRAC texture-pack ZIP;
+- does not run Python, shell commands or a localhost service.
 
-The compatibility script does not change gameplay.
+Lighting, shadows, ambient occlusion and temporal upscaling remain in OpenRAC's built-in
+**Enhanced graphics** page. This mod does not duplicate them.
 
-OpenRAC already provides the native preparation path for enhanced lighting/GI, probe baking,
-interior lighting, water preparation and reflections. For those features use:
+## Use
 
-**Mods -> Enhanced graphics -> Prepare the enhanced lighting**
+1. In OpenRAC open **Mods -> Models and textures**.
+2. Turn on **Save the game's textures while you play**.
+3. Play the planets and menus whose textures you want to prepare.
+4. Open **Mods -> Graphics preparation -> Open**.
+5. Choose **2x** or **4x Ultra**, and whether edge preservation and interface textures are enabled.
+6. Press **Prepare textures** and choose where to save the ZIP.
+7. Add that ZIP through **Mods -> Add a mod**. OpenRAC recognises it as a standard texture pack.
 
-No external helper is required for that built-in OpenRAC path.
+The pack keeps the texture hashes OpenRAC uses, so the prepared pictures replace the matching
+textures without needing the level editor or a separate conversion UI.
 
-## External helper required for Ultra / AI textures
+## Compatibility
 
-Ultra textures and AI-texture preparation are different. On launchers with mod-tool pages, export
-the requested JSON job from **Graphics preparation**. On Launcher 1.0.2, prepare the job externally.
-Then run `openrac-graphics-helper.py`; it creates a normal OpenRAC overrides-pack ZIP.
+The mod keeps the no-op Luau compatibility entry point used by older Launcher 1.0.2. The integrated
+asset page itself needs a launcher build with mod-tool pages and the protocol-1 list/read/save
+operations, including Development 1.0.3-dev.842 and newer builds based on that API.
 
-The helper is not needed for the normal Enhanced graphics lighting bake.
+## Processing
 
-## Install
+The integrated path is a local image upscale, not a neural-network model download. Edge preservation
+uses crisp pixel expansion; with it off the browser uses its high-quality image resampler. The
+texture identity, alpha channel and OpenRAC pack structure are preserved.
 
-1. Download the release artifact **`graphics-preparation-0.2.1.zip`**.
-2. Do **not** use GitHub's `openrac-graphics-preparation-main.zip` source archive.
-3. In OpenRAC choose **Mods -> Add mod -> ZIP**.
-4. Select `graphics-preparation-0.2.1.zip`.
-5. On newer launchers, open **Graphics preparation** from the mod page. On Launcher 1.0.2, use the
-   released `openrac-graphics-helper.py` externally for Ultra/AI jobs.
-
-No fork launcher and no `launcher-service` bridge are required.
-
-## Running the external texture helper
-
-Example:
-
-```sh
-python3 openrac-graphics-helper.py openrac-rac1-pal-ultra-textures.json \
-  --openrac-root /path/to/OpenRAC \
-  --out ./prepared
-```
-
-The helper looks for `realesrgan-ncnn-vulkan` in `PATH`. Override it with `--upscaler` or set
-`OPENRAC_TEXTURE_UPSCALER`. The helper uses OpenRAC's own `editor/assets.py` exporter/importer,
-processes PNG textures, imports the changes and creates a standard overrides-pack ZIP.
-
-Use `--levels /path/to/levels` when exported levels live outside the checkout and `--dry-run` to
-validate a job without starting the upscaler.
-
-## AI meshes
-
-The portable job format reserves an AI-mesh operation, but no mesh backend is integrated yet.
-
-## Security model
-
-The mod-tool page stays sandboxed. It cannot execute terminal commands, start arbitrary local
-programs or connect to a privileged localhost service. The compatibility Luau script is a no-op.
+The older external helper remains in the repository for experiments, but it is no longer part of the
+release artifact or required for this workflow.
 
 ## Develop
 

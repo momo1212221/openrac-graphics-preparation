@@ -37,16 +37,6 @@ jobs:
           VERSION="$(python3 -c 'import json; print(json.load(open("openrac-mod.json"))["version"])')"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Mark v0.1.0 as obsolete
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view v0.1.0 >/dev/null 2>&1; then
-            gh release edit v0.1.0 \
-              --title "Graphics preparation 0.1.0 - obsolete preview" \
-              --notes-file .github/release-v0.1-obsolete.md
-          fi
-
       - name: Publish current release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,10 +48,4 @@ jobs:
             exit 0
           fi
 
-          gh release create "$TAG" \
-            "dist/graphics-preparation-$VERSION.zip" \
-            "dist/openrac-graphics-helper.py" \
-            "dist/SHA256SUMS" \
-            --target "$GITHUB_SHA" \
-            --title "Graphics preparation $VERSION" \
-            --notes-file .github/release-v0.2.md
+          gh release create "$TAG"             "dist/graphics-preparation-$VERSION.zip"             "dist/SHA256SUMS"             --target "$GITHUB_SHA"             --title "Graphics preparation $VERSION"             --notes-file .github/release-current.md

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-/** Pure controller for the official OpenRAC Mod Tool protocol. No privileged launcher service is required. */
-export const JOB_KIND = "openrac-graphics-preparation-job";
-export const RESULT_KIND = "openrac-graphics-preparation-result";
-export const JOB_OPERATIONS = ["textures.prepare", "ai.textures", "ai.meshes"];
+/** Thin wrapper around OpenRAC's documented protocol-1 mod-tool API. */
+const bufferOf = (value) => {
+  if (value instanceof ArrayBuffer) return value;
+  if (ArrayBuffer.isView(value)) return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+  throw new TypeError("expected bytes");
+};
 
 export class ModController {
   constructor(request) {
@@ -11,32 +13,19 @@ export class ModController {
   }
 
   info() { return this.request("info"); }
+  list(root) { return this.request("list", {root}); }
+  read(root, path, start, length) {
+    return this.request("read", {
+      root,
+      path,
+      ...(start === undefined ? {} : {start}),
+      ...(length === undefined ? {} : {length}),
+    });
+  }
   storeGet(key) { return this.request("storeGet", {key}); }
   storeSet(key, value) { return this.request("storeSet", {key, value}); }
-  save(name, extension, bytes) { return this.request("save", {name, extension, bytes}); }
-  open(extension = "json") { return this.request("open", {extension}); }
-
-  helperJob(operation, info, options = {}) {
-    if (!JOB_OPERATIONS.includes(operation)) throw new Error("Unsupported helper operation: " + operation);
-    if (!info || typeof info.game !== "string" || typeof info.version !== "string") {
-      throw new TypeError("launcher info must contain game and version");
-    }
-    return {
-      format: 1,
-      kind: JOB_KIND,
-      operation,
-      game: info.game,
-      version: info.version,
-      createdBy: {mod: "graphics-preparation", version: "0.2.1"},
-      options: JSON.parse(JSON.stringify(options ?? {})),
-    };
-  }
-
-  parseResult(value) {
-    if (!value || value.format !== 1 || value.kind !== RESULT_KIND || typeof value.operation !== "string") {
-      throw new Error("Not a Graphics preparation helper result");
-    }
-    if (typeof value.ok !== "boolean") throw new Error("Helper result has no success state");
-    return value;
-  }
+  saveStart(name, extension) { return this.request("saveStart", {name, extension}); }
+  saveWrite(token, bytes) { return this.request("saveWrite", {token, bytes: bufferOf(bytes)}); }
+  saveEnd(token, keep) { return this.request("saveEnd", {token, keep}); }
+  close() { return this.request("close"); }
 }

@@ -1,27 +1,18 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ModController, JOB_OPERATIONS, JOB_KIND, RESULT_KIND} from '../src/controller.js';
+import {ModController} from '../src/controller.js';
 
-test('controller uses only official mod-tool calls and creates portable jobs', async()=>{
+test('controller exposes only documented OpenRAC mod-tool operations', async()=>{
   const calls=[];
-  const c=new ModController(async(call,args={})=>{calls.push([call,args]);return {ok:true};});
+  const c=new ModController(async(call,args={})=>{calls.push([call,args]);return call==='read'?new ArrayBuffer(2):null;});
   await c.info();
-  await c.storeGet('preset');
-  await c.storeSet('preset',{scale:4});
-  assert.deepEqual(calls.map(x=>x[0]),['info','storeGet','storeSet']);
-  const info={game:'rac1',version:'pal'};
-  for(const op of JOB_OPERATIONS){
-    const job=c.helperJob(op,info,{mode:'balanced'});
-    assert.equal(job.kind,JOB_KIND);
-    assert.equal(job.operation,op);
-    assert.equal(job.game,'rac1');
-  }
-  assert.throws(()=>c.helperJob('terminal.exec',info),/Unsupported/);
-});
-
-test('helper result validation is bounded',()=>{
-  const c=new ModController(()=>{});
-  const result=c.parseResult({format:1,kind:RESULT_KIND,operation:'ai.textures',ok:true,output:'pack.zip'});
-  assert.equal(result.ok,true);
-  assert.throws(()=>c.parseResult({ok:true}),/Not a Graphics preparation helper result/);
+  await c.list('dump');
+  await c.read('dump','Shared/0123456789abcdef.png');
+  await c.storeGet('texture-preparation');
+  await c.storeSet('texture-preparation',{scale:4});
+  await c.saveStart('pack','zip');
+  await c.saveWrite(7,new Uint8Array([1,2]));
+  await c.saveEnd(7,true);
+  assert.deepEqual(calls.map(x=>x[0]),['info','list','read','storeGet','storeSet','saveStart','saveWrite','saveEnd']);
+  assert.ok(calls[6][1].bytes instanceof ArrayBuffer);
 });
