@@ -38,6 +38,7 @@ def main():
     ap.add_argument("--epochs",type=int,default=30)
     ap.add_argument("--batch",type=int,default=16)
     ap.add_argument("--lr",type=float,default=2e-4)
+    ap.add_argument("--gradient-weight",type=float,default=.35)
     ap.add_argument("--device",default="auto")
     ap.add_argument("--workers",type=int,default=2)
     ap.add_argument("--seed",type=int,default=1337)
@@ -83,6 +84,7 @@ def main():
             "--epochs",str(args.epochs),
             "--batch",str(args.batch),
             "--lr",str(args.lr),
+            "--gradient-weight",str(args.gradient_weight),
             "--device",args.device,
             "--workers",str(args.workers),
             "--seed",str(args.seed+index),
