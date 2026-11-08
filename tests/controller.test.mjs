@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ModController} from '../src/controller.js';
+import {ModController,validateStoreKey} from '../src/controller.js';
 
 test('controller uses only stock OpenRAC protocol-1 calls', async()=>{
   const calls=[];
@@ -15,4 +15,17 @@ test('controller uses only stock OpenRAC protocol-1 calls', async()=>{
   await c.saveEnd(7,true);
   assert.deepEqual(calls.map(x=>x[0]),['info','list','read','storeGet','storeSet','saveStart','saveWrite','saveEnd']);
   assert.ok(calls[6][1].bytes instanceof ArrayBuffer);
+});
+
+
+test('store keys follow the OpenRAC launcher contract', async()=>{
+  assert.equal(validateStoreKey('texture-preparation-ai-run-v1-rac1-pal'),'texture-preparation-ai-run-v1-rac1-pal');
+  assert.throws(()=>validateStoreKey('texture-preparation:bad'),/invalid OpenRAC store key/);
+  assert.throws(()=>validateStoreKey('UPPERCASE'),/invalid OpenRAC store key/);
+  assert.throws(()=>validateStoreKey('a'.repeat(65)),/invalid OpenRAC store key/);
+
+  const calls=[];
+  const c=new ModController(async(call,args={})=>{calls.push([call,args]);return null;});
+  await assert.rejects(()=>c.storeSet('bad:key',{x:1}),/invalid OpenRAC store key/);
+  assert.equal(calls.length,0);
 });
