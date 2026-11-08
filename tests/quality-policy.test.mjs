@@ -25,3 +25,37 @@ test('safer recovery wins when score is nearly equal',()=>{
   const safer={metrics:{score:74.5,hallucinationScore:30,ssim:.84}};
   assert.equal(chooseBetterQuality(primary,safer),safer);
 });
+
+
+test('fragile materials retry low-confidence CNN enrichment before obvious score failure',()=>{
+  const glass=evaluateQuality({
+    score:78,colorDrift:4,lumaDrift:4,alphaDrift:0,cnnAgreement:.8,
+    cnnConfidence:.36,cnnRejectedRatio:.30,edgeGain:1.2,histogramDrift:3,
+    alphaCoverageDiff:0,ssim:.82,hallucinationScore:25,psnr:28,
+  },{textureClass:'diffuse',material:'glass',detailQuality:'max'});
+  assert.equal(glass.verdict,'retry');
+  assert.ok(glass.reasons.includes('low CNN confidence'));
+
+  const stone=evaluateQuality({
+    score:78,colorDrift:4,lumaDrift:4,alphaDrift:0,cnnAgreement:.8,
+    cnnConfidence:.36,cnnRejectedRatio:.30,edgeGain:1.2,histogramDrift:3,
+    alphaCoverageDiff:0,ssim:.82,hallucinationScore:25,psnr:28,
+  },{textureClass:'diffuse',material:'stone',detailQuality:'max'});
+  assert.equal(stone.verdict,'pass');
+});
+
+test('critically uncertain CNN output falls back even if aggregate score looks acceptable',()=>{
+  const result=evaluateQuality({
+    score:72,colorDrift:4,lumaDrift:4,alphaDrift:0,cnnAgreement:.7,
+    cnnConfidence:.08,cnnRejectedRatio:.96,edgeGain:1.1,histogramDrift:2,
+    alphaCoverageDiff:0,ssim:.8,hallucinationScore:30,psnr:25,
+  },{textureClass:'diffuse',material:'character',detailQuality:'max'});
+  assert.equal(result.verdict,'reject');
+  assert.equal(result.fallback,true);
+});
+
+test('recovery with clearly better confidence can win at near-equal score',()=>{
+  const primary={metrics:{score:76,hallucinationScore:35,cnnConfidence:.42,cnnRejectedRatio:.55,ssim:.8}};
+  const safer={metrics:{score:74.5,hallucinationScore:33,cnnConfidence:.70,cnnRejectedRatio:.20,ssim:.81}};
+  assert.equal(chooseBetterQuality(primary,safer),safer);
+});
