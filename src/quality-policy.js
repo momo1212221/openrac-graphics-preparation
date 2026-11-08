@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
-export const QUALITY_POLICY_VERSION="90-94-97-v3-alpha";
+export const QUALITY_POLICY_VERSION="90-94-97-v4-regional";
 const QUALITY_ORDER=Object.freeze({standard:0,high:1,max:2});
 
 export const QUALITY_TARGETS=Object.freeze({
   standard:Object.freeze({
     score:90,ssim:.80,hallucination:30,colorDrift:12,lumaDrift:16,alphaDrift:3,
-    alphaCoverageDiff:2,alphaEdgeCoverageDiff:3,cnnAgreement:.65,cnnConfidence:.45,cnnRejectedRatio:.40,edgeGain:2.8,
+    alphaCoverageDiff:2,alphaEdgeCoverageDiff:3,cnnAgreement:.65,cnnConfidence:.45,cnnRejectedRatio:.40,cnnLowConfidenceRatio:.55,cnnConfidenceP10:.12,edgeGain:2.8,
   }),
   high:Object.freeze({
     score:94,ssim:.85,hallucination:22,colorDrift:9,lumaDrift:12,alphaDrift:2,
-    alphaCoverageDiff:1.5,alphaEdgeCoverageDiff:2,cnnAgreement:.72,cnnConfidence:.55,cnnRejectedRatio:.30,edgeGain:2.5,
+    alphaCoverageDiff:1.5,alphaEdgeCoverageDiff:2,cnnAgreement:.72,cnnConfidence:.55,cnnRejectedRatio:.30,cnnLowConfidenceRatio:.42,cnnConfidenceP10:.18,edgeGain:2.5,
   }),
   max:Object.freeze({
     score:97,ssim:.88,hallucination:16,colorDrift:7,lumaDrift:10,alphaDrift:1.5,
-    alphaCoverageDiff:1,alphaEdgeCoverageDiff:1.5,cnnAgreement:.78,cnnConfidence:.65,cnnRejectedRatio:.22,edgeGain:2.3,
+    alphaCoverageDiff:1,alphaEdgeCoverageDiff:1.5,cnnAgreement:.78,cnnConfidence:.65,cnnRejectedRatio:.22,cnnLowConfidenceRatio:.30,cnnConfidenceP10:.25,edgeGain:2.3,
   }),
 });
 
@@ -72,6 +72,8 @@ export function evaluateQuality(metrics={},context={}){
   if(Number(metrics.cnnAgreement??1)<target.cnnAgreement)reasons.push("low CNN agreement");
   if(Number(metrics.cnnConfidence??metrics.cnnAgreement??1)<target.cnnConfidence)reasons.push("low CNN confidence");
   if(Number(metrics.cnnRejectedRatio??0)>target.cnnRejectedRatio)reasons.push("high CNN rejection");
+  if(Number(metrics.cnnLowConfidenceRatio??0)>target.cnnLowConfidenceRatio)reasons.push("regional low-confidence area");
+  if(Number(metrics.cnnConfidenceP10??1)<target.cnnConfidenceP10)reasons.push("weak regional confidence floor");
   if(Number(metrics.edgeGain??1)>target.edgeGain)reasons.push("edge amplification");
   if(metrics.ssim!==undefined&&Number(metrics.ssim)<target.ssim)reasons.push("low structural similarity");
   if(Number(metrics.hallucinationScore??0)>target.hallucination)reasons.push("hallucination risk");
@@ -79,6 +81,8 @@ export function evaluateQuality(metrics={},context={}){
 
   const confidence=Number(metrics.cnnConfidence??metrics.cnnAgreement??1);
   const rejected=Number(metrics.cnnRejectedRatio??0);
+  const regionalLow=Number(metrics.cnnLowConfidenceRatio??0);
+  const confidenceP10=Number(metrics.cnnConfidenceP10??1);
   const catastrophic=
     score<60||
     Number(metrics.hallucinationScore??0)>70||
@@ -88,6 +92,8 @@ export function evaluateQuality(metrics={},context={}){
     Number(metrics.edgeGain??1)>4||
     confidence<Math.max(.10,target.cnnConfidence*.35)||
     rejected>.94||
+    regionalLow>.96||
+    confidenceP10<.02||
     (metrics.psnr!==undefined&&Number(metrics.psnr)<8);
 
   const minimumMet=score>=target.score;
@@ -129,9 +135,12 @@ export function chooseBetterQuality(primary,conservative){
   const bc=conservative?.metrics?.cnnConfidence??1;
   const ar=primary?.metrics?.cnnRejectedRatio??0;
   const br=conservative?.metrics?.cnnRejectedRatio??0;
+  const al=primary?.metrics?.cnnLowConfidenceRatio??0;
+  const bl=conservative?.metrics?.cnnLowConfidenceRatio??0;
   if(bh+12<ah&&b>=a-2)return conservative;
   if(bc>ac+.15&&b>=a-2)return conservative;
   if(br+.25<ar&&b>=a-2)return conservative;
+  if(bl+.20<al&&b>=a-2)return conservative;
   if(as!==undefined&&bs!==undefined&&bs>as+.08&&b>=a-2)return conservative;
   if(b>a+1)return conservative;
   return primary;
