@@ -211,6 +211,14 @@ export function deriveMaterialMaps(image,material="generic",options={}){
       surface:surface.stats,
       curvatureEnabled:includeCurvature,
       emissiveProtectionPixels:emissivePixels,
+      parallaxAuthoring:{
+        ready:(bands.profile.parallaxScale||0)>0 && merged.stats.reliefRange>.001,
+        source:"height.png",
+        encoding:"relative-height-0.5-neutral",
+        neutralHeight:.5,
+        recommendedScale:bands.profile.parallaxScale||0,
+        rendererSupportRequired:true,
+      },
     },
   };
 }
