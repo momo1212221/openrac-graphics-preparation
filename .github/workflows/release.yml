@@ -4,6 +4,7 @@ name: release
   push:
     branches:
       - main
+      - release/graphics-preparation-0.16.0-final
   workflow_dispatch: {}
 
 concurrency:
