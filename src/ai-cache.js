@@ -2,7 +2,7 @@
 const DB_NAME = "openrac-graphics-preparation-ai-cache";
 const DB_VERSION = 1;
 const STORE = "textures";
-const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v3|dual-cnn-v1|quality-guard-v2|seam-wrap-v1|auto-quality-v1|frequency-v2|master8x-v1|failure-v1|specialized-refine-v1";
+const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v4|dual-cnn-v1|quality-guard-v2|seam-wrap-v1|auto-quality-v1|frequency-v2|master8x-v1|failure-v1|specialized-refine-v1";
 let dbPromise;
 let sessionDisabled = false;
 let writesSinceTrim = 0;
@@ -116,6 +116,8 @@ export async function cacheGet(key) {
       specializedCnnUsed:row.specializedCnnUsed===true,
       specializedRejected:row.specializedRejected===true,
       specializedModelSha:row.specializedModelSha||null,
+      textureComplexity:Number(row.textureComplexity)||0,
+      tileGeometry:row.tileGeometry||null,
     };
   } catch {
     sessionDisabled = true;
@@ -181,6 +183,8 @@ export async function cachePut(key, result, maxBytes) {
     specializedCnnUsed:result.specializedCnnUsed===true,
     specializedRejected:result.specializedRejected===true,
     specializedModelSha:result.specializedModelSha||null,
+    textureComplexity:Number(result.textureComplexity)||0,
+    tileGeometry:result.tileGeometry||null,
     lastUsed:Date.now(),
     created:Date.now(),
   };
