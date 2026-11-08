@@ -583,6 +583,7 @@ async function createPack({ai}) {
             for(const member of group.members){
               stats.materialQualityRows.push({
                 hash:member.hash,path:member.path,material:prepared.material,quality:generatedMaps.quality,
+                pbrCalibration:generatedMaps.pbrCalibration,pbrValidation:generatedMaps.pbrValidation,
               });
             }
             if(generatedMaps.quality?.ok===false){
@@ -657,6 +658,8 @@ async function createPack({ai}) {
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
+              pbrCalibration:generatedMaps.pbrCalibration,
+              pbrValidation:generatedMaps.pbrValidation,
               quality:generatedMaps.quality,
               sourceHash:member.hash,
             };
