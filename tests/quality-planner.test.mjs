@@ -24,3 +24,11 @@ test('structural and hallucination risk blocks aggressive detail',()=>{
   assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,alphaCoverageDiff:8}},'high'),'standard');
   assert.equal(refinedDetailQuality({...base,metrics:{...base.metrics,hallucinationScore:45}},'high'),'high');
 });
+
+test('high local rejection blocks max detail promotion',()=>{
+  const result={textureClass:'diffuse',material:'weapon',metrics:{
+    score:92,cnnAgreement:.9,colorDrift:3,edgeGain:1.1,ssim:.92,
+    alphaCoverageDiff:0,hallucinationScore:12,cnnRejectedRatio:.55,
+  }};
+  assert.equal(refinedDetailQuality(result,'high'),'standard');
+});
