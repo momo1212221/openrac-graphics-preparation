@@ -40,6 +40,8 @@ details.advanced{padding:0}details.advanced summary{list-style:none;display:flex
 .effect-placement-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.effect-placement-head strong{font-size:13px}
 .placement-actions{margin-top:10px}
 .placement-note{color:var(--soft)}.placement-ready{color:var(--ok)}.placement-warning{margin:10px 0 0;color:var(--gold);font-size:12px;font-weight:650}
+.effect-orphans{margin-top:14px;padding:12px;border:1px solid rgba(255,140,132,.24);border-radius:9px;background:rgba(255,140,132,.045)}
+.effect-orphans>strong{display:block;color:var(--err);font-size:13px}.effect-orphans p{margin:5px 0 10px}
 .placement-unavailable{opacity:.5}
 .effect-export{margin-top:16px}
 @media(max-width:800px){.effect-grid.four,.effect-grid.two,.effect-placement-toolbar{grid-template-columns:1fr 1fr}.effect-vector{grid-template-columns:1fr 1fr}.effect-vector-title{grid-column:1/-1}}
