@@ -65,6 +65,10 @@ export class ProgressEstimator{
         this.lastSampleAt=now;
         this.lastSampleFraction=fraction;
       }
+    }else if(!sampleRate && fraction>=this.lastSampleFraction){
+      // Cache hits/skips advance visible progress but must not look like GPU throughput.
+      this.lastSampleAt=now;
+      this.lastSampleFraction=fraction;
     }else if(fraction<this.lastSampleFraction){
       // A new phase must call reset(). Ignore backwards progress instead of corrupting ETA.
       this.lastSampleAt=now;
@@ -78,9 +82,9 @@ export class ProgressEstimator{
     const pauseNow=this.pausedAt===null?0:Math.max(0,now-this.pausedAt);
     const elapsedMs=Math.max(0,now-this.startedAt-this.pausedMs-pauseNow);
     const overallRate=this.fraction>0&&elapsedMs>0?this.fraction/elapsedMs:null;
-    let rate=null;
-    if(overallRate&&this.emaRate)rate=overallRate*.72+this.emaRate*.28;
-    else rate=overallRate||this.emaRate;
+    // Once real compute samples exist, use only their EMA. Overall progress can include
+    // instantaneous cache hits and skips, which would make the ETA unrealistically optimistic.
+    const rate=this.emaRate||overallRate;
 
     const etaReady=this.samples>=2&&elapsedMs>=this.minEtaMs&&this.fraction>0&&this.fraction<1&&rate>0;
     const etaMs=etaReady?Math.min((1-this.fraction)/rate,7*24*60*60*1000):null;
