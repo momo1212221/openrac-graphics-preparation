@@ -157,6 +157,8 @@ export class QualityLab{
         ["Albedo de-light",this.preview.materialPbr?.albedoValidation?.ok===true?"pass":(this.preview.materialPbr?.albedoValidation?.ok===false?"review":"n/a")],
         ["Albedo adjusted",this.preview.materialPbr?.albedoDelight?.adjustedRatio!==undefined?Math.round(this.preview.materialPbr.albedoDelight.adjustedRatio*100)+"%":"n/a"],
         ["Height source",this.preview.materialPbr?.heightPipeline?"de-lit albedo":"n/a"],
+        ["Pipeline version",this.preview.materialPbr?.heightPipeline?.version??"n/a"],
+        ["Pipeline validation",this.preview.materialPbr?.quality?.heightPipelineValidation?.ok===true?"pass":(this.preview.materialPbr?.quality?.heightPipelineValidation?.ok===false?"review":"n/a")],
         ["Relief range",this.preview.materialPbr?.heightPipeline?.merged?.reliefRange??"n/a"],
         ["Normal strength",this.preview.materialPbr?.heightPipeline?.profile?.normalStrength??"n/a"],
         ["Coarse energy",this.preview.materialPbr?.heightPipeline?.bands?.coarse?.meanAbs??"n/a"],
