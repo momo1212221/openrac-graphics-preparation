@@ -18,6 +18,6 @@ test('AI pack metadata identifies bundled Real-ESRGAN path',()=>{
   const manifest=texturePackManifest(info,42,{ai:true,mode:'balanced',detailQuality:'high'});
   assert.equal(manifest.game,'rac1-pal');
   assert.equal(manifest.name,'Graphics preparation AI 4x');
-  assert.ok(manifest.madeWith.includes('0.13.0 (dual-CNN balanced · high detail)'));
+  assert.ok(manifest.madeWith.includes('0.14.0 (dual-CNN balanced · high detail)'));
   assert.equal(outputName(info,'ai-balanced-4x'),'rac1-pal-graphics-preparation-ai-balanced-4x');
 });
