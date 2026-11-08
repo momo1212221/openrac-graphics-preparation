@@ -1,5 +1,9 @@
 name: mod
 on: [push, pull_request, workflow_dispatch]
+concurrency:
+  group: mod-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:

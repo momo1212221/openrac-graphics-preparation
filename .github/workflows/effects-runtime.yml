@@ -11,6 +11,10 @@ on:
       - .github/workflows/effects-runtime.yml
   workflow_dispatch: {}
 
+concurrency:
+  group: effects-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
