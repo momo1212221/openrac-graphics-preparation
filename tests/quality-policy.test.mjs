@@ -57,7 +57,7 @@ test('highest passing tier respects the render tier cap',()=>{
   assert.equal(highestPassingQuality(safe(95),{textureClass:'diffuse',material:'stone'},'max'),'high');
   assert.equal(highestPassingQuality(safe(92),{textureClass:'diffuse',material:'stone'},'high'),'standard');
   assert.equal(highestPassingQuality(safe(89),{textureClass:'diffuse',material:'stone'},'max'),null);
-  assert.equal(QUALITY_POLICY_VERSION,'90-94-97-v2');
+  assert.equal(QUALITY_POLICY_VERSION,'90-94-97-v3-alpha');
 });
 
 
@@ -90,4 +90,23 @@ test('near-equal recovery with much better CNN confidence is preferred',()=>{
   const primary={metrics:{score:96,hallucinationScore:22,ssim:.88,cnnConfidence:.48,cnnRejectedRatio:.52}};
   const safer={metrics:{score:94.5,hallucinationScore:20,ssim:.89,cnnConfidence:.72,cnnRejectedRatio:.18}};
   assert.equal(chooseBetterQuality(primary,safer),safer);
+});
+
+
+test('alpha edge coverage is part of the strict tier gate',()=>{
+  const retry=evaluateQuality(safe(95,{alphaEdgeCoverageDiff:4}),{
+    detailQuality:'standard',textureClass:'diffuse',material:'character'
+  });
+  assert.equal(retry.verdict,'retry');
+  assert.ok(retry.reasons.includes('alpha edge coverage'));
+
+  const pass=evaluateQuality(safe(95,{alphaEdgeCoverageDiff:2.5}),{
+    detailQuality:'standard',textureClass:'diffuse',material:'character'
+  });
+  assert.equal(pass.verdict,'pass');
+
+  const reject=evaluateQuality(safe(95,{alphaEdgeCoverageDiff:15}),{
+    detailQuality:'standard',textureClass:'diffuse',material:'character'
+  });
+  assert.equal(reject.verdict,'reject');
 });
