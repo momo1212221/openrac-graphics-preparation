@@ -34,7 +34,7 @@ export function lockSourceChroma(source,output,strength=.7){
   return output;
 }
 
-export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAgreement}={}){
+export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAgreement,cnnRejectedRatio=0}={}){
   const sx=output.width/source.width,sy=output.height/source.height;
   let colorDrift=0,lumaDrift=0,alphaDiff=0,sourceEdge=0,outEdge=0,n=0;
   let srcVisible=0,outVisible=0,sumS=0,sumO=0,sumSS=0,sumOO=0,sumSO=0;
@@ -77,7 +77,7 @@ export function qualityMetrics(source,output,{cnnAgreement=1,cnnConfidence=cnnAg
   const c1=6.5025,c2=58.5225;
   const ssim=((2*ms*mo+c1)*(2*cov+c2))/((ms*ms+mo*mo+c1)*(vs+vo+c2));
   const hallucinationScore=clamp(
-    (1-cnnAgreement)*34+(1-cnnConfidence)*28+Math.max(0,edgeGain-1.8)*12+meanColor*.7+histogramDrift*.5,
+    (1-cnnAgreement)*30+(1-cnnConfidence)*24+clamp(cnnRejectedRatio,0,1)*30+Math.max(0,edgeGain-1.8)*12+meanColor*.7+histogramDrift*.5,
     0,100
   );
   let seamScore=0,seamN=0;
