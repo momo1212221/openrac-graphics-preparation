@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.12.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.12.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.12.0.zip`.
+2. Install `graphics-preparation-0.12.1.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -258,3 +258,10 @@ The specialized pass is deliberately fail-open. Missing registries/models, unsup
 model-load/inference errors, or a refinement that worsens the quality guardrails keep the established
 general Real-ESRGAN result. Source alpha is preserved. Persistent cache identity includes the sorted
 specialized-model registry hashes, so changing a promoted model cannot silently reuse stale outputs.
+
+
+## Specialized quality-report metadata (0.12.1)
+
+`quality-report.json` now records whether the material-specific refinement was accepted or rejected
+for each retained row. Accepted rows include the exact pinned specialized-model SHA-256, so a visual
+result can be traced back to the validated model that produced it.
