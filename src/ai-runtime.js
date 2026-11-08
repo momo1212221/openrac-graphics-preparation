@@ -486,7 +486,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
             cnnConfidenceSum+=fused.confidence??fused.agreement;
             cnnAgreementTiles++;
             detailPixels+=fused.detailPixels;
-            rejectedDetailPixels+=fused.rejectedPixels||0;\n            consideredDetailPixels+=fused.consideredPixels||0;
+            rejectedDetailPixels+=fused.rejectedPixels||0; 
+            consideredDetailPixels+=fused.consideredPixels||0;
           }catch{
             // Detail CNN is optional; the x4plus result remains valid.
           }
