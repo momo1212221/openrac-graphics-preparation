@@ -1,10 +1,13 @@
-Graphics preparation 0.15.0 productionizes runtime effect placement while retaining the 0.14 realism/AI pipeline.
+Graphics preparation 0.15.1 is the production-hardening patch for runtime effect placement and the AI/material quality gates.
 
-- Runtime Sparks, Smoke, Mist, Glow, Energy, Rain and Heat Haze can be placed at explicit world X/Y/Z coordinates.
-- Level-instance snapping reads the official OpenRAC `placements.json` matrices for ties, shrubs and mobys instead of guessing positions from class metadata.
-- Light-class selection and particle-instance placement are separate, preventing one authoring control from overwriting the other.
-- Legacy saved effects preserve their coordinates but require one explicit placement confirmation after migration.
-- Export is blocked for unplaced effects, unavailable levels or malformed coordinates; no silent origin placement or dropped rows.
-- Placement anchors are snapshots in world space and are labelled as such; moving gameplay objects are not falsely presented as live attachments.
-- Graphics Effects Runtime 0.1.1 fixes the 17-field TSV parser, rejects unknown presets/malformed levels and bounds external coordinate/colour input.
-- Standard/High/Max texture quality remains 90/94/97 with the 0.14 alpha, regional CNN confidence, PBR and material-sidecar improvements intact.
+- Runtime Sparks, Smoke, Mist, Glow, Energy, Rain and Heat Haze now require deliberate placement; new effects no longer auto-snap to a preselected instance.
+- Level-instance snapping uses OpenRAC `placements.json` world transforms for real tie/shrub/moby instances, while manual X/Y/Z remains available.
+- Empty or invalid numeric placement input no longer silently becomes zero; unplaced, malformed or orphaned effects block export with actionable UI.
+- Legacy authoring data preserves coordinates but requires one explicit placement confirmation after migration.
+- Authored effects require Graphics Effects Runtime >=0.1.2.
+- Graphics Effects Runtime 0.1.2 removes live props on level changes, clears haze outside gameplay and applies emitter Gravity as real per-frame acceleration.
+- The native runtime is built and merged successfully for Linux x86_64/AArch64, macOS x86_64/ARM64 and Windows x86_64.
+- The real CNN quality benchmark now compares the fusion in the same RGBA8/ImageData domain used by the browser runtime, eliminating false float-to-8-bit regression signals.
+- Generic second-CNN novelty is disabled for benchmark-fragile Character, Weapon, Glass, Energy and Sky materials; x4plus remains authoritative there.
+- Weapon emissive regions are detected before albedo cleanup so bright saturated emitters stay protected.
+- Standard/High/Max texture gates remain 90/94/97; no quality threshold was weakened.
