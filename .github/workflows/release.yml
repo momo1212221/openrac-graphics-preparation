@@ -4,6 +4,7 @@ name: release
   push:
     branches:
       - main
+      - release-0.15.1
   workflow_dispatch: {}
 
 concurrency:
