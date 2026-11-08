@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {deriveMaterialMaps,shouldGenerateMaterialMaps} from '../src/material-maps.js';
+import {validateMaterialMaps} from '../src/material-map-quality.js';
 
 const image=(w,h,fn)=>{
  const data=new Uint8ClampedArray(w*h*4);
@@ -38,4 +39,27 @@ test('metal and weapon materials produce stronger metallic/specular priors',()=>
  const metal=deriveMaterialMaps(src,'metal'),generic=deriveMaterialMaps(src,'generic');
  assert.ok(metal.metallic.data[0]>generic.metallic.data[0]);
  assert.ok(metal.specular.data[0]>generic.specular.data[0]);
+});
+
+
+test('generated material maps pass tangent/scalar validation',()=>{
+ const src=image(8,8,(x,y)=>[70+x*8,65+y*7,60+(x+y)%3,255]);
+ const maps=deriveMaterialMaps(src,'stone');
+ const q=validateMaterialMaps(maps);
+ assert.equal(q.ok,true);
+ assert.ok(q.meanNormalLengthError<.04);
+ assert.equal(q.backwardNormalPercent,0);
+ assert.ok(Number.isFinite(q.worstSeam));
+ assert.ok(q.scalarStats.roughness.min>=.035);
+});
+
+test('material validation rejects invalid tangent normals and non-scalar roughness',()=>{
+ const src=image(3,3,()=>[100,100,100,255]);
+ const maps=deriveMaterialMaps(src,'generic');
+ maps.normal.data.set([255,255,0,255],0);
+ maps.roughness.data.set([0,100,200,255],0);
+ const q=validateMaterialMaps(maps);
+ assert.equal(q.ok,false);
+ assert.ok(q.issues.includes('normal-facing')||q.issues.includes('normal-length'));
+ assert.ok(q.issues.includes('roughness-not-scalar'));
 });
