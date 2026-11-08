@@ -16,6 +16,7 @@ import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/materia
 import {chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
 import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
 import {specializedRegistryIdentity} from "../src/specialized-models.js";
+import {buildQualityReport} from "../src/quality-report.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -169,6 +170,7 @@ async function createPack({ai}) {
     failureRejected:0,
     specializedCnnRuns:0,
     specializedCnnRejected:0,
+    qualityRows:[],
   };
 
   try {
@@ -451,6 +453,21 @@ async function createPack({ai}) {
           stats.qualityScoreSum+=prepared.metrics.score;stats.qualityScoreCount++;
 
         }
+        for (const member of group.members) {
+          stats.qualityRows.push({
+            hash:member.hash,
+            path:member.path,
+            strategy:prepared.strategy,
+            textureClass:prepared.textureClass,
+            material:prepared.material,
+            detailQuality:prepared.detailQuality,
+            backend:prepared.backend,
+            masterScale:prepared.masterScale,
+            cached:prepared.cached,
+            metrics:prepared.metrics,
+            failures:prepared.failures,
+          });
+        }
         if (prepared.strategy === "ai" && !prepared.cached && !prepared.skipped) stats.aiRuns++;
         stats.stars += prepared.stars;
         stats.microdetails += prepared.microdetails;
@@ -564,6 +581,11 @@ async function createPack({ai}) {
       specialized_cnn_runs: stats.specializedCnnRuns,
       specialized_cnn_rejected: stats.specializedCnnRejected,
     };
+    if (ai) {
+      const qualityReport=buildQualityReport(stats.qualityRows,{limit:20});
+      manifest.resilience.quality_report="quality-report.json";
+      await zip.add("quality-report.json", encoder.encode(JSON.stringify(qualityReport,null,2)+"\n"));
+    }
     await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
     progress(1, 1, "Texture pack ready");
