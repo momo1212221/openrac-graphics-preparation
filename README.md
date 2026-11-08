@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.12.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.12.2 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.12.1.zip`.
+2. Install `graphics-preparation-0.12.2.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -265,3 +265,11 @@ specialized-model registry hashes, so changing a promoted model cannot silently 
 `quality-report.json` now records whether the material-specific refinement was accepted or rejected
 for each retained row. Accepted rows include the exact pinned specialized-model SHA-256, so a visual
 result can be traced back to the validated model that produced it.
+
+
+## PSNR and material-sidecar validation (0.12.2)
+
+Texture QA now records PSNR in addition to SSIM and the existing colour, histogram, edge, seam and
+hallucination metrics. Generated material sidecars are checked for tangent-normal unit length/facing,
+scalar-channel consistency and edge discontinuity. Results are written into each
+`Materials/<hash>/material.json` and aggregated in `quality-report.json`.
