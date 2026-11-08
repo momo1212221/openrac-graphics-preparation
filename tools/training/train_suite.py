@@ -14,9 +14,12 @@ DEFAULT_MATERIALS=[
     "organic","glass","energy","sky","generic",
 ]
 
-def run(cmd):
+def run(cmd,allowed=(0,)):
     print("+"," ".join(str(x) for x in cmd),flush=True)
-    subprocess.run([str(x) for x in cmd],check=True)
+    completed=subprocess.run([str(x) for x in cmd],check=False)
+    if completed.returncode not in allowed:
+        raise subprocess.CalledProcessError(completed.returncode,[str(x) for x in cmd])
+    return completed.returncode
 
 def dataset_counts(dataset:Path):
     rows=[
@@ -92,17 +95,18 @@ def main():
             cmd.append("--resume")
         try:
             run(cmd)
-            run([
+            validation_exit=run([
                 sys.executable,validate_script,args.dataset,model,
                 "--material",material,
                 "--limit",str(args.validation_limit),
                 "--min-l1-improvement",str(args.min_l1_improvement),
                 "--min-gradient-improvement",str(args.min_gradient_improvement),
                 "--output",validation,
-            ])
+            ],allowed=(0,2))
             report=json.loads(validation.read_text(encoding="utf-8"))
             row.update(
                 status="validated",
+                validation_exit_code=validation_exit,
                 model=str(model),
                 checkpoint=str(checkpoint),
                 validation=str(validation),
