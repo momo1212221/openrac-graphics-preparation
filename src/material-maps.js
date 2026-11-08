@@ -1,4 +1,5 @@
 import {validateMaterialMaps} from "./material-map-quality.js";
+import {calibratePbrMaps,validatePbrCalibration} from "./pbr-calibration.js";
 // SPDX-License-Identifier: GPL-3.0-or-later
 const clamp8=(v)=>Math.max(0,Math.min(255,Math.round(v)));
 const luma=(r,g,b)=>(54*r+183*g+19*b)/256;
@@ -111,7 +112,10 @@ export function deriveMaterialMaps(image,material="generic"){
     emissive.data[i+3]=sourceAlpha;
   }
 
-  return {height,normal,roughness,ao,emissive,specular,metallic,cavity:cavityMap,curvature,edgewear,emissivePixels};
+  const maps={height,normal,roughness,ao,emissive,specular,metallic,cavity:cavityMap,curvature,edgewear};
+  const pbrCalibration=calibratePbrMaps(maps,image,material);
+  const pbrValidation=validatePbrCalibration(pbrCalibration);
+  return {...maps,emissivePixels,pbrCalibration,pbrValidation};
 }
 
 const imageFromBytes=async(bytes)=>{
@@ -134,7 +138,7 @@ export async function generateMaterialMapPngs(bytes,material="generic"){
     const ctx=canvas.getContext("2d",{alpha:true,willReadFrequently:true});ctx.drawImage(image,0,0);
     const source=ctx.getImageData(0,0,canvas.width,canvas.height);
     const maps=deriveMaterialMaps(source,material);
-    const out={emissivePixels:maps.emissivePixels,quality:validateMaterialMaps(maps)};
+    const out={emissivePixels:maps.emissivePixels,pbrCalibration:maps.pbrCalibration,pbrValidation:maps.pbrValidation,quality:validateMaterialMaps(maps)};
     for(const name of ["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"])out[name]=await encode(maps[name]);
     return out;
   }finally{if(typeof image.close==="function")image.close()}
