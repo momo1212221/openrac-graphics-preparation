@@ -24,8 +24,8 @@ export function texturePackManifest(info, count, options = {}) {
     name: ai ? "Graphics preparation AI 4x" : `Graphics preparation ${options.scale ?? 4}x`,
     textures: count,
     madeWith: ai
-      ? `Graphics preparation 0.5.2 (Real-ESRGAN ${options.mode ?? "balanced"})`
-      : `Graphics preparation 0.5.2 (${options.edgePreserving ? "edge-preserving" : "smooth"})`,
+      ? `Graphics preparation 0.5.3 (Real-ESRGAN ${options.mode ?? "balanced"})`
+      : `Graphics preparation 0.5.3 (${options.edgePreserving ? "edge-preserving" : "smooth"})`,
   };
 }
 

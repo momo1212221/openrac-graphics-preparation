@@ -108,9 +108,34 @@ async function runTile(sourceData, sourceX, sourceY, coreW, coreH, aiSession) {
   };
 }
 
+export async function resetAiSession() {
+  const current = sessionPromise;
+  sessionPromise = undefined;
+  if (!current) return;
+  try {
+    const value = await current;
+    if (value && typeof value.release === "function") await value.release();
+  } catch {
+    // A failed session is exactly what we are resetting.
+  }
+}
+
+let preflightDone = false;
 export async function warmAi() {
-  await session();
-  return {model: "Real-ESRGAN x4plus ONNX", backend: "ONNX Runtime Web/WASM · fixed 128×128 tiles"};
+  const aiSession = await session();
+  if (!preflightDone) {
+    const input = new ort.Tensor("float32", new Float32Array(3 * MODEL_INPUT * MODEL_INPUT), [1, 3, MODEL_INPUT, MODEL_INPUT]);
+    const outputs = await aiSession.run({[aiSession.inputNames[0]]: input});
+    const output = outputs[aiSession.outputNames[0]];
+    const dims = output?.dims?.map(Number) ?? [];
+    const expected = MODEL_INPUT * SCALE;
+    if (dims.length !== 4 || dims[0] !== 1 || dims[1] !== 3 || dims[2] !== expected || dims[3] !== expected) {
+      await resetAiSession();
+      throw new Error(`AI preflight returned ${dims.join("x") || "no output"}; expected 1x3x${expected}x${expected}`);
+    }
+    preflightDone = true;
+  }
+  return {model: "Real-ESRGAN x4plus ONNX", backend: "ONNX Runtime Web/WASM · fixed 128×128 tiles · fail-safe"};
 }
 
 export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) {

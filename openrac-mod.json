@@ -2,7 +2,7 @@
   "format": 2,
   "id": "graphics-preparation",
   "name": "Graphics preparation",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "author": "OpenRAC fork contributors",
   "description": "Standard-launcher OpenRAC AI texture preparation with bundled Real-ESRGAN ONNX/WASM and fork-style detail preservation.",
   "license": "GPL-3.0-or-later",

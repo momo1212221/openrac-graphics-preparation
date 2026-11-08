@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {request} from "./bridge.js";
 import {ModController} from "../src/controller.js";
-import {warmAi, upscaleAiPng} from "../src/ai-runtime.js";
+import {resetAiSession, warmAi, upscaleAiPng} from "../src/ai-runtime.js";
+import {prepareTextureFailSafe, readFailSafe} from "../src/resilience.js";
 import {textureFiles, texturePackManifest, outputName, packPath} from "../src/texture-pack.js";
 import {upscalePng} from "../src/upscale.js";
 import {ZipStream} from "../src/zip.js";
@@ -110,59 +111,136 @@ async function createPack({ai}) {
     setMessage("No saved OpenRAC textures found. Enable texture dumping in Models and textures, play the game, then return here.", true);
     return;
   }
+
   setBusy(true);
   let zip = null;
-  let stars = 0;
-  let microdetails = 0;
+  const stats = {
+    ai: 0,
+    retried: 0,
+    fallback: 0,
+    original: 0,
+    unreadable: 0,
+    stars: 0,
+    microdetails: 0,
+    warnings: [],
+  };
+
   try {
     if (ai) {
-      progress(0, 1, "Loading bundled Real-ESRGAN model…");
-      aiReady = aiReady || await warmAi();
+      progress(0, 1, "AI preflight · model + 128×128 inference check…");
+      aiReady = await warmAi();
     }
+
     const suffix = ai ? `ai-${state.aiMode}-4x` : `${state.scale}x`;
     const token = await controller.saveStart(outputName(info, suffix), "zip");
     if (!token) { setMessage("Save cancelled."); return; }
     zip = new ZipStream(controller, token);
-    const manifest = texturePackManifest(info, textures.length, ai
-      ? {ai: true, mode: state.aiMode}
-      : {scale: state.scale, edgePreserving: state.edgePreserving});
-    await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
+    let included = 0;
     for (let i = 0; i < textures.length; i++) {
       const texture = textures[i];
-      const source = await controller.read("dump", texture.path);
-      let prepared;
+      const baseLabel = `${i + 1}/${textures.length} · ${texture.hash}`;
+      let source;
+
+      try {
+        const read = await readFailSafe(() => controller.read("dump", texture.path), 2);
+        source = read.bytes;
+        if (read.attempts > 1) stats.retried++;
+      } catch (error) {
+        stats.unreadable++;
+        stats.warnings.push({hash: texture.hash, strategy: "skipped", error: error instanceof Error ? error.message : String(error)});
+        progress(i + 1, textures.length, `Skipped unreadable texture · ${baseLabel}`);
+        continue;
+      }
+
       if (ai) {
-        prepared = await upscaleAiPng(source, {
-          mode: state.aiMode,
-          preserveMicrodetail: state.preserveMicrodetail,
-          preserveStars: state.preserveStars,
-        }, (tile, totalTiles) => {
-          const texturePart = i / textures.length;
-          const tilePart = (tile / totalTiles) / textures.length;
-          progress(texturePart + tilePart, 1, `AI texture ${i + 1}/${textures.length} · tile ${tile}/${totalTiles}`);
+        const prepared = await prepareTextureFailSafe(source, {
+          ai: () => upscaleAiPng(source, {
+            mode: state.aiMode,
+            preserveMicrodetail: state.preserveMicrodetail,
+            preserveStars: state.preserveStars,
+          }, (tile, totalTiles) => {
+            const fraction = (i + tile / totalTiles) / textures.length;
+            progress(fraction, 1, `AI · ${baseLabel} · tile ${tile}/${totalTiles}`);
+          }),
+          resetAi: resetAiSession,
+          fallback: () => upscalePng(source, 4, true),
+          retries: 1,
         });
-        stars += prepared.stars;
-        microdetails += prepared.microdetails;
+
+        if (prepared.attempts > 1) stats.retried++;
+        stats[prepared.strategy]++;
+        stats.stars += prepared.stars;
+        stats.microdetails += prepared.microdetails;
+        if (prepared.strategy !== "ai") {
+          stats.warnings.push({
+            hash: texture.hash,
+            strategy: prepared.strategy,
+            errors: prepared.errors.slice(-3),
+          });
+        }
         await zip.add(packPath(texture), prepared.bytes);
       } else {
-        progress(i, textures.length, `Local fallback · ${i + 1}/${textures.length}`);
-        prepared = await upscalePng(source, state.scale, state.edgePreserving);
+        let prepared;
+        try {
+          prepared = await upscalePng(source, state.scale, state.edgePreserving);
+        } catch (error) {
+          prepared = source;
+          stats.original++;
+          stats.warnings.push({hash: texture.hash, strategy: "original", error: error instanceof Error ? error.message : String(error)});
+        }
+        progress(i + 1, textures.length, `Local fallback · ${baseLabel}`);
         await zip.add(packPath(texture), prepared);
       }
+      included++;
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
+
+    const manifest = texturePackManifest(info, included, ai
+      ? {ai: true, mode: state.aiMode}
+      : {scale: state.scale, edgePreserving: state.edgePreserving});
+    manifest.resilience = {
+      version: 1,
+      requested: textures.length,
+      included,
+      ai: stats.ai,
+      retried: stats.retried,
+      fallback: stats.fallback,
+      original: stats.original,
+      unreadable: stats.unreadable,
+    };
+    await zip.add("openrac-texture-pack.json", encoder.encode(JSON.stringify(manifest, null, 2) + "\n"));
 
     progress(1, 1, "Texture pack ready");
     const saved = await zip.finish();
     zip = null;
-    setMessage(saved
-      ? ai
-        ? `Saved ${saved}. Real-ESRGAN processed ${textures.length} textures; restored ${stars} stars/tiny lights and ${microdetails} microdetails. Add the ZIP through Mods → Add a mod.`
-        : `Saved ${saved}. Add the ZIP through Mods → Add a mod.`
-      : "Save cancelled.");
+
+    if (!saved) {
+      setMessage("Save cancelled.");
+      return;
+    }
+
+    if (ai) {
+      const degraded = stats.fallback + stats.original + stats.unreadable;
+      const summary = [
+        `Saved ${saved}.`,
+        `${stats.ai}/${textures.length} textures used Real-ESRGAN`,
+        stats.retried ? `${stats.retried} recovered after a retry` : "",
+        stats.fallback ? `${stats.fallback} used safe 4× fallback` : "",
+        stats.original ? `${stats.original} kept original pixels` : "",
+        stats.unreadable ? `${stats.unreadable} unreadable textures were skipped` : "",
+        `restored ${stats.stars} stars/tiny lights and ${stats.microdetails} microdetails`,
+        degraded ? "The pack is still valid; degraded textures did not abort the run." : "No texture needed a degraded fallback.",
+        "Add the ZIP through Mods → Add a mod.",
+      ].filter(Boolean).join(" · ");
+      setMessage(summary, false);
+    } else {
+      setMessage(`Saved ${saved}. Add the ZIP through Mods → Add a mod.`);
+    }
   } catch (error) {
     if (zip) await zip.cancel().catch(() => undefined);
-    setMessage(error instanceof Error ? error.message : String(error), true);
+    const text = error instanceof Error ? error.message : String(error);
+    setMessage(`Pack output stopped safely: ${text}. No half-finished ZIP was kept.`, true);
   } finally {
     setBusy(false);
   }
@@ -176,7 +254,7 @@ function render() {
   left.append(el("div", "AI GRAPHICS", "eyebrow"));
   left.append(
     el("p", textures.length ? `Ready for ${textures.length} saved texture${textures.length === 1 ? "" : "s"}.` : "No saved textures are ready yet.", "lead"),
-    el("p", "Real-ESRGAN runs inside the standard OpenRAC mod page using bundled ONNX Runtime Web/WASM. No Python, native helper or custom launcher is required.", "muted"),
+    el("p", "Fail-safe Real-ESRGAN: preflight, retry, session reset, 4× fallback and original-texture fallback are automatic per texture.", "muted"),
   );
   const prepareButton = el("button", "Prepare AI graphics", "primary");
   prepareButton.onclick = () => void createPack({ai: true});
@@ -213,6 +291,20 @@ function render() {
   general.append(stars.row);
   content.append(general);
 
+  const safety = el("section", undefined, "panel");
+  safety.append(el("div", "FAIL-SAFE", "eyebrow"));
+  for (const [title, description, badge] of [
+    ["Preflight", "Runs one fixed 128×128 inference before opening the output pack.", "On"],
+    ["Per-texture retry", "If ONNX fails, the session is released and rebuilt once.", "1 retry"],
+    ["Automatic fallback", "If AI still fails, that texture uses deterministic 4× scaling.", "4×"],
+    ["Last-resort original", "If even fallback scaling fails, the original PNG is kept instead of aborting the pack.", "Safe"],
+  ]) {
+    const row = settingRow(title, description);
+    row.control.append(el("span", badge, "status-ok"));
+    safety.append(row.row);
+  }
+  content.append(safety);
+
   const assets = el("section", undefined, "panel");
   assets.append(el("div", "OPENRAC ASSETS", "eyebrow"));
   const source = settingRow("Saved textures", textures.length
@@ -228,7 +320,7 @@ function render() {
   backend.control.append(el("span", "Standard launcher", "status-ok"));
   assets.append(backend.row);
   assets.append(el("p",
-    "The standard launcher intentionally cannot install a generated pack automatically. After preparation, add the saved ZIP through Mods → Add a mod. No custom launcher APIs are used.",
+    "Only output/save failures stop the complete run. Individual decode, inference or scaling problems are isolated to that texture.",
     "info-note"));
   content.append(assets);
 
@@ -259,14 +351,14 @@ function render() {
   fallbackButton.onclick = () => void createPack({ai: false});
   body.append(fallbackButton);
   body.append(el("p",
-    "AI runs one 96×96 source tile at a time with overlap, so large textures do not require one huge inference allocation. The model and WASM runtime are shipped inside the mod and the page has no network access.",
+    "Real-ESRGAN always receives fixed 128×128 inputs. A 112×112 core is used with 8 pixels of edge-clamped context. Large textures are processed tile-by-tile and the UI yields between tiles/textures.",
     "muted advanced-note"));
   advanced.append(body); content.append(advanced);
 }
 
 async function start() {
   info = await controller.info();
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.5.2 · standard launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.5.3 · fail-safe standard launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -279,7 +371,7 @@ async function start() {
     };
   }
   await scan();
-  setMessage("Ready. Standard OpenRAC launcher AI path is available.");
+  setMessage("Ready. Fail-safe standard OpenRAC AI path is available.");
 }
 
 start().catch((error) => setMessage(error instanceof Error ? error.message : String(error), true));

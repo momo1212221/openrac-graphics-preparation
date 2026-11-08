@@ -1,9 +1,12 @@
-Graphics preparation 0.5.2 fixes Real-ESRGAN inference on small and edge textures.
+Graphics preparation 0.5.3 makes the stock-launcher AI pipeline fail-safe.
 
-- Fixes: "Got invalid dimensions for input: image ... Got: 32 Expected: 128".
-- The pinned Real-ESRGAN x4plus ONNX model receives exactly 128x128 RGB input on every inference.
-- Uses a 112x112 useful tile core with 8-pixel context on every side.
-- Missing context at texture edges is edge-clamped, never resized or filled with black.
-- Works for tiny textures such as 16x16 and 32x32 as well as large textures.
-- Keeps the 0.5.1 macOS WebView loader fix: bundled ORT ESM module, direct WASM binary, one thread, no proxy worker.
-- Still runs on the stock OpenRAC Dev Launcher with no custom launcher service, Python helper or external application.
+- Keeps the fixed 128x128 Real-ESRGAN inputs from 0.5.2.
+- Runs an actual 128x128 -> 512x512 model preflight before the output pack is opened.
+- Retries failed OpenRAC asset reads once.
+- On an ONNX inference failure, releases/rebuilds the AI session and retries that texture once.
+- If AI still fails, only that texture falls back to deterministic edge-preserving 4x scaling.
+- If 4x scaling also fails, the original PNG is preserved in the pack.
+- Unreadable source textures are skipped and counted rather than killing the run.
+- The final pack manifest records requested/included/AI/retry/fallback/original/unreadable counts.
+- ZIP/disk output errors still stop safely and cancel the incomplete save, because continuing after an uncertain append could corrupt the archive.
+- Still uses the standard OpenRAC Dev Launcher only: no custom launcher, Python helper or external app.
