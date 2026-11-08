@@ -121,3 +121,38 @@ training or suite execution.
 
 The normal package builder refuses any `detail-*.onnx` file that is not registered, hash-matched
 and backed by a `release_candidate: true` validation report.
+
+
+## Identity baseline and best-checkpoint selection
+
+The specialized CNN now starts as an exact identity mapping: the final residual convolution is
+zero-initialized, so epoch zero returns the degraded input unchanged instead of adding a random
+residual.
+
+When a validation split exists, that identity output is stored as the initial best candidate.
+Each epoch is compared with the unchanged degraded input in both colour L1 and gradient L1. The
+checkpoint selection score is the worse of the two relative error ratios, so a colour improvement
+cannot hide degraded edge/detail fidelity. A trained checkpoint only beats the identity baseline
+when both dimensions improve.
+
+The training gradient weight is configurable:
+
+```bash
+python tools/training/train_detail.py training-data models/detail-stone-candidate.onnx \
+  --material stone --epochs 40 --gradient-weight 0.35 --augment
+```
+
+The separate held-out validator is still authoritative for promotion. A candidate is never promoted
+unless `validate_detail.py` reports positive RGB L1 and gradient L1 improvement and marks
+`release_candidate: true`.
+
+## Recommended real training sequence
+
+1. Start with a single material family such as `stone` or `metal`.
+2. Use user-owned or appropriately licensed high-resolution references from many independent source
+   images, not patches from only a handful of originals.
+3. Keep the source-image 90/5/5 split so validation/test patches never come from training sources.
+4. Train with augmentation and source-balanced sampling.
+5. Validate the exported ONNX model on held-out sources.
+6. Inspect representative outputs in Quality Lab before promotion.
+7. Promote only the SHA-validated model that passes both fidelity metrics.
