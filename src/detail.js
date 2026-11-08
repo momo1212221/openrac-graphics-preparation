@@ -7,10 +7,25 @@ export const PROFILE = {
 };
 
 export const DETAIL_QUALITY = {
-  standard: {fine:1.00, mid:0.00, coarse:0.00, sharpenScale:1.00},
-  high: {fine:1.10, mid:0.22, coarse:0.06, sharpenScale:0.35},
-  max: {fine:1.18, mid:0.34, coarse:0.12, sharpenScale:0.00},
+  standard: {fine:1.00, mid:0.00, coarse:0.00, broad:0.00, sharpenScale:1.00},
+  high: {fine:1.10, mid:0.22, coarse:0.06, broad:0.015, sharpenScale:0.35},
+  max: {fine:1.18, mid:0.34, coarse:0.12, broad:0.045, sharpenScale:0.00},
 };
+
+const MATERIAL_BANDS = Object.freeze({
+  generic:{fine:1.00,mid:1.00,coarse:1.00,broad:1.00},
+  terrain:{fine:1.02,mid:1.10,coarse:1.12,broad:1.08},
+  stone:{fine:1.08,mid:1.12,coarse:1.10,broad:1.04},
+  metal:{fine:1.04,mid:1.04,coarse:.90,broad:.72},
+  fabric:{fine:1.08,mid:1.12,coarse:.92,broad:.70},
+  organic:{fine:.92,mid:1.04,coarse:1.08,broad:1.00},
+  character:{fine:.90,mid:1.00,coarse:.92,broad:.70},
+  weapon:{fine:1.06,mid:1.06,coarse:.94,broad:.75},
+  energy:{fine:.72,mid:.80,coarse:.72,broad:.55},
+  glass:{fine:.50,mid:.55,coarse:.45,broad:.35},
+  sky:{fine:.62,mid:.82,coarse:1.02,broad:1.08},
+  ui:{fine:.35,mid:.20,coarse:0,broad:0},
+});
 
 const CLASS_GAIN = {
   diffuse:1.0,
@@ -89,7 +104,9 @@ export function restoreSourceDetail(sourceData, outputData, mode, preserveMicrod
   if(!profile)throw new Error(`unknown AI texture mode: ${mode}`);
   const quality=DETAIL_QUALITY[options.detailQuality]||DETAIL_QUALITY.high;
   const textureClass=options.textureClass||"diffuse";
+  const material=options.material||"generic";
   const classGain=CLASS_GAIN[textureClass]??1;
+  const materialBands=MATERIAL_BANDS[material]||MATERIAL_BANDS.generic;
   const {data:source,width:srcWidth,height:srcHeight}=sourceData;
   const {data:output,width:outWidth,height:outHeight}=outputData;
   let stars=0,microdetails=0;
@@ -104,9 +121,10 @@ export function restoreSourceDetail(sourceData, outputData, mode, preserveMicrod
       if(energy>=18)microdetails++;
     }
     applyFrequencyBands(bands,outputData,{
-      fine:profile.residual*quality.fine*classGain,
-      mid:profile.residual*quality.mid*classGain,
-      coarse:profile.residual*quality.coarse*classGain,
+      fine:profile.residual*quality.fine*classGain*materialBands.fine,
+      mid:profile.residual*quality.mid*classGain*materialBands.mid,
+      coarse:profile.residual*quality.coarse*classGain*materialBands.coarse,
+      broad:profile.residual*quality.broad*classGain*materialBands.broad,
       ceiling:quality===DETAIL_QUALITY.max?34:28,
     });
   }
@@ -129,5 +147,5 @@ export function restoreSourceDetail(sourceData, outputData, mode, preserveMicrod
     }
   }
 
-  return {stars,microdetails,detailQuality:options.detailQuality||"high",textureClass};
+  return {stars,microdetails,detailQuality:options.detailQuality||"high",textureClass,material};
 }
