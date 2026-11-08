@@ -19,8 +19,12 @@ function edgeMismatch(map){
 export function validateMaterialMaps(maps){
   const issues=[];
   const pbrValidation=maps?.pbrValidation||null;
+  const albedoValidation=maps?.albedoValidation||null;
   if(pbrValidation?.ok===false){
     for(const issue of pbrValidation.issues||[])issues.push("pbr-"+issue);
+  }
+  if(albedoValidation?.ok===false){
+    for(const issue of albedoValidation.issues||[])issues.push("albedo-"+issue);
   }
   let normalError=0,normalCount=0,normalBackward=0;
   const normal=maps?.normal;
@@ -55,7 +59,7 @@ export function validateMaterialMaps(maps){
   if(scalarStats.roughness?.max!==null&&scalarStats.roughness.max>.985)issues.push("roughness-too-high");
 
   const seams={};
-  for(const name of ["normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
+  for(const name of ["albedo","normal","roughness","height","ao","emissive","specular","metallic","cavity","curvature","edgewear"]){
     if(maps?.[name])seams[name]=Number(edgeMismatch(maps[name]).toFixed(2));
   }
   return {
@@ -66,6 +70,8 @@ export function validateMaterialMaps(maps){
     scalarStats,
     pbrValidation,
     pbrCalibration:maps?.pbrCalibration||null,
+    albedoValidation,
+    albedoDelight:maps?.albedoDelight||null,
     seamScores:seams,
     worstSeam:Number(Math.max(0,...Object.values(seams)).toFixed(2)),
   };
