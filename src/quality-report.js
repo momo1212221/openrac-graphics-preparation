@@ -100,6 +100,8 @@ export function buildQualityReport(rows,{limit=20,materialMaps=[]}={}){
       backwardNormalPercent:row.quality?.backwardNormalPercent??null,
       worstSeam:row.quality?.worstSeam??null,
       scalarStats:row.quality?.scalarStats||{},
+      pbrValidation:row.pbrValidation||row.quality?.pbrValidation||null,
+      pbrCalibration:row.pbrCalibration||row.quality?.pbrCalibration||null,
       seamScores:row.quality?.seamScores||{},
     })),
   };
