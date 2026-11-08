@@ -135,3 +135,24 @@ test('height, AO and cavity use reconstructed relative geometry rather than raw 
  assert.ok(maps.cavity.data[crack]>maps.cavity.data[flatDark]);
  assert.ok(maps.ao.data[crack]<maps.ao.data[flatDark]);
 });
+
+
+test('production material pipeline records the requested stage order',()=>{
+ const src=image(16,16,(x,y)=>[90+x*4,85+y*3,80+(x+y)%4,255]);
+ const maps=deriveMaterialMaps(src,'stone');
+ assert.deepEqual(maps.heightPipeline.order,[
+   'upscaled-diffuse','albedo-cleanup','coarse-height','mid-height','micro-height',
+   'height-merge','normal-from-height','ao-roughness','curvature'
+ ]);
+ assert.ok(maps.coarseHeight&&maps.midHeight&&maps.microHeight);
+ assert.equal(maps.heightPipeline.curvatureEnabled,true);
+});
+
+test('curvature can be disabled while required material sidecars remain available',()=>{
+ const src=image(10,10,(x,y)=>[100+x*3,95+y*2,90,255]);
+ const maps=deriveMaterialMaps(src,'metal',{curvature:false});
+ assert.equal(maps.curvature,undefined);
+ assert.equal(maps.heightPipeline.curvatureEnabled,false);
+ assert.ok(maps.height&&maps.normal&&maps.ao&&maps.roughness);
+ assert.equal(maps.pbrValidation.ok,true);
+});
