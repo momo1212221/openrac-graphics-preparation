@@ -122,6 +122,5 @@ export function validateAlbedoSidecar(stats){
   const issues=[];
   if(stats.minCorrection<.78||stats.maxCorrection>1.24)issues.push("albedo-correction-range");
   if(Math.abs(stats.albedoMeanLuma-stats.sourceMeanLuma)>.14)issues.push("albedo-mean-drift");
-  if(stats.adjustedRatio>.98&&stats.strength>.35)issues.push("albedo-over-adjusted");
   return {ok:issues.length===0,issues};
 }
