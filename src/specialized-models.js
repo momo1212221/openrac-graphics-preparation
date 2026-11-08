@@ -18,6 +18,13 @@ export function normalizeSpecializedRegistry(value){
   return out;
 }
 
+export function acceptSpecializedRefinement(base,candidate){
+  if(!base||!candidate)return false;
+  return Number(candidate.score)>=Number(base.score)-1
+    && Number(candidate.hallucinationScore)<=Number(base.hallucinationScore)+3
+    && Number(candidate.colorDrift)<=Number(base.colorDrift)+2;
+}
+
 export async function specializedRegistry(){
   if(!registryPromise){
     registryPromise=fetch(new URL("../models/specialized-models.json",import.meta.url))
