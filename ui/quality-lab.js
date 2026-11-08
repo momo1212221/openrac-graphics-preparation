@@ -3,6 +3,7 @@ import {upscaleAiPng} from "../src/ai-runtime.js";
 import {readFailSafe} from "../src/resilience.js";
 import {upscalePng} from "../src/upscale.js";
 import {generateMaterialMapPngs} from "../src/material-maps.js";
+import {evaluateQuality} from "../src/quality-policy.js";
 
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
 const blobUrl=(bytes)=>URL.createObjectURL(new Blob([bytes],{type:"image/png"}));
@@ -114,11 +115,12 @@ export class QualityLab{
         section.append(maps);
       }
       const r=this.preview.result,m=r.metrics||{};
+      const policy=evaluateQuality(m,r);
       const facts=el("div",undefined,"quality-facts");
       for(const [name,value] of [
         ["Class",r.textureClass],["Material",r.material],["Quality",m.score!==undefined?`${m.score}/100`:"n/a"],
         ["CNN agreement",m.cnnAgreement??"n/a"],["Colour drift",m.colorDrift??"n/a"],["Edge gain",m.edgeGain??"n/a"],
-        ["Detail pixels",r.detailPixels??0],["Backend",r.backend],
+        ["Verdict",policy.verdict],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
       section.append(facts);
     }
