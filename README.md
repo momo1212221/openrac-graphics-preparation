@@ -311,6 +311,9 @@ scalar-channel consistency and edge discontinuity. Results are written into each
   keeping dielectric surfaces near non-metallic values while allowing conductive metal and hybrid
   weapon surfaces to retain stronger reflections. Calibration and validation are written to the
   material sidecar and quality report.
+- Material sidecars also include a conservative lighting-neutralized `albedo.png`. It removes only
+  bounded low-frequency brightness bias, preserves alpha and RGB colour ratios, and protects emissive
+  or strongly saturated regions. The normal stock diffuse texture is never replaced by this sidecar.
 
 Enhanced mipmaps and material sidecars remain optional because the stock launcher does not yet
 consume those extra renderer assets.
