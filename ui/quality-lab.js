@@ -140,7 +140,7 @@ export class QualityLab{
       const facts=el("div",undefined,"quality-facts");
       for(const [name,value] of [
         ["Class",r.textureClass],["Material",r.material],["Planned",this.preview.plannedQuality],["Used",r.detailQuality],["Target",policy.targetScore!==undefined?`${policy.targetScore}/100`:"n/a"],["Quality",m.score!==undefined?`${m.score}/100`:"n/a"],
-        ["Master",r.internalMaster?"8× → 4×":"4×"],["CNN agreement",m.cnnAgreement??"n/a"],["SSIM",m.ssim??"n/a"],["Colour drift",m.colorDrift??"n/a"],["Histogram drift",m.histogramDrift??"n/a"],["Edge gain",m.edgeGain??"n/a"],["Hallucination",m.hallucinationScore??"n/a"],
+        ["Master",r.internalMaster?"8× → 4×":"4×"],["CNN agreement",m.cnnAgreement??"n/a"],["SSIM",m.ssim??"n/a"],["Colour drift",m.colorDrift??"n/a"],["Histogram drift",m.histogramDrift??"n/a"],["Edge gain",m.edgeGain??"n/a"],["Hallucination",m.hallucinationScore??"n/a"],["Alpha coverage",r.alphaEdges?.hasTransparency?Math.round((r.alphaEdges.coverageAfter??0)*100)+"%":"opaque"],["Alpha edge pixels",r.alphaEdges?.edgePixels??0],
         ["Verdict",policy.verdict],["Specialized CNN",r.specializedCnnUsed?"used":(r.specializedRejected?"rejected":"none")],["Failures",r.failures?.issues?.join(", ")||"none"],["Recommended",policy.recommendedQuality??"keep"],["Detail pixels",r.detailPixels??0],["Backend",r.backend],
       ]){const card=el("div",undefined,"quality-fact");card.append(el("span",name),el("strong",String(value)));facts.append(card)}
       section.append(facts);
