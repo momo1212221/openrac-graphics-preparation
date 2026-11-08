@@ -90,10 +90,12 @@ test('material maps include conservative lighting-neutralized albedo',()=>{
 test('multi-scale height is derived from de-lit albedo and reports reconstruction metadata',()=>{
  const src=image(48,24,(x)=>x<24?[65,60,55,255]:[155,145,135,255]);
  const maps=deriveMaterialMaps(src,'stone');
- assert.equal(maps.heightReconstruction.source,'de-lit-albedo');
- assert.deepEqual(maps.heightReconstruction.bands,['coarse','mid','micro']);
- assert.ok(maps.heightReconstruction.profile.normalStrength>=4);
- assert.ok(maps.heightReconstruction.stats.reliefRange>=0);
+ assert.equal(maps.heightPipeline.order[1],'albedo-cleanup');
+ assert.equal(maps.heightPipeline.order[2],'coarse-height');
+ assert.equal(maps.heightPipeline.order[3],'mid-height');
+ assert.equal(maps.heightPipeline.order[4],'micro-height');
+ assert.ok(maps.heightPipeline.profile.normalStrength>=4);
+ assert.ok(maps.heightPipeline.merged.reliefRange>=0);
 
  // Absolute brightness is not absolute geometry: away from the illumination boundary both
  // broad regions should remain close to neutral height.
