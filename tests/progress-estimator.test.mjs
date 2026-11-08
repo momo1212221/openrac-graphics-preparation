@@ -47,3 +47,17 @@ test("paused time is excluded from elapsed time and ETA sampling",()=>{
   assert.equal(Math.round(s.elapsedMs/1000),20);
   assert.ok(s.etaMs>0);
 });
+
+
+test("label-only updates at the same fraction keep sidecar time in ETA sampling",()=>{
+  let now=0;
+  const p=new ProgressEstimator({now:()=>now,minEtaMs:0,alpha:.2});
+  p.reset(100);
+  now=10_000;
+  p.update(10,100);
+  now=15_000;
+  p.update(10,100,{sampleRate:false});
+  now=20_000;
+  const sample=p.update(20,100);
+  assert.ok(sample.unitsPerMinute>55&&sample.unitsPerMinute<65);
+});
