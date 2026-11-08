@@ -59,6 +59,7 @@ let state = {
   qualityGuard: true,
   master8x: true,
   materialMaps: "off",
+  materialCurvature: true,
   mipmaps: "off",
 };
 
@@ -613,13 +614,13 @@ async function createPack({ai}) {
           shouldGenerateMaterialMaps(prepared.textureClass, prepared.material, state.materialMaps)
         ) {
           try {
-            generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic");
+            generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic", {curvature:state.materialCurvature});
             stats.materialMapSets += group.members.length;
             for(const member of group.members){
               stats.materialQualityRows.push({
                 hash:member.hash,path:member.path,material:prepared.material,quality:generatedMaps.quality,
                 pbrCalibration:generatedMaps.pbrCalibration,pbrValidation:generatedMaps.pbrValidation,
-                heightReconstruction:generatedMaps.heightReconstruction,
+                heightPipeline:generatedMaps.heightPipeline,
                 albedoDelight:generatedMaps.albedoDelight,albedoValidation:generatedMaps.albedoValidation,
               });
             }
@@ -688,7 +689,7 @@ async function createPack({ai}) {
             await zip.add(root+"specular.png", generatedMaps.specular);
             await zip.add(root+"metallic.png", generatedMaps.metallic);
             await zip.add(root+"cavity.png", generatedMaps.cavity);
-            await zip.add(root+"curvature.png", generatedMaps.curvature);
+            if (generatedMaps.curvature) await zip.add(root+"curvature.png", generatedMaps.curvature);
             await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
@@ -700,7 +701,7 @@ async function createPack({ai}) {
               pbrValidation:generatedMaps.pbrValidation,
               albedoDelight:generatedMaps.albedoDelight,
               albedoValidation:generatedMaps.albedoValidation,
-              heightReconstruction:generatedMaps.heightReconstruction,
+              heightPipeline:generatedMaps.heightPipeline,
               quality:generatedMaps.quality,
               sourceHash:member.hash,
             };
@@ -764,6 +765,7 @@ async function createPack({ai}) {
       average_quality_score: stats.qualityScoreCount ? Number((stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)) : null,
       material_map_sets: stats.materialMapSets,
       material_maps_mode: state.materialMaps,
+      material_curvature: state.materialCurvature,
       mipmap_sets: stats.mipmapSets,
       mipmap_levels: stats.mipmapLevels,
       mipmaps_mode: state.mipmaps,
@@ -986,7 +988,7 @@ function render() {
 
   const materialMaps = settingRow(
     "Enhanced material maps",
-    "Builds de-lit Albedo plus multi-scale Height/Normal, Roughness, AO, Emissive and PBR sidecars. Stone/terrain/metal/fabric/weapon use stronger material-specific relief. Requires Materials/<hash> renderer support.",
+    "Production path: Upscaled Diffuse → Albedo Cleanup → Coarse/Mid/Micro Height → Height Merge → Normal From Height → AO/Roughness and optional Curvature. Requires Materials/<hash> renderer support.",
   );
   materialMaps.control.append(select([
     ["off","Off · stock-compatible"],
@@ -996,6 +998,15 @@ function render() {
     state.materialMaps=value;await savePrefs();render();
   }));
   general.append(materialMaps.row);
+
+  const curvature = settingRow(
+    "Curvature sidecar",
+    "Optional signed curvature derived after Height Merge. Useful for enhanced edge/cavity effects; turn it off to save processing and pack space.",
+  );
+  curvature.control.append(toggle(state.materialCurvature, "Curvature sidecar", async(value)=>{
+    state.materialCurvature=value;await savePrefs();render();
+  }));
+  general.append(curvature.row);
 
   const mipmaps = settingRow(
     "Enhanced mipmaps",
@@ -1190,6 +1201,7 @@ async function start() {
       qualityGuard: saved.qualityGuard !== false,
       master8x: saved.master8x !== false,
       materialMaps: ["off","key","all"].includes(saved.materialMaps) ? saved.materialMaps : "off",
+      materialCurvature: saved.materialCurvature !== false,
       mipmaps: ["off","key","all"].includes(saved.mipmaps) ? saved.mipmaps : "off",
     };
   }
