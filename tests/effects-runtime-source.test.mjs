@@ -31,12 +31,12 @@ test('native runtime parser is compiled and independently tested',()=>{
  assert.match(cmake,/graphics_effects_config_test/); assert.match(parser,/parse_emitter_line/); assert.match(parser,/preset=="smog"/); assert.match(nativeTest,/unknown/); assert.match(nativeTest,/2000000/);
 });
 
-test('effects export places object-lights.json where Enhanced Graphics actually loads mod overrides',()=>{
- const source=readFileSync(root+'src/effects-authoring.js','utf8');
- assert.match(source,/root\+"object-lights\.json"/);
- assert.doesNotMatch(source,/root\+"assets\/object-lights\.json"/);
+test('effects export places object lights in the stock per-level asset root',()=>{
+  const source=readFileSync(root+'src/effects-authoring.js','utf8');
+  assert.match(source,/root\+"assets\/"\+level\.dir\+"\/object-lights\.json"/);
+  assert.doesNotMatch(source,/root\+"object-lights\.json"/);
+  assert.doesNotMatch(source,/root\+"assets\/object-lights\.json"/);
 });
-
 
 test('native runtime reads effects only from enabled plugins.json entries',()=>{
   const source=readFileSync(root+'effects-runtime/src/mod.cpp','utf8');
