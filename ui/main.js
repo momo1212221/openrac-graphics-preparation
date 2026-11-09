@@ -37,6 +37,7 @@ let busy = false;
 let aiReady = null;
 let effectsEditor = null;
 let cacheState = {available:false,total:0,entries:0};
+let sourceBootstrap = null;
 let qualityLab = null;
 let aiRunState = null;
 let activeAiRun = false;
@@ -251,7 +252,12 @@ function updateTextures() {
   textures = textureFiles(allDumpFiles, {includeInterface: state.includeInterface});
   qualityLab?.setTextures(textures);
 }
-async function scan() { allDumpFiles = await controller.list("dump"); updateTextures(); render(); }
+async function scan() {
+  sourceBootstrap = await listTextureSources(controller, info);
+  allDumpFiles = sourceBootstrap.files;
+  updateTextures();
+  render();
+}
 
 function progress(done, total, label, {sampleRate=true}={}) {
   const text = document.querySelector("#progress-text");
@@ -289,7 +295,9 @@ function progress(done, total, label, {sampleRate=true}={}) {
 async function createPack({ai, cacheOnly=false}) {
   if (busy) return;
   if (!textures.length) {
-    setMessage("No saved OpenRAC textures found. Enable texture dumping in Models and textures, play the game, then return here.", true);
+    setMessage(sourceBootstrap?.error
+      ? `No texture sources are available yet. Automatic extraction from the installed game failed: ${sourceBootstrap.error}. You can still enable texture dumping in Models and textures and play once.`
+      : "No texture sources are available yet. Update the Dev Launcher for automatic extraction, or enable texture dumping in Models and textures and play once.", true);
     return;
   }
 
@@ -1470,9 +1478,11 @@ function render() {
 
   const assets = el("section", undefined, "panel");
   assets.append(el("div", "OPENRAC ASSETS", "eyebrow"));
-  const source = settingRow("Saved textures", textures.length
-    ? `${textures.length} unique texture${textures.length === 1 ? "" : "s"} detected for ${info.packId}.`
-    : "Use Models and textures → Save the game's textures while you play, then return here.");
+  const source = settingRow("Texture sources", textures.length
+    ? `${textures.length} unique texture${textures.length === 1 ? "" : "s"} detected for ${info.packId}.${Number(sourceBootstrap?.seeded?.added)>0 ? ` ${sourceBootstrap.seeded.added} missing source${sourceBootstrap.seeded.added===1?"":"s"} were recovered automatically from the extracted level data.` : ""}`
+    : sourceBootstrap?.error
+      ? `No sources found. Automatic extracted-level recovery is unavailable in this launcher: ${sourceBootstrap.error}`
+      : "No sources found. Current Dev Launchers recover static level textures automatically; runtime dumping is only needed for HUD/dynamic textures.");
   const refresh = el("button", "Refresh", "ghost");
   refresh.onclick = () => void scan().catch((error) => setMessage(String(error), true));
   source.control.append(refresh); assets.append(source.row);
@@ -1545,7 +1555,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.17.2 · adaptive standard-launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod ${info.mod?.version || "unknown"} · adaptive standard-launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
@@ -1597,8 +1607,14 @@ async function start() {
     setMessage(`Interrupted AI run found: ${previous.completed}/${previous.total} textures are checkpointed. Start AI graphics again to continue from cached results.`);
   } else if (previous.compatible && previous.status==="complete") {
     setMessage(`AI graphics already exist for this game/profile: ${previous.completed}/${previous.total} textures prepared. A new export will verify and reuse them.`);
-  } else {
+  } else if (textures.length && Number(sourceBootstrap?.seeded?.added)>0) {
+    setMessage(`Ready. Recovered ${sourceBootstrap.seeded.added} missing static texture source${sourceBootstrap.seeded.added===1?"":"s"} from the installed game. Runtime dumping is only needed for HUD/dynamic textures that are not part of the extracted levels.`);
+  } else if (textures.length) {
     setMessage("Ready. Fail-safe standard OpenRAC AI path is available.");
+  } else if (sourceBootstrap?.error) {
+    setMessage(`No texture sources found. Automatic recovery failed: ${sourceBootstrap.error}`, true);
+  } else {
+    setMessage("No texture sources found. Update the Dev Launcher for automatic extracted-level recovery, or enable texture dumping and play once.", true);
   }
 }
 
