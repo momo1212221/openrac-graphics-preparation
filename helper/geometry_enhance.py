@@ -40,6 +40,8 @@ class GeometryProfile:
     shape_relax: float
     recalc_normals: bool = True
     recalc_tangents: bool = True
+    adaptive_subdivision: bool = True
+    crease_angle_degrees: float = 55.0
 
 
 def _kind(path: Path) -> str:
@@ -57,8 +59,8 @@ def _kind(path: Path) -> str:
 
 def geometry_profile(mode: str, kind: str, options: dict | None = None) -> GeometryProfile:
     options = options or {}
-    if mode not in {"enhanced", "high", "ultra", "experimental"}:
-        raise ValueError("geometry profile must be enhanced, high, ultra or experimental")
+    if mode not in {"enhanced", "high", "ultra", "modern", "experimental"}:
+        raise ValueError("geometry profile must be enhanced, high, ultra, modern or experimental")
     defaults = {
         "terrain": 240_000,
         "moby": 60_000,
@@ -66,18 +68,34 @@ def geometry_profile(mode: str, kind: str, options: dict | None = None) -> Geome
         "shrub": 80_000,
         "generic": 60_000,
     }
-    requested = {"enhanced": 0, "high": 1, "ultra": 2, "experimental": 2}[mode]
+    modern_defaults = {
+        "terrain": 360_000,
+        "moby": 120_000,
+        "tie": 140_000,
+        "shrub": 140_000,
+        "generic": 100_000,
+    }
+    requested = {"enhanced": 0, "high": 1, "ultra": 2, "modern": 2, "experimental": 2}[mode]
     override = options.get("triangle_budget")
-    budget = int(override) if isinstance(override, (int, float)) else defaults.get(kind, 60_000)
+    base_defaults = modern_defaults if mode == "modern" else defaults
+    budget = int(override) if isinstance(override, (int, float)) else base_defaults.get(kind, 60_000)
     budget = max(256, min(1_000_000, budget))
     refine = bool(options.get("shape_refine", False))
     relax = 0.0
     if refine:
-        relax = {"enhanced": 0.0, "high": 0.006, "ultra": 0.012, "experimental": 0.025}[mode]
+        relax = {"enhanced": 0.0, "high": 0.006, "ultra": 0.012, "modern": 0.010, "experimental": 0.025}[mode]
         # Moving gameplay/terrain surfaces against original collision is opt-in twice.
         if kind in {"moby", "terrain"} and not bool(options.get("allow_collision_mismatch", False)):
             relax = 0.0
-    return GeometryProfile(mode, requested, budget, relax)
+    adaptive = options.get("adaptive_subdivision", True) is not False
+    crease_defaults = {"terrain": 75.0, "moby": 50.0, "tie": 55.0, "shrub": 55.0, "generic": 55.0}
+    crease_raw = options.get("crease_angle_degrees", crease_defaults.get(kind, 55.0))
+    crease = max(30.0, min(120.0, float(crease_raw)))
+    return GeometryProfile(
+        mode, requested, budget, relax,
+        adaptive_subdivision=adaptive,
+        crease_angle_degrees=crease,
+    )
 
 
 def _normalise(values: Iterable[float], fallback: tuple[float, ...] | None = None) -> tuple[float, ...]:
@@ -226,6 +244,205 @@ def subdivide_once(attributes: dict[str, list[tuple]], indices: list[int]) -> tu
         ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
         new_indices += [a, ab, ca, ab, b, bc, ca, bc, c, ab, bc, ca]
     return out, new_indices
+
+
+def _face_normal(a: tuple, b: tuple, c: tuple) -> tuple[float, float, float]:
+    ab = (b[0]-a[0], b[1]-a[1], b[2]-a[2])
+    ac = (c[0]-a[0], c[1]-a[1], c[2]-a[2])
+    return _normalise((
+        ab[1]*ac[2]-ab[2]*ac[1],
+        ab[2]*ac[0]-ab[0]*ac[2],
+        ab[0]*ac[1]-ab[1]*ac[0],
+    ), (0.0, 0.0, 1.0))
+
+
+def _adaptive_threshold(mode: str, pass_index: int) -> tuple[float, float]:
+    base = {
+        "high": (0.045, 0.16),
+        "ultra": (0.032, 0.13),
+        "modern": (0.026, 0.10),
+        "experimental": (0.020, 0.08),
+    }.get(mode, (0.05, 0.18))
+    factor = 0.52 ** max(0, pass_index)
+    return base[0] * factor, base[1]
+
+
+def select_adaptive_edges(
+    positions: list[tuple],
+    indices: list[int],
+    *,
+    triangle_budget: int,
+    mode: str,
+    pass_index: int,
+) -> set[tuple[int, int]]:
+    triangle_count = len(indices) // 3
+    available = max(0, triangle_budget - triangle_count)
+    if available <= 0:
+        return set()
+    box = _bbox(positions)
+    diagonal = max(_diag(box), 1e-9)
+    face_normals = []
+    edge_faces: dict[tuple[int, int], list[int]] = {}
+    for face_index in range(triangle_count):
+        a, b, c = indices[face_index*3:face_index*3+3]
+        face_normals.append(_face_normal(positions[a], positions[b], positions[c]))
+        for x, y in ((a,b),(b,c),(c,a)):
+            edge = (x,y) if x < y else (y,x)
+            edge_faces.setdefault(edge, []).append(face_index)
+
+    min_length, min_curvature = _adaptive_threshold(mode, pass_index)
+    candidates = []
+    for edge, faces in edge_faces.items():
+        a, b = edge
+        length_ratio = math.dist(positions[a], positions[b]) / diagonal
+        curvature = 0.0
+        if len(faces) >= 2:
+            n1, n2 = face_normals[faces[0]], face_normals[faces[1]]
+            curvature = max(0.0, min(2.0, 1.0 - sum(n1[i]*n2[i] for i in range(3))))
+        if length_ratio < min_length and curvature < min_curvature:
+            continue
+        # Length targets low-density areas; curvature prioritises silhouettes/creases.
+        score = length_ratio + curvature * (0.55 if mode in {"modern","experimental"} else 0.40)
+        candidates.append((score, edge, max(1, len(faces))))
+
+    selected: set[tuple[int, int]] = set()
+    for _, edge, cost in sorted(candidates, key=lambda row: (-row[0], row[1])):
+        if cost > available:
+            continue
+        selected.add(edge)
+        available -= cost
+        if available <= 0:
+            break
+    return selected
+
+
+def subdivide_selected_edges(
+    attributes: dict[str, list[tuple]],
+    indices: list[int],
+    selected_edges: set[tuple[int, int]],
+) -> tuple[dict[str, list[tuple]], list[int]]:
+    if not selected_edges:
+        return {name:list(values) for name,values in attributes.items()}, list(indices)
+    out = {name: list(values) for name, values in attributes.items()}
+    edge_mid: dict[tuple[int, int], int] = {}
+
+    def midpoint(a: int, b: int) -> int:
+        key = (a,b) if a < b else (b,a)
+        cached = edge_mid.get(key)
+        if cached is not None:
+            return cached
+        vertex = len(out["POSITION"])
+        joints = weights = None
+        if "JOINTS_0" in out and "WEIGHTS_0" in out:
+            joints, weights = _midpoint_skin(
+                out["JOINTS_0"][a], out["WEIGHTS_0"][a],
+                out["JOINTS_0"][b], out["WEIGHTS_0"][b],
+            )
+        for semantic, values in out.items():
+            if semantic == "JOINTS_0" and joints is not None:
+                values.append(joints)
+            elif semantic == "WEIGHTS_0" and weights is not None:
+                values.append(weights)
+            elif semantic == "NORMAL":
+                values.append(_normalise(_average(values[a], values[b]), (0.0,0.0,1.0)))
+            elif semantic == "TANGENT":
+                xyz = _normalise(_average(values[a][:3], values[b][:3]), (1.0,0.0,0.0))
+                sign = 1.0 if float(values[a][3]) + float(values[b][3]) >= 0 else -1.0
+                values.append((*xyz,sign))
+            else:
+                values.append(_average(values[a], values[b]))
+        edge_mid[key] = vertex
+        return vertex
+
+    def mid(a: int, b: int):
+        key = (a,b) if a < b else (b,a)
+        return midpoint(a,b) if key in selected_edges else None
+
+    new_indices: list[int] = []
+    for i in range(0,len(indices),3):
+        a,b,c = indices[i:i+3]
+        ab,bc,ca = mid(a,b),mid(b,c),mid(c,a)
+        count = sum(v is not None for v in (ab,bc,ca))
+        if count == 0:
+            new_indices += [a,b,c]
+        elif count == 1:
+            if ab is not None:
+                new_indices += [a,ab,c, ab,b,c]
+            elif bc is not None:
+                new_indices += [b,bc,a, bc,c,a]
+            else:
+                new_indices += [c,ca,b, ca,a,b]
+        elif count == 2:
+            if ca is None:
+                new_indices += [b,bc,ab, a,ab,c, ab,bc,c]
+            elif ab is None:
+                new_indices += [c,ca,bc, b,bc,a, bc,ca,a]
+            else:
+                new_indices += [a,ab,ca, c,ca,b, ca,ab,b]
+        else:
+            new_indices += [a,ab,ca, ab,b,bc, ca,bc,c, ab,bc,ca]
+    return out,new_indices
+
+
+def split_crease_vertices(
+    attributes: dict[str, list[tuple]],
+    indices: list[int],
+    crease_angle_degrees: float,
+) -> tuple[dict[str, list[tuple]], list[int], int]:
+    positions = attributes["POSITION"]
+    original_count = len(positions)
+    triangle_count = len(indices)//3
+    face_normals = [
+        _face_normal(
+            positions[indices[i*3]],
+            positions[indices[i*3+1]],
+            positions[indices[i*3+2]],
+        )
+        for i in range(triangle_count)
+    ]
+    faces_by_vertex = [[] for _ in range(original_count)]
+    for face in range(triangle_count):
+        for corner in range(3):
+            vertex = indices[face*3+corner]
+            if vertex < original_count:
+                faces_by_vertex[vertex].append(face)
+
+    out = {name:list(values) for name,values in attributes.items()}
+    new_indices = list(indices)
+    threshold = math.cos(math.radians(crease_angle_degrees))
+    split_count = 0
+    for vertex, faces in enumerate(faces_by_vertex):
+        if len(faces) <= 1:
+            continue
+        clusters: list[dict] = []
+        for face in faces:
+            normal = face_normals[face]
+            chosen = None
+            for cluster in clusters:
+                reference = _normalise(cluster["sum"], normal)
+                if sum(reference[i]*normal[i] for i in range(3)) >= threshold:
+                    chosen = cluster
+                    break
+            if chosen is None:
+                chosen = {"faces": [], "sum": [0.0,0.0,0.0]}
+                clusters.append(chosen)
+            chosen["faces"].append(face)
+            for axis in range(3):
+                chosen["sum"][axis] += normal[axis]
+        for cluster_index, cluster in enumerate(clusters):
+            if cluster_index == 0:
+                replacement = vertex
+            else:
+                replacement = len(out["POSITION"])
+                for values in out.values():
+                    values.append(values[vertex])
+                split_count += 1
+            for face in cluster["faces"]:
+                base = face*3
+                for corner in range(3):
+                    if new_indices[base+corner] == vertex:
+                        new_indices[base+corner] = replacement
+    return out,new_indices,split_count
 
 
 def recalc_normals(positions: list[tuple], indices: list[int]) -> list[tuple]:
@@ -397,19 +614,39 @@ def enhance_gltf(path: Path, *, mode: str = "high", options: dict | None = None)
             requested = profile.subdivisions
             applied = 0
             budget_limited = False
-            for _ in range(requested):
-                if (len(indices) // 3) * 4 > profile.triangle_budget:
-                    budget_limited = True
-                    break
-                data, indices = subdivide_once(data, indices)
-                applied += 1
+            adaptive_edges_split = 0
+            for pass_index in range(requested):
+                if profile.adaptive_subdivision:
+                    selected = select_adaptive_edges(
+                        data["POSITION"], indices,
+                        triangle_budget=profile.triangle_budget,
+                        mode=profile.mode,
+                        pass_index=pass_index,
+                    )
+                    if not selected:
+                        if len(indices)//3 >= profile.triangle_budget:
+                            budget_limited = True
+                        break
+                    adaptive_edges_split += len(selected)
+                    data, indices = subdivide_selected_edges(data, indices, selected)
+                    applied += 1
+                else:
+                    if (len(indices) // 3) * 4 > profile.triangle_budget:
+                        budget_limited = True
+                        break
+                    data, indices = subdivide_once(data, indices)
+                    applied += 1
 
             moved_max = moved_mean = 0.0
             if profile.shape_relax > 0:
                 relaxed, moved_max, moved_mean = relax_positions(data["POSITION"], indices, profile.shape_relax)
                 data["POSITION"] = relaxed
 
+            crease_vertices_split = 0
             if profile.recalc_normals:
+                data, indices, crease_vertices_split = split_crease_vertices(
+                    data, indices, profile.crease_angle_degrees
+                )
                 data["NORMAL"] = recalc_normals(data["POSITION"], indices)
             if profile.recalc_tangents and "TANGENT" in data:
                 data["TANGENT"] = recalc_tangents(
@@ -453,6 +690,10 @@ def enhance_gltf(path: Path, *, mode: str = "high", options: dict | None = None)
                 subdivisions_applied=applied,
                 budget_limited=budget_limited,
                 triangle_budget=profile.triangle_budget,
+                adaptive_subdivision=profile.adaptive_subdivision,
+                adaptive_edges_split=adaptive_edges_split,
+                crease_angle_degrees=profile.crease_angle_degrees,
+                crease_vertices_split=crease_vertices_split,
                 shape_refine=profile.shape_relax > 0,
                 max_vertex_move=moved_max,
                 mean_vertex_move=moved_mean,
@@ -475,6 +716,8 @@ def enhance_gltf(path: Path, *, mode: str = "high", options: dict | None = None)
             "subdivisions": profile.subdivisions,
             "triangle_budget": profile.triangle_budget,
             "shape_relax": profile.shape_relax,
+            "adaptive_subdivision": profile.adaptive_subdivision,
+            "crease_angle_degrees": profile.crease_angle_degrees,
         },
         "primitives": primitive_rows,
     }
