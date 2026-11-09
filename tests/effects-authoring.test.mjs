@@ -128,6 +128,7 @@ test('level loader reads the official placements.json referenced by manifest',as
   assert.equal(levels[0].level,3);
   assert.equal(levels[0].placements.length,2);
   assert.deepEqual(levels[0].placements.find(x=>x.key==='moby:7:1').position,[6,7,8]);
+  assert.ok(levels[0].objects.some(x=>x.key==='ties/tie_5'), 'gltf extension must not leak into object-light key');
 });
 
 test('production export validation catches unplaced invalid-level and malformed coordinates',()=>{
