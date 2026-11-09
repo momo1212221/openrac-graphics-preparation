@@ -303,3 +303,18 @@ test('missing probe profile uses defaults but malformed existing JSON is not hid
   const oldVersion={read:async()=>enc.encode('{"version":2}').buffer};
   await assert.rejects(()=>readProbeProfile(oldVersion,'level_01'),/expects version 1/);
 });
+
+
+test('baker export proposes the exact filename the stock launcher baker reads',async()=>{
+  const enc=new TextEncoder();
+  const calls=[];
+  const controller={
+    saveStart:async(name,ext)=>{calls.push([name,ext]);return 'token'},
+    saveWrite:async()=>{},
+    saveEnd:async(_token,ok)=>ok?'probe-bake.json':null,
+  };
+  const state=normalizeEffects({schemaVersion:EFFECTS_SCHEMA_VERSION,selectedLevel:'level_01'});
+  const saved=await exportBakerProfile(controller,{packId:'ignored'},state,'level_01',{version:1});
+  assert.equal(saved,'probe-bake.json');
+  assert.deepEqual(calls,[['probe-bake','json']]);
+});

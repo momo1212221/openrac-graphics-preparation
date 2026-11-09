@@ -194,7 +194,7 @@ export class EffectsEditor {
     exportBake.onclick=async()=>{
       try{
         const saved=await exportBakerProfile(this.controller,this.info,this.state,this.state.selectedLevel,this.profile);
-        this.setMessage(saved?`Saved ${saved}. The normal launcher keeps mod tools read-only for extracted levels: put this file in the selected exported level as probe-bake.json, then use Enhanced graphics → Prepare lighting.`:"Save cancelled.");
+        this.setMessage(saved?`Saved ${saved}. Save it directly inside the selected exported level folder with the exact name probe-bake.json, then use Enhanced graphics → Prepare lighting in the normal launcher.`:"Save cancelled.");
       }catch(e){this.setMessage(e instanceof Error?e.message:String(e),true)}
     };
     buttons.append(exportBake);lighting.append(buttons);

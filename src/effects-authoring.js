@@ -399,8 +399,9 @@ export async function exportBakerProfile(controller, info, state, levelDir, base
   const issues=bakerExportIssues(state,levelDir,baseProfile);
   if(issues.length)throw new Error("Baker profile is not ready: "+issues.slice(0,3).join("; ")+(issues.length>3?" (+"+(issues.length-3)+" more)":""));
   const profile = bakerProfile(baseProfile,state,levelDir);
-  const name = `${info.packId}-${levelDir}-probe-bake`;
-  return saveText(controller,name,"json",JSON.stringify(profile,null,2)+"\n");
+  // The stock Enhanced baker only reads this exact filename from level_XX/.
+  // saveStart still lets the player choose the destination folder in the normal launcher.
+  return saveText(controller,"probe-bake","json",JSON.stringify(profile,null,2)+"\n");
 }
 
 export async function exportEffectsMod(controller, info, state, levels) {
