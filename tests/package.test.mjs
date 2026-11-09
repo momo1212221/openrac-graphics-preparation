@@ -5,10 +5,10 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 
-test('0.21.2 is one native OpenRAC graphics product with its tool page',()=>{
+test('0.21.3 is one native OpenRAC graphics product with its tool page',()=>{
   const m=JSON.parse(readFileSync(root+'openrac-mod.json'));
   assert.equal(m.id,'graphics-preparation');
-  assert.equal(m.version,'0.21.2');
+  assert.equal(m.version,'0.21.3');
   assert.equal(m.type,'native');
   assert.equal(m.api,'1.14');
   assert.equal(m.assets,'assets');
@@ -18,7 +18,13 @@ test('0.21.2 is one native OpenRAC graphics product with its tool page',()=>{
   const first=readFileSync(root+'dist/SHA256SUMS','utf8');
   execFileSync('python3',['tools/package.py'],{cwd:root});
   assert.equal(readFileSync(root+'dist/SHA256SUMS','utf8'),first);
-  assert.ok(first.includes('graphics-preparation-0.21.2.zip'));
+  assert.ok(first.includes('graphics-preparation-0.21.3.zip'));
+  const main=readFileSync(root+'ui/main.js','utf8');
+  assert.ok(main.includes('import {listTextureSources} from "../src/source-bootstrap.js";'));
+  assert.ok(main.includes('listTextureSources(controller, info)'));
+  const packer=readFileSync(root+'tools/package.py','utf8');
+  assert.ok(packer.includes('for folder in ["ui","src","vendor","models"]'));
+  assert.ok(readFileSync(root+'src/source-bootstrap.js','utf8').includes('export async function listTextureSources'));
 });
 
 
