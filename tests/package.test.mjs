@@ -13,7 +13,7 @@ test('0.21.0 is one native OpenRAC graphics product with its tool page',()=>{
   assert.equal(m.api,'1.14');
   assert.equal(m.assets,'assets');
   assert.equal(m.scripts,undefined);
-  assert.deepEqual(m.tool,{page:'ui/index.html'});
+  assert.deepEqual(m.tool,{page:'ui/index.html',service:'graphics-preparation'});
   execFileSync('python3',['tools/package.py'],{cwd:root});
   const first=readFileSync(root+'dist/SHA256SUMS','utf8');
   execFileSync('python3',['tools/package.py'],{cwd:root});
