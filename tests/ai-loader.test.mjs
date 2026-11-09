@@ -20,6 +20,7 @@ test('WebGPU tries graph capture before plain GPU and only then CPU fallback',()
   assert.match(code,/gpuCaptureDisabledForRun = true/);
   assert.match(code,/backend:"webgpu-capture"/);
   assert.match(code,/backend:"webgpu"/);
+  assert.match(code,/powerPreference="high-performance"/);
   assert.match(code,/backend:"wasm"/);
 });
 
