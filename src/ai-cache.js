@@ -109,7 +109,7 @@ function txDone(tx) {
 
 export function cacheDigestFromKey(key) {
   if (typeof key !== "string") return null;
-  const match = key.match(/(?:^|\\|)([0-9a-f]{64})(?=\\||$)/);
+  const match = key.match(/(?:^|\|)([0-9a-f]{64})(?=\||$)/);
   return match ? match[1] : null;
 }
 
