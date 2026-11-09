@@ -1044,7 +1044,7 @@ function render() {
       }
     }
     setMessage(
-      "Modern / PS5 target applied: Enhanced AI, guarded Auto detail, selective 8x masters, full eligible material maps/mipmaps and adaptive collision-safe geometry."
+      "Modern / PS5 target applied: Enhanced AI, guarded Auto detail, selective 8x masters, full eligible material maps, OpenRAC runtime mipmaps and adaptive collision-safe geometry."
       +rendererNote,
       rendererError
     );
