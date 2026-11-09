@@ -128,7 +128,7 @@ test('level loader reads the official placements.json referenced by manifest',as
   assert.equal(levels[0].level,3);
   assert.equal(levels[0].placements.length,2);
   assert.deepEqual(levels[0].placements.find(x=>x.key==='moby:7:1').position,[6,7,8]);
-  assert.ok(levels[0].objects.some(x=>x.key==='ties/tie_5'), 'gltf extension must not leak into object-light key');
+  assert.ok(levels[0].objects.some(x=>x.key==='ties/tie_5.gltf'), 'stock Enhanced object-light key must retain the loaded model extension');
 });
 
 test('production export validation catches unplaced invalid-level and malformed coordinates',()=>{
@@ -210,11 +210,11 @@ test('baker profile writes stock rays bounces and adaptive fields',()=>{
   const out=bakerProfile({version:1},state,'level_01'); assert.equal(out.rays,1024); assert.equal(out.bounces,4); assert.equal(out.adaptive_rays,false); assert.equal(out.environment_probes.resolution,128);
 });
 
-test('gltf and glb object mesh names normalize to the renderer object-light key',()=>{
+test('gltf and glb object mesh names retain the exact stock renderer object-light key',()=>{
  const manifest={classes:{moby:{'1':{mesh:'mobys/lamp.gltf',name:'lamp'},'2':{mesh:'mobys/weapon.glb',name:'weapon'}}}};
  const rows=placementsFromLevel(manifest,{mobys:[]}); assert.deepEqual(rows,[]);
- const state=normalizeEffects({lights:[{object:'mobys/lamp',type:'point',range:4}]});
- assert.ok(objectLightCatalog(state).objects['mobys/lamp']);
+ const state=normalizeEffects({lights:[{object:'mobys/lamp.gltf',type:'point',range:4}]});
+ assert.ok(objectLightCatalog(state).objects['mobys/lamp.gltf']);
 });
 
 test('object-light export validation rejects missing object and zero spot axis',()=>{
@@ -317,4 +317,24 @@ test('baker export proposes the exact filename the stock launcher baker reads',a
   const saved=await exportBakerProfile(controller,{packId:'ignored'},state,'level_01',{version:1});
   assert.equal(saved,'probe-bake.json');
   assert.deepEqual(calls,[['probe-bake','json']]);
+});
+
+
+test('object selector rejects traversal but preserves glb/gltf suffixes used by Enhanced object_light_key',async()=>{
+  const enc=new TextEncoder();
+  const controller={
+    list:async()=>[{path:'level_01/manifest.json'}],
+    read:async(_root,path)=>{
+      if(path==='level_01/manifest.json')return enc.encode(JSON.stringify({
+        format:4,level:1,classes:{tie:{
+          '1':{mesh:'ties/tie_1.glb'},
+          '2':{mesh:'ties/tie_2.gltf'},
+          '3':{mesh:'../escape.glb'},
+        },shrub:{},moby:{}},
+      })).buffer;
+      throw new Error('missing');
+    },
+  };
+  const [level]=await loadLevels(controller);
+  assert.deepEqual(level.objects.map(x=>x.key),['ties/tie_1.glb','ties/tie_2.gltf']);
 });

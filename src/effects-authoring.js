@@ -150,14 +150,17 @@ function objectsFromManifest(manifest) {
     if (!rows || typeof rows !== "object") continue;
     for (const [id, entry] of Object.entries(rows)) {
       if (!entry || typeof entry.mesh !== "string" || !entry.mesh) continue;
-      const key = stem(entry.mesh);
-      if (!key) continue;
+      // Stock Enhanced object_light_key() uses layer_name + the loaded model.name,
+      // including the original .glb/.gltf suffix. Keep the manifest mesh path byte-for-byte.
+      const key = String(entry.mesh).replace(/^\/+/, "");
+      if (!key || key.split("/").includes("..")) continue;
+      const shortName=key.split("/").pop() || key;
       out.push({
         key,
         layer,
         classId:id,
-        name:entry.name || key.split("/").pop() || key,
-        label:`${layer} ${id} · ${entry.name || key.split("/").pop() || key}`,
+        name:entry.name || shortName,
+        label:`${layer} ${id} · ${entry.name || shortName}`,
       });
     }
   }
