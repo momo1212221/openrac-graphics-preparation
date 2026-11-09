@@ -333,6 +333,174 @@ class GeometryHeightProvider:
             return None
 
 
+_LOD_DISTANCES = {
+    "character": (65.0, 160.0),
+    "weapon": (50.0, 120.0),
+    "rock": (110.0, 260.0),
+    "foliage": (90.0, 180.0),
+    "terrain": (160.0, 360.0),
+    "structure": (120.0, 300.0),
+    "prop": (90.0, 220.0),
+    "generic": (90.0, 220.0),
+}
+
+
+def lod_distances_for_role(role: str) -> tuple[float, float]:
+    return _LOD_DISTANCES.get(str(role), _LOD_DISTANCES["generic"])
+
+
+def exported_moby_assets(export_dir: Path) -> list[tuple[Path, dict]]:
+    rows = []
+    for manifest_path in sorted(export_dir.glob("level_*/mobys/*/asset.json")):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if manifest.get("kind") != "moby" or not isinstance(manifest.get("class"), int):
+            continue
+        rows.append((manifest_path.parent, manifest))
+    return rows
+
+
+def force_original_moby_edits(export_dir: Path) -> int:
+    # assets.py deliberately ignores an untouched exported model. A second glTF filename is a clean
+    # way to ask the importer to round-trip the exact original geometry into an override GLB while
+    # keeping its sibling buffer, textures, skeleton and asset.json unchanged.
+    count = 0
+    for folder, manifest in exported_moby_assets(export_dir):
+        model = folder / str(manifest.get("model") or "")
+        if not model.is_file() or model.suffix.lower() != ".gltf":
+            continue
+        marker = model.with_name(model.stem + ".gprep-lod2.gltf")
+        marker.write_bytes(model.read_bytes())
+        count += 1
+    return count
+
+
+def report_moby_roles(report: dict) -> dict[int, str]:
+    priorities = {
+        "character": 7, "weapon": 6, "rock": 5, "structure": 4,
+        "prop": 3, "foliage": 2, "generic": 1, "terrain": 0,
+    }
+    roles: dict[int, str] = {}
+    for row in report.get("files", []):
+        if row.get("kind") != "moby" or not row.get("changed"):
+            continue
+        path = Path(str(row.get("file") or ""))
+        manifest_path = path.parent / "asset.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        class_id = manifest.get("class")
+        if not isinstance(class_id, int):
+            continue
+        candidates = [
+            str(p.get("asset_role") or "generic")
+            for p in row.get("primitives", [])
+            if p.get("changed")
+        ]
+        role = max(candidates or ["generic"], key=lambda value: priorities.get(value, 0))
+        previous = roles.get(class_id)
+        if previous is None or priorities.get(role, 0) > priorities.get(previous, 0):
+            roles[class_id] = role
+    return roles
+
+
+def asset_import_command(
+    root: Path,
+    export_dir: Path,
+    levels: Path,
+    out: Path,
+    *,
+    name: str,
+    job: dict,
+) -> list[str]:
+    return [
+        sys.executable,
+        str(root / "editor" / "assets.py"),
+        "import",
+        str(export_dir),
+        "--levels",
+        str(levels),
+        "--out",
+        str(out),
+        "--name",
+        name,
+        "--author",
+        "OpenRAC graphics helper",
+        "--description",
+        f"Geometry enhancement LOD stage for {job['game']} {job['version']}",
+        "--strict",
+    ]
+
+
+def install_lod_stage(
+    *,
+    levels: Path,
+    stage_pack: Path,
+    final_pack: Path,
+    stage: int,
+    eligible_classes: set[int],
+    roles: dict[int, str],
+    sidecars: dict[int, dict],
+) -> int:
+    copied = 0
+    for level_dir in sorted(stage_pack.glob("level_*")):
+        if not level_dir.is_dir() or not level_dir.name[6:].isdigit():
+            continue
+        level = int(level_dir.name[6:])
+        manifest_path = levels / level_dir.name / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for key, entry in (manifest.get("classes", {}).get("moby", {}) or {}).items():
+            try:
+                class_id = int(key)
+            except (TypeError, ValueError):
+                continue
+            if class_id not in eligible_classes or not isinstance(entry, dict):
+                continue
+            mesh = entry.get("mesh")
+            if not isinstance(mesh, str) or not mesh:
+                continue
+            source = stage_pack / level_dir.name / mesh
+            if not source.is_file():
+                continue
+            original_rel = Path(mesh)
+            # Keep the LOD beside the canonical moby model. port_glb materials use ../textures,
+            # so putting it into a deeper lods/ directory would break those relative texture URIs.
+            destination_name = original_rel.stem + f".gprep-lod{stage}" + original_rel.suffix
+            destination_rel = original_rel.with_name(destination_name)
+            destination = final_pack / level_dir.name / destination_rel
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            role = roles.get(class_id, "generic")
+            distance = lod_distances_for_role(role)[stage - 1]
+            doc = sidecars.setdefault(level, {"format": 1, "moby": {}})
+            cls = doc["moby"].setdefault(str(class_id), {"lods": []})
+            cls["lods"].append({
+                "mesh": destination_rel.as_posix(),
+                "distance": distance,
+            })
+            copied += 1
+    return copied
+
+
+def write_geometry_lod_sidecars(final_pack: Path, sidecars: dict[int, dict]) -> int:
+    written = 0
+    for level, document in sorted(sidecars.items()):
+        lods = document.get("moby", {})
+        for entry in lods.values():
+            entry["lods"].sort(key=lambda row: float(row["distance"]))
+        target = final_pack / f"level_{level:02}" / "geometry-lods.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        written += 1
+    return written
+
+
 def texture_job(job: dict, root: Path, levels: Path, output: Path, upscaler: str | None, *, dry_run: bool) -> dict:
     options = job.get("options") if isinstance(job.get("options"), dict) else {}
     scale = int(options.get("scale", 4 if job["operation"] == "textures.prepare" else 2))
@@ -441,6 +609,17 @@ def mesh_job(
             export_cmd += ["--level", str(level)]
         run(export_cmd, cwd=root, dry_run=dry_run)
 
+        runtime_lod_requested = (
+            geometry_options["lod_planning"] and scope in {"mobys", "all"} and not dry_run
+        )
+        lod1_export = scratch / "lod1-export"
+        lod2_export = scratch / "lod2-export"
+        if runtime_lod_requested:
+            # Preserve the untouched export before LOD0 modifies it. LOD1 gets one adaptive pass;
+            # LOD2 is the original game mesh round-tripped through assets.py.
+            shutil.copytree(exported, lod1_export)
+            shutil.copytree(exported, lod2_export)
+
         pack_reader = MaterialPackReader(material_pack_path)
         height_provider = None
         height_stats = {"sidecar": 0, "diffuse-derived": 0, "missing": 0, "rejected": 0}
@@ -489,6 +668,30 @@ def mesh_job(
             if report["files_changed"] <= 0:
                 raise RuntimeError("no compatible OpenRAC glTF meshes were enhanced")
 
+        roles = report_moby_roles(report) if not dry_run else {}
+        eligible_lod_classes = set(roles)
+        lod1_report = None
+        lod2_marked = 0
+        if runtime_lod_requested and eligible_lod_classes:
+            lod1_options = dict(geometry_options)
+            # Medium LOD keeps the role-aware density/topology work, but never receives a second
+            # shape/displacement treatment. Its job is stable silhouette reduction, not another art pass.
+            lod1_options.update({
+                "lod_planning": False,
+                "shape_refine": False,
+                "silhouette_refine": False,
+                "micro_displacement": False,
+                "allow_collision_mismatch": False,
+            })
+            lod1_report = enhance_export(
+                lod1_export,
+                mode="high",
+                options=lod1_options,
+                height_provider=None,
+                kinds={"moby"},
+            )
+            lod2_marked = force_original_moby_edits(lod2_export)
+
         import_cmd = [
             sys.executable,
             str(root / "editor" / "assets.py"),
@@ -507,6 +710,47 @@ def mesh_job(
             "--strict",
         ]
         run(import_cmd, cwd=root, dry_run=dry_run)
+        runtime_lod_files = 0
+        runtime_lod_levels = 0
+        if not dry_run and runtime_lod_requested and eligible_lod_classes:
+            sidecars: dict[int, dict] = {}
+            if lod1_report is not None and int(lod1_report.get("files_changed", 0)) > 0:
+                lod1_pack = scratch / "lod1-pack"
+                run(
+                    asset_import_command(
+                        root, lod1_export, levels, lod1_pack,
+                        name="Graphics preparation · Geometry LOD1", job=job,
+                    ),
+                    cwd=root,
+                )
+                runtime_lod_files += install_lod_stage(
+                    levels=levels,
+                    stage_pack=lod1_pack,
+                    final_pack=pack,
+                    stage=1,
+                    eligible_classes=eligible_lod_classes,
+                    roles=roles,
+                    sidecars=sidecars,
+                )
+            if lod2_marked > 0:
+                lod2_pack = scratch / "lod2-pack"
+                run(
+                    asset_import_command(
+                        root, lod2_export, levels, lod2_pack,
+                        name="Graphics preparation · Geometry LOD2", job=job,
+                    ),
+                    cwd=root,
+                )
+                runtime_lod_files += install_lod_stage(
+                    levels=levels,
+                    stage_pack=lod2_pack,
+                    final_pack=pack,
+                    stage=2,
+                    eligible_classes=eligible_lod_classes,
+                    roles=roles,
+                    sidecars=sidecars,
+                )
+            runtime_lod_levels = write_geometry_lod_sidecars(pack, sidecars)
         if not dry_run:
             report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             if geometry_options["lod_planning"]:
@@ -530,10 +774,14 @@ def mesh_job(
                     "game": job["game"],
                     "version": job["version"],
                     "profile": mode,
+                    "runtime_contract": "geometry-lods-v1",
+                    "runtime_lod_files": runtime_lod_files,
+                    "runtime_lod_levels": runtime_lod_levels,
                     "stock_runtime_supported": False,
                     "runtime_note": (
-                        "OpenRAC assets.py currently imports one replacement GLB per edited class. "
-                        "These LOD stages are deterministic integration targets, not a claim that stock runtime switching is active."
+                        "The pack now contains level_NN/geometry-lods.json and canonical LOD1/LOD2 "
+                        "moby GLBs. Runtime switching requires an OpenRAC build with geometry-lods-v1 "
+                        "support (implemented by the graphics runtime LOD integration branch/PR)."
                     ),
                     "assets": lod_assets,
                 }
@@ -585,6 +833,9 @@ def mesh_job(
             "topology_edge_flips": topology_flips,
             "lod_plans": lod_plans,
             "stock_runtime_lod_supported": bool(report.get("stock_runtime_lod_supported", False)),
+            "runtime_lod_contract": "geometry-lods-v1" if runtime_lod_levels else None,
+            "runtime_lod_files": runtime_lod_files,
+            "runtime_lod_levels": runtime_lod_levels,
         },
         "message": (
             f"Dry run valid; planned geometry output is {archive.resolve()}."
@@ -593,7 +844,8 @@ def mesh_job(
                  f"Adaptive edges: {adaptive_edges}; preserved crease splits: {crease_splits}; "
                  f"budget-limited primitives: {budget_limited}; skipped unsupported primitives: {skipped_primitives}; "
                  f"micro-displaced primitives: {displacement_primitives} ({displacement_sources}); "
-                 f"asset roles: {asset_roles}; topology flips: {topology_flips}; LOD plans: {lod_plans}. "
+                 f"asset roles: {asset_roles}; topology flips: {topology_flips}; LOD plans: {lod_plans}; "
+                 f"runtime LOD files: {runtime_lod_files} across {runtime_lod_levels} levels. "
                  f"Collision review recommended for {collision_count} moved primitives. "
                  "Install the generated ZIP through OpenRAC's Mods page."
         ),
