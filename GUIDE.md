@@ -1,6 +1,6 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.19.0** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.20.0** mit dem aktuellen **OpenRAC Dev Launcher**.
 
 Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für den normalen **Texture-AI-Lauf** werden kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm benötigt. Der neue optionale **3D Geometry Enhancement**-Pfad nutzt den mitgelieferten Python-Helper ausschließlich für OpenRACs offiziellen glTF-Export/Import über `editor/assets.py`.
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.19.0.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.20.0.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
@@ -440,7 +440,7 @@ und `graphics-preparation-0.17.3-windows-x86_64.zip`. Auf Apple Silicon ist
 
 ## 3D Geometry Enhancement
 
-Ab 0.19.0 kann der Mod zusätzlich einen **Geometry Job** erzeugen.
+Ab 0.20.0 kann der Mod zusätzlich einen **Geometry Job** mit echtem Height-Micro-Displacement erzeugen.
 
 Im Abschnitt **3D Geometry Enhancement** stehen vier Profile zur Verfügung:
 
@@ -475,7 +475,7 @@ Vertexattribute oder fehlerhafte Primitive werden übersprungen statt still besc
 
 ## Modern / PS5 target
 
-Ab 0.19.0 gibt es oben im Mod den Knopf **Modern / PS5 target**.
+Ab 0.20.0 gibt es oben im Mod den Knopf **Modern / PS5 target**.
 
 Damit werden die wichtigen Qualitätsoptionen gemeinsam gesetzt, statt Texture-AI und Geometry
 einzeln zusammensuchen zu müssen:
@@ -501,7 +501,7 @@ Danach bleibt der Ablauf bewusst in zwei Schritten:
 
 ### Warum adaptive Geometry besser ist
 
-0.19.0 unterteilt nicht mehr einfach überall gleich stark. Der Helper bewertet Kanten nach
+0.20.0 unterteilt nicht mehr einfach überall gleich stark. Der Helper bewertet Kanten nach
 Geometriedichte und Krümmung. Lange beziehungsweise stark gekrümmte Bereiche erhalten zuerst neue
 Vertices; dichte flache Bereiche verschwenden das Triangle-Budget nicht.
 
@@ -535,10 +535,37 @@ Wenn ein Lauf kaum Adaptive Edges meldet, war das Ausgangsmesh bereits relativ d
 Grenzwerte waren konservativ. Wenn viele Primitive am Budget hängen, sollte zuerst das Auto-Budget
 oder der Scope geprüft werden, statt pauschal immer mehr Dreiecke zu erlauben.
 
-### Grenze des PS5-Ziels
+### Height Micro-Displacement
 
-0.19.0 verbessert Texturen, Materialdaten, Shading und Mesh-Dichte deutlich. Echte heutige
-AAA-/PS5-Geometrie entsteht aber nicht allein durch Subdivision. Der nächste große Qualitätsblock ist
-**Material Height -> bounded micro-displacement**, also echte kleine Oberflächengeometrie aus den
-bereits erzeugten Height Maps. Das soll nur materialabhängig und mit klaren Collision-Grenzen
-aktiviert werden.
+0.20.0 koppelt die erzeugten Height Maps an die neue Mesh-Geometrie.
+
+Empfohlen:
+
+- **Height micro-displacement:** On
+- **Height source:** Auto
+- **Displacement strength:** 80%
+- **Allow visual/collision mismatch:** Off
+
+**Auto** versucht zuerst `Materials/<hash>/height.png` aus dem bereits erzeugten Texture-/Material-Pack.
+Fehlt der Sidecar, wird nur eine deutlich konservativere relative Height aus der exportierten Diffuse
+abgeleitet. Mit **Sidecar only** wird bei fehlender Height Map überhaupt kein Relief geraten.
+
+Für die beste Qualität speicherst du Geometry-Job und AI-Pack im selben Ordner. Wenn dort genau ein
+kompatibles Material-Pack liegt, erkennt der Helper es automatisch. Alternativ:
+
+`python3 helper/openrac_graphics_helper.py <job.json> --openrac-root /pfad/zu/OpenRAC --material-pack /pfad/zum/ai-pack.zip`
+
+Die Vertices bewegen sich entlang der rekonstruierten Normalen. Harte Creases und offene Mesh-Ränder
+werden festgehalten. Die maximale Bewegung ist pro Material begrenzt; Stone/Terrain dürfen mehr Relief
+als Metal/Character, Glass/Sky/UI praktisch keines.
+
+**Wichtig:** Terrain und Mobys bleiben im sicheren Standard trotz aktiviertem Micro-Displacement
+positionsgesperrt. Erst **Allow visual/collision mismatch** erlaubt dort Bewegung. Damit verändert der
+normale PS5-Preset keine Gameplay-Collision.
+
+### PS5-Ziel
+
+Damit umfasst der automatische Pfad jetzt Texturrekonstruktion, PBR/Height, adaptive Mesh-Dichte,
+Crease-Preservation und echte begrenzte Oberflächengeometrie. Das ersetzt trotzdem keine vollständig
+von Hand neu modellierten AAA-Assets; besonders Charaktergesichter, Hände und große Silhouetten sollten
+weiterhin bewusst geprüft werden.
