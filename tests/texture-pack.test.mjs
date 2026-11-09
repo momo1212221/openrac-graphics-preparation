@@ -14,10 +14,10 @@ test('saved OpenRAC texture files are deduplicated by texture hash',()=>{
 });
 
 test('AI pack metadata identifies bundled Real-ESRGAN path',()=>{
-  const info={packId:'rac1-pal'};
+  const info={packId:'rac1-pal',mod:{version:'0.21.2'}};
   const manifest=texturePackManifest(info,42,{ai:true,mode:'balanced',detailQuality:'high'});
   assert.equal(manifest.game,'rac1-pal');
   assert.equal(manifest.name,'Graphics preparation AI 4x');
-  assert.ok(manifest.madeWith.includes('0.15.1 (dual-CNN balanced · high detail)'));
+  assert.ok(manifest.madeWith.includes('0.21.2 (dual-CNN balanced · high detail)'));
   assert.equal(outputName(info,'ai-balanced-4x'),'rac1-pal-graphics-preparation-ai-balanced-4x');
 });
