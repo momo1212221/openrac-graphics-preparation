@@ -43,3 +43,9 @@ test("AI run signature is pinned to the strict quality-policy generation",()=>{
   assert.match(RUN_PIPELINE,/90-94-97-v4-regional/);
   assert.match(aiRunSignature({}),/90-94-97-v4-regional/);
 });
+
+
+test('performance lanes do not invalidate resumable AI work',()=>{
+  const base={aiMode:'enhanced',detailQuality:'max',detailCnn:true,includeInterface:true,performanceMode:'1'};
+  assert.equal(aiRunSignature(base),aiRunSignature({...base,performanceMode:'8'}));
+});

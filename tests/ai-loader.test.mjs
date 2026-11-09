@@ -20,12 +20,13 @@ test('WebGPU tries graph capture before plain GPU and only then CPU fallback',()
   assert.match(code,/gpuCaptureDisabledForRun = true/);
   assert.match(code,/backend:"webgpu-capture"/);
   assert.match(code,/backend:"webgpu"/);
+  assert.match(code,/powerPreference="high-performance"/);
   assert.match(code,/backend:"wasm"/);
 });
 
 test('AI runtime keeps reusable tile buffers and records timings',()=>{
   const code=readFileSync(root+'src/ai-runtime.js','utf8');
-  assert.match(code,/const inputValues = new Float32Array\(3 \* MODEL_INPUT \* MODEL_INPUT\)/);
+  assert.match(code,/new Float32Array\(3\*MODEL_INPUT\*MODEL_INPUT\)/);
   assert.match(code,/fillFixedRgbTile\(/);
   assert.match(code,/elapsedMs:performance\.now\(\)-started/);
   assert.doesNotMatch(code,/rendered = document\.createElement\("canvas"\)/);
@@ -38,4 +39,31 @@ test('specialized CNN is fail-open but verifies model bytes before session creat
   assert.match(code,/specializedRefine\(outData,material,runtime,wrap\)/);
   assert.match(code,/acceptSpecializedRefinement/);
   assert.match(code,/catch\{\s*outData=baseline;\s*\}/);
+});
+
+
+test('AI runtime exposes hardware-adaptive inference lanes with deterministic merge order',()=>{
+  const code=readFileSync(root+'src/ai-runtime.js','utf8');
+  assert.match(code,/benchmarkInferenceLanes/);
+  assert.match(code,/const runBatches=async\(width\)/);
+  assert.match(code,/selectMeasuredLaneCount/);
+  assert.match(code,/inferenceLanes/);
+  assert.match(code,/for\(const row of rows\)mergeResult\(row\)/);
+});
+
+test('AI runtime falls back to one lane if concurrent WebGPU execution fails',()=>{
+  const code=readFileSync(root+'src/ai-runtime.js','utf8');
+  assert.match(code,/if\(laneCount<=1\)throw error/);
+  assert.match(code,/inferenceLanes=1/);
+  assert.match(code,/runtime fallback/);
+  assert.match(code,/outputData\.data\.fill\(0\)/);
+  assert.match(code,/weights\.fill\(0\)/);
+});
+
+
+test('AI autotuner can probe up to eight lanes and stops on a sustained plateau',()=>{
+  const code=readFileSync(root+'src/ai-runtime.js','utf8');
+  assert.match(code,/shouldStopAutotune/);
+  assert.match(code,/lanes>=3&&shouldStopAutotune/);
+  assert.match(code,/for\(let lanes=1;lanes<=maxLanes;lanes\+\+\)/);
 });

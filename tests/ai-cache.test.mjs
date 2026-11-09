@@ -28,3 +28,13 @@ test('cache keys include source digest and all output-affecting detail options',
 test('cache key is null without a cryptographic source digest',()=>{
   assert.equal(cacheKey(null,{mode:'balanced'}),null);
 });
+
+
+test('performance lanes do not invalidate pixel-identical cache entries',()=>{
+  const digest='cd'.repeat(32);
+  const base={mode:'enhanced',detailQuality:'max',textureScope:'world',detailCnn:true,sourceColorLock:true,qualityGuard:true,preserveMicrodetail:true,preserveStars:true};
+  assert.equal(
+    cacheKey(digest,{...base,performanceMode:'1'}),
+    cacheKey(digest,{...base,performanceMode:'8'}),
+  );
+});
