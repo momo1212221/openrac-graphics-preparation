@@ -27,7 +27,7 @@ therefore bundled inside the mod.
 8. Choose where OpenRAC should save the generated texture-pack ZIP.
 9. Add that ZIP through **Mods -> Add a mod**.
 
-Step 10 is required because the stock Mod Tool protocol deliberately allows a mod page to save files
+Step 9 is required because the stock Mod Tool protocol deliberately allows a mod page to save files
 and no longer needs to install a second effects runtime: the native particle/glow/haze runtime is built into Graphics preparation 0.17.0.
 
 ## AI implementation
