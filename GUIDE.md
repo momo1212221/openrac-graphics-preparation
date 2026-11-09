@@ -1,6 +1,6 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.18.0** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.19.0** mit dem aktuellen **OpenRAC Dev Launcher**.
 
 Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für den normalen **Texture-AI-Lauf** werden kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm benötigt. Der neue optionale **3D Geometry Enhancement**-Pfad nutzt den mitgelieferten Python-Helper ausschließlich für OpenRACs offiziellen glTF-Export/Import über `editor/assets.py`.
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.18.0.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.19.0.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
@@ -440,7 +440,7 @@ und `graphics-preparation-0.17.3-windows-x86_64.zip`. Auf Apple Silicon ist
 
 ## 3D Geometry Enhancement
 
-Ab 0.18.0 kann der Mod zusätzlich einen **Geometry Job** erzeugen.
+Ab 0.19.0 kann der Mod zusätzlich einen **Geometry Job** erzeugen.
 
 Im Abschnitt **3D Geometry Enhancement** stehen vier Profile zur Verfügung:
 
@@ -471,3 +471,74 @@ Ablauf:
 
 Der Helper verändert keine Disc-Datei. Nicht unterstützte Morph Targets, fehlende UVs, unbekannte
 Vertexattribute oder fehlerhafte Primitive werden übersprungen statt still beschädigt zu werden.
+
+
+## Modern / PS5 target
+
+Ab 0.19.0 gibt es oben im Mod den Knopf **Modern / PS5 target**.
+
+Damit werden die wichtigen Qualitätsoptionen gemeinsam gesetzt, statt Texture-AI und Geometry
+einzeln zusammensuchen zu müssen:
+
+- AI Mode: Enhanced;
+- Detail reconstruction: Auto;
+- Detail CNN: On;
+- Source Color Lock: On;
+- Quality Guard: On;
+- Selective 8x Master: On;
+- Material Maps: Key materials;
+- Enhanced mipmaps: Key materials;
+- Geometry profile: Modern;
+- Adaptive subdivision: On;
+- Crease preservation: Auto;
+- Shape refinement: On für sichere statische Geometrie;
+- visual/collision mismatch: Off.
+
+Danach bleibt der Ablauf bewusst in zwei Schritten:
+
+1. **Prepare AI graphics** erzeugt den Texture-/Material-Pack.
+2. **Export Geometry Job** erzeugt den Job für den OpenRAC-glTF-Roundtrip.
+
+### Warum adaptive Geometry besser ist
+
+0.19.0 unterteilt nicht mehr einfach überall gleich stark. Der Helper bewertet Kanten nach
+Geometriedichte und Krümmung. Lange beziehungsweise stark gekrümmte Bereiche erhalten zuerst neue
+Vertices; dichte flache Bereiche verschwenden das Triangle-Budget nicht.
+
+Gemeinsame Kanten werden global behandelt, damit keine T-Junction-Risse zwischen benachbarten
+Dreiecken entstehen.
+
+### Crease Preservation
+
+Nach der Unterteilung werden harte geometrische Kanten anhand eines Crease-Winkels geschützt.
+
+- **Auto** ist empfohlen.
+- Charaktere/Mobys verwenden einen strengeren Winkel.
+- Terrain darf stärker geglättet werden.
+- Manuelle 45°/55°/65°/75°-Werte dienen dem Feintuning.
+
+Normalen und Tangenten werden danach winkelgewichtet neu aufgebaut. Das verbessert insbesondere
+Specular-Highlights, Normal Maps und Beleuchtung auf unterschiedlich großen Dreiecken.
+
+### Geometry Report v2
+
+`geometry-report.json` zeigt jetzt zusätzlich:
+
+- Adaptive Edges;
+- erzeugte Crease-Splits;
+- budget-limitierte Primitive;
+- übersprungene Primitive und Grund;
+- Triangle-Multiplikator;
+- Collision-Review-Kandidaten.
+
+Wenn ein Lauf kaum Adaptive Edges meldet, war das Ausgangsmesh bereits relativ dicht oder die
+Grenzwerte waren konservativ. Wenn viele Primitive am Budget hängen, sollte zuerst das Auto-Budget
+oder der Scope geprüft werden, statt pauschal immer mehr Dreiecke zu erlauben.
+
+### Grenze des PS5-Ziels
+
+0.19.0 verbessert Texturen, Materialdaten, Shading und Mesh-Dichte deutlich. Echte heutige
+AAA-/PS5-Geometrie entsteht aber nicht allein durch Subdivision. Der nächste große Qualitätsblock ist
+**Material Height -> bounded micro-displacement**, also echte kleine Oberflächengeometrie aus den
+bereits erzeugten Height Maps. Das soll nur materialabhängig und mit klaren Collision-Grenzen
+aktiviert werden.
