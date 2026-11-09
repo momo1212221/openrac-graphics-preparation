@@ -44,6 +44,221 @@ class GeometryProfile:
     crease_angle_degrees: float = 55.0
 
 
+@dataclass(frozen=True)
+class HeightMap:
+    width: int
+    height: int
+    values: tuple[float, ...]
+    alpha: tuple[int, ...] | None = None
+    material: str = "generic"
+    neutral: float = 0.5
+    recommended_scale: float | None = None
+    source: str = "unknown"
+
+
+_DISPLACEMENT_FRACTION = {
+    "generic": 0.0020,
+    "terrain": 0.0040,
+    "stone": 0.0048,
+    "metal": 0.0016,
+    "fabric": 0.0018,
+    "organic": 0.0024,
+    "character": 0.0008,
+    "weapon": 0.0014,
+    "energy": 0.0004,
+    "glass": 0.00025,
+    "sky": 0.0,
+    "ui": 0.0,
+}
+_HEIGHT_PROFILE = {
+    "generic": (7, 3, .28, .62, .72, 1.55),
+    "terrain": (12, 4, .58, .90, .82, 1.95),
+    "stone": (10, 3, .52, 1.08, 1.18, 2.15),
+    "metal": (7, 2, .12, .82, .38, 1.65),
+    "fabric": (5, 2, .08, .48, 1.32, 1.80),
+    "organic": (8, 3, .34, .72, .68, 1.55),
+    "character": (7, 3, .18, .42, .38, 1.15),
+    "weapon": (7, 2, .16, .92, .52, 1.85),
+    "energy": (7, 3, .06, .12, .08, .55),
+    "glass": (7, 3, .03, .08, .04, .35),
+}
+
+
+def height_map_from_rgba(
+    width: int,
+    height: int,
+    rgba: bytes,
+    *,
+    material: str = "generic",
+    neutral: float = 0.5,
+    recommended_scale: float | None = None,
+    source: str = "sidecar",
+) -> HeightMap:
+    if width <= 0 or height <= 0 or len(rgba) < width * height * 4:
+        raise ValueError("height image has invalid dimensions/pixels")
+    values = []
+    alpha = []
+    for p in range(width * height):
+        i = p * 4
+        values.append(float(rgba[i]) / 255.0)
+        alpha.append(int(rgba[i + 3]))
+    return HeightMap(
+        width, height, tuple(values), tuple(alpha), material,
+        max(0.0, min(1.0, float(neutral))),
+        None if recommended_scale is None else max(0.0, float(recommended_scale)),
+        source,
+    )
+
+
+def _integral(field: list[float], width: int, height: int) -> list[float]:
+    stride = width + 1
+    out = [0.0] * ((width + 1) * (height + 1))
+    for y in range(1, height + 1):
+        row = 0.0
+        for x in range(1, width + 1):
+            row += field[(y - 1) * width + (x - 1)]
+            out[y * stride + x] = out[(y - 1) * stride + x] + row
+    return out
+
+
+def _mean_at(ii: list[float], width: int, height: int, x: int, y: int, radius: int) -> float:
+    stride = width + 1
+    x0, y0 = max(0, x - radius), max(0, y - radius)
+    x1, y1 = min(width - 1, x + radius), min(height - 1, y + radius)
+    ax, ay, bx, by = x0, y0, x1 + 1, y1 + 1
+    total = ii[by * stride + bx] - ii[ay * stride + bx] - ii[by * stride + ax] + ii[ay * stride + ax]
+    count = max(1, (x1 - x0 + 1) * (y1 - y0 + 1))
+    return total / count
+
+
+def derive_height_from_rgba(width: int, height: int, rgba: bytes, material: str = "generic") -> HeightMap:
+    if width <= 0 or height <= 0 or len(rgba) < width * height * 4:
+        raise ValueError("diffuse image has invalid dimensions/pixels")
+    material = material if material in _HEIGHT_PROFILE else "generic"
+    coarse_radius, mid_radius, coarse_gain, mid_gain, micro_gain, height_gain = _HEIGHT_PROFILE[material]
+    lum = []
+    alpha = []
+    for p in range(width * height):
+        i = p * 4
+        a = int(rgba[i + 3])
+        alpha.append(a)
+        lum.append((54 * rgba[i] + 183 * rgba[i + 1] + 19 * rgba[i + 2]) / (256.0 * 255.0))
+    ii = _integral(lum, width, height)
+    values = [0.5] * (width * height)
+    for y in range(height):
+        for x in range(width):
+            p = y * width + x
+            if alpha[p] < 16:
+                continue
+            center = lum[p]
+            local = _mean_at(ii, width, height, x, y, 1)
+            mid = _mean_at(ii, width, height, x, y, mid_radius)
+            coarse = _mean_at(ii, width, height, x, y, coarse_radius)
+            relief = (
+                (mid - coarse) * coarse_gain +
+                (local - mid) * mid_gain +
+                (center - local) * micro_gain
+            ) * height_gain
+            # Diffuse fallback is deliberately more conservative than authored sidecars.
+            values[p] = max(0.18, min(0.82, 0.5 + relief * 0.55))
+    return HeightMap(
+        width, height, tuple(values), tuple(alpha), material,
+        0.5, None, "diffuse-derived",
+    )
+
+
+def _sample_height(height_map: HeightMap, uv: tuple[float, float]) -> tuple[float, float]:
+    # OpenRAC materials commonly repeat. Wrap UVs instead of clamping to avoid seam spikes.
+    u = float(uv[0]) % 1.0
+    v = float(uv[1]) % 1.0
+    x = u * max(0, height_map.width - 1)
+    y = (1.0 - v) * max(0, height_map.height - 1)
+    x0, y0 = int(math.floor(x)), int(math.floor(y))
+    x1, y1 = min(height_map.width - 1, x0 + 1), min(height_map.height - 1, y0 + 1)
+    tx, ty = x - x0, y - y0
+
+    def sample(xx: int, yy: int) -> tuple[float, float]:
+        p = yy * height_map.width + xx
+        a = 1.0 if height_map.alpha is None else float(height_map.alpha[p]) / 255.0
+        return float(height_map.values[p]), a
+
+    h00,a00 = sample(x0,y0); h10,a10 = sample(x1,y0)
+    h01,a01 = sample(x0,y1); h11,a11 = sample(x1,y1)
+    h0 = h00 * (1-tx) + h10 * tx
+    h1 = h01 * (1-tx) + h11 * tx
+    a0 = a00 * (1-tx) + a10 * tx
+    a1 = a01 * (1-tx) + a11 * tx
+    return h0 * (1-ty) + h1 * ty, a0 * (1-ty) + a1 * ty
+
+
+def apply_micro_displacement(
+    attributes: dict[str, list[tuple]],
+    indices: list[int],
+    height_map: HeightMap,
+    *,
+    kind: str,
+    strength: float = 1.0,
+    crease_angle_degrees: float = 55.0,
+    allow_collision_mismatch: bool = False,
+) -> tuple[list[tuple], dict]:
+    positions = [tuple(map(float, p[:3])) for p in attributes["POSITION"]]
+    if "TEXCOORD_0" not in attributes or not positions:
+        return positions, {"applied": False, "reason": "missing UVs"}
+    if kind in {"terrain", "moby"} and not allow_collision_mismatch:
+        return positions, {"applied": False, "reason": "collision-safe lock"}
+    material = height_map.material if height_map.material in _DISPLACEMENT_FRACTION else (
+        "terrain" if kind == "terrain" else "generic"
+    )
+    fraction = _DISPLACEMENT_FRACTION.get(material, _DISPLACEMENT_FRACTION["generic"])
+    if fraction <= 0 or strength <= 0:
+        return positions, {"applied": False, "reason": f"material {material} disables displacement"}
+
+    box = _bbox(positions)
+    diagonal = max(_diag(box), 1e-9)
+    # Metadata can only tighten the physical cap. It never expands beyond the material safety cap.
+    metadata_fraction = None
+    if height_map.recommended_scale is not None:
+        metadata_fraction = max(0.0, min(0.006, height_map.recommended_scale * 0.08))
+        fraction = min(fraction, metadata_fraction if metadata_fraction > 0 else fraction)
+    cap = diagonal * fraction * max(0.0, min(1.5, float(strength)))
+    if height_map.source == "diffuse-derived":
+        cap *= 0.45
+    if cap <= 1e-12:
+        return positions, {"applied": False, "reason": "zero displacement cap"}
+
+    normals = recalc_normals(positions, indices)
+    _, boundary = _adjacency(indices, len(positions))
+    pinned = boundary | _crease_vertices(positions, indices, crease_angle_degrees)
+    moved = []
+    out = list(positions)
+    for i, (position, uv, normal) in enumerate(zip(positions, attributes["TEXCOORD_0"], normals)):
+        if i in pinned:
+            moved.append(0.0)
+            continue
+        height, alpha = _sample_height(height_map, uv)
+        if alpha < 0.08:
+            moved.append(0.0)
+            continue
+        signed = max(-0.5, min(0.5, height - height_map.neutral)) * 2.0
+        distance = signed * cap * alpha
+        out[i] = tuple(position[axis] + normal[axis] * distance for axis in range(3))
+        moved.append(abs(distance))
+
+    nonzero = [v for v in moved if v > 1e-12]
+    return out, {
+        "applied": bool(nonzero),
+        "material": material,
+        "source": height_map.source,
+        "neutral": height_map.neutral,
+        "recommended_scale": height_map.recommended_scale,
+        "cap": cap,
+        "max_move": max(nonzero) if nonzero else 0.0,
+        "mean_move": (sum(nonzero) / len(nonzero)) if nonzero else 0.0,
+        "vertices_moved": len(nonzero),
+        "vertices_pinned": len(pinned),
+    }
+
+
 def _kind(path: Path) -> str:
     parts = {part.lower() for part in path.parts}
     if "terrain" in parts:
@@ -591,7 +806,13 @@ def _diag(box) -> float:
     return math.dist(box[0], box[1])
 
 
-def enhance_gltf(path: Path, *, mode: str = "high", options: dict | None = None) -> dict:
+def enhance_gltf(
+    path: Path,
+    *,
+    mode: str = "high",
+    options: dict | None = None,
+    height_provider=None,
+) -> dict:
     options = options or {}
     doc = json.loads(path.read_text(encoding="utf-8"))
     buffers = doc.get("buffers") or []
@@ -691,6 +912,26 @@ def enhance_gltf(path: Path, *, mode: str = "high", options: dict | None = None)
                     data, indices, profile.crease_angle_degrees
                 )
                 data["NORMAL"] = recalc_normals(data["POSITION"], indices)
+
+            displacement = {"applied": False, "reason": "disabled"}
+            if bool(options.get("micro_displacement", False)) and height_provider is not None:
+                try:
+                    height_map = height_provider(path, doc, primitive, kind)
+                except Exception as exc:
+                    height_map = None
+                    displacement = {"applied": False, "reason": f"height source failed: {exc}"}
+                if height_map is not None:
+                    moved, displacement = apply_micro_displacement(
+                        data, indices, height_map,
+                        kind=kind,
+                        strength=float(options.get("displacement_strength", 1.0)),
+                        crease_angle_degrees=profile.crease_angle_degrees,
+                        allow_collision_mismatch=bool(options.get("allow_collision_mismatch", False)),
+                    )
+                    data["POSITION"] = moved
+                    if profile.recalc_normals:
+                        data["NORMAL"] = recalc_normals(data["POSITION"], indices)
+
             if profile.recalc_tangents and "TANGENT" in data:
                 data["TANGENT"] = recalc_tangents(
                     data["POSITION"], data["TEXCOORD_0"], data["NORMAL"], indices
@@ -737,6 +978,7 @@ def enhance_gltf(path: Path, *, mode: str = "high", options: dict | None = None)
                 adaptive_edges_split=adaptive_edges_split,
                 crease_angle_degrees=profile.crease_angle_degrees,
                 crease_vertices_split=crease_vertices_split,
+                micro_displacement=displacement,
                 shape_refine=profile.shape_relax > 0,
                 max_vertex_move=moved_max,
                 mean_vertex_move=moved_mean,
@@ -766,12 +1008,18 @@ def enhance_gltf(path: Path, *, mode: str = "high", options: dict | None = None)
     }
 
 
-def enhance_export(export_dir: Path, *, mode: str = "high", options: dict | None = None) -> dict:
+def enhance_export(
+    export_dir: Path,
+    *,
+    mode: str = "high",
+    options: dict | None = None,
+    height_provider=None,
+) -> dict:
     rows = []
     for path in sorted(export_dir.rglob("*.gltf")):
         if "/sky/" in path.as_posix():
             continue
-        rows.append(enhance_gltf(path, mode=mode, options=options))
+        rows.append(enhance_gltf(path, mode=mode, options=options, height_provider=height_provider))
     changed = [row for row in rows if row.get("changed")]
     primitive_rows = [p for row in rows for p in row.get("primitives", [])]
     changed_primitives = [p for p in primitive_rows if p.get("changed")]
@@ -780,6 +1028,15 @@ def enhance_export(export_dir: Path, *, mode: str = "high", options: dict | None
     after = sum(int(p.get("triangles_after", 0)) for p in changed_primitives)
     adaptive_edges = sum(int(p.get("adaptive_edges_split", 0)) for p in changed_primitives)
     crease_splits = sum(int(p.get("crease_vertices_split", 0)) for p in changed_primitives)
+    displacement_rows = [
+        p.get("micro_displacement", {}) for p in changed_primitives
+        if isinstance(p.get("micro_displacement"), dict)
+    ]
+    displacement_applied = [row for row in displacement_rows if row.get("applied")]
+    displacement_sources: dict[str,int] = {}
+    for row in displacement_applied:
+        source = str(row.get("source") or "unknown")
+        displacement_sources[source] = displacement_sources.get(source, 0) + 1
     budget_limited = sum(1 for p in changed_primitives if p.get("budget_limited"))
     skip_reasons: dict[str,int] = {}
     for primitive in skipped_primitives:
@@ -803,6 +1060,9 @@ def enhance_export(export_dir: Path, *, mode: str = "high", options: dict | None
         "triangle_multiplier": (after / before if before else 1.0),
         "adaptive_edges_split": adaptive_edges,
         "crease_vertices_split": crease_splits,
+        "micro_displacement_primitives": len(displacement_applied),
+        "micro_displacement_sources": displacement_sources,
+        "micro_displacement_max_move": max((float(row.get("max_move", 0.0)) for row in displacement_applied), default=0.0),
         "budget_limited_primitives": budget_limited,
         "collision_rebuild_recommended": collision,
         "files": rows,
