@@ -85,6 +85,51 @@ function txDone(tx) {
   });
 }
 
+export function cacheKeyMatchesDigest(key, digest) {
+  return typeof key === "string" && !!digest && key.includes(`|${digest}|`);
+}
+
+function cacheHitFromRow(row) {
+  if (!row || !(row.bytes instanceof Uint8Array || row.bytes instanceof ArrayBuffer)) return null;
+  return {
+    bytes: row.bytes instanceof Uint8Array ? row.bytes : new Uint8Array(row.bytes),
+    stars: Number(row.stars) || 0,
+    microdetails: Number(row.microdetails) || 0,
+    size: Number(row.size) || row.bytes.byteLength || 0,
+    textureClass: row.textureClass || null,
+    detailQuality: row.detailQuality || null,
+    material: row.material || null,
+    metrics: row.metrics || null,
+    classification: row.classification || null,
+    materialInfo: row.materialInfo || null,
+    wrap: row.wrap || null,
+    failures: row.failures || null,
+    masterScale:Number(row.masterScale)||4,
+    internalMaster:row.internalMaster===true,
+    specializedCnnUsed:row.specializedCnnUsed===true,
+    specializedRejected:row.specializedRejected===true,
+    specializedModelSha:row.specializedModelSha||null,
+    textureComplexity:Number(row.textureComplexity)||0,
+    tileGeometry:row.tileGeometry||null,
+    alphaEdges:row.alphaEdges||null,
+  };
+}
+
+export function newestCacheRowForDigest(rows, digest) {
+  if (!digest || !Array.isArray(rows)) return null;
+  let newest = null;
+  let newestCreated = -1;
+  for (const row of rows) {
+    if (!cacheKeyMatchesDigest(row?.key, digest) || !cacheHitFromRow(row)) continue;
+    const created = Number(row.created) > 0 ? Number(row.created) : Number(row.lastUsed) || 0;
+    if (!newest || created > newestCreated) {
+      newest = row;
+      newestCreated = created;
+    }
+  }
+  return newest;
+}
+
 export async function cacheGetBest(digest, options = {}, qualities = ["high"]) {
   if (!digest) return null;
   const ordered=[...new Set(qualities.filter((q)=>["standard","high","max"].includes(q)))];
@@ -103,35 +148,38 @@ export async function cacheGet(key) {
     const tx = database.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
     const row = await request(store.get(key));
-    if (!row || !(row.bytes instanceof Uint8Array || row.bytes instanceof ArrayBuffer)) {
+    const hit = cacheHitFromRow(row);
+    if (!hit) {
       await txDone(tx);
       return null;
     }
     row.lastUsed = Date.now();
     store.put(row);
     await txDone(tx);
-    return {
-      bytes: row.bytes instanceof Uint8Array ? row.bytes : new Uint8Array(row.bytes),
-      stars: Number(row.stars) || 0,
-      microdetails: Number(row.microdetails) || 0,
-      size: Number(row.size) || row.bytes.byteLength || 0,
-      textureClass: row.textureClass || null,
-      detailQuality: row.detailQuality || null,
-      material: row.material || null,
-      metrics: row.metrics || null,
-      classification: row.classification || null,
-      materialInfo: row.materialInfo || null,
-      wrap: row.wrap || null,
-      failures: row.failures || null,
-      masterScale:Number(row.masterScale)||4,
-      internalMaster:row.internalMaster===true,
-      specializedCnnUsed:row.specializedCnnUsed===true,
-      specializedRejected:row.specializedRejected===true,
-      specializedModelSha:row.specializedModelSha||null,
-      textureComplexity:Number(row.textureComplexity)||0,
-      tileGeometry:row.tileGeometry||null,
-      alphaEdges:row.alphaEdges||null,
-    };
+    return hit;
+  } catch {
+    sessionDisabled = true;
+    return null;
+  }
+}
+
+export async function cacheGetLatest(digest) {
+  if (!digest || !available()) return null;
+  try {
+    const database = await db();
+    const tx = database.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const rows = await request(store.getAll());
+    const row = newestCacheRowForDigest(rows, digest);
+    const hit = cacheHitFromRow(row);
+    if (!row || !hit) {
+      await txDone(tx);
+      return null;
+    }
+    row.lastUsed = Date.now();
+    store.put(row);
+    await txDone(tx);
+    return {key:row.key, detailQuality:row.detailQuality||null, hit};
   } catch {
     sessionDisabled = true;
     return null;
