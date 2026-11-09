@@ -8,7 +8,7 @@ name: release
   workflow_dispatch: {}
 
 concurrency:
-  group: release-v3-${{ github.ref }}
+  group: release-v4-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
