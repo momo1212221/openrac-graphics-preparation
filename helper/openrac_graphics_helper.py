@@ -16,6 +16,8 @@ import sys
 import tempfile
 import zipfile
 
+from geometry_enhance import enhance_export
+
 JOB_KIND = "openrac-graphics-preparation-job"
 RESULT_KIND = "openrac-graphics-preparation-result"
 SUPPORTED = {"textures.prepare", "ai.textures", "ai.meshes"}
@@ -166,14 +168,114 @@ def texture_job(job: dict, root: Path, levels: Path, output: Path, upscaler: str
     }
 
 
+def mesh_job(job: dict, root: Path, levels: Path, output: Path, *, dry_run: bool) -> dict:
+    options = job.get("options") if isinstance(job.get("options"), dict) else {}
+    mode = str(options.get("profile", "high"))
+    if mode not in {"enhanced", "high", "ultra", "experimental"}:
+        raise ValueError("mesh profile must be enhanced, high, ultra or experimental")
+    scope = str(options.get("scope", "all"))
+    if scope not in {"mobys", "scenery", "terrain", "all"}:
+        raise ValueError("mesh scope must be mobys, scenery, terrain or all")
+    geometry_options = {
+        "shape_refine": bool(options.get("shape_refine", False)),
+        "allow_collision_mismatch": bool(options.get("allow_collision_mismatch", False)),
+    }
+    if isinstance(options.get("triangle_budget"), (int, float)):
+        geometry_options["triangle_budget"] = int(options["triangle_budget"])
+
+    levels_to_export = level_numbers(levels)
+    output.mkdir(parents=True, exist_ok=True)
+    pack = output / "pack"
+    archive = output / f"graphics-{job['game']}-{job['version']}-geometry-{mode}.zip"
+    report_path = output / "geometry-report.json"
+
+    with tempfile.TemporaryDirectory(prefix="openrac-geometry-") as scratch_name:
+        scratch = Path(scratch_name)
+        exported = scratch / "export"
+        export_cmd = [
+            sys.executable, str(root / "editor" / "assets.py"), "export",
+            str(levels), str(exported), "--what", scope,
+        ]
+        for level in levels_to_export:
+            export_cmd += ["--level", str(level)]
+        run(export_cmd, cwd=root, dry_run=dry_run)
+
+        if dry_run:
+            report = {
+                "format": 1,
+                "mode": mode,
+                "scope": scope,
+                "dry_run": True,
+                "files_seen": 0,
+                "files_changed": 0,
+                "triangles_before": 0,
+                "triangles_after": 0,
+                "collision_rebuild_recommended": [],
+            }
+        else:
+            report = enhance_export(exported, mode=mode, options=geometry_options)
+            report["scope"] = scope
+            report["shape_refine"] = geometry_options["shape_refine"]
+            report["allow_collision_mismatch"] = geometry_options["allow_collision_mismatch"]
+            if report["files_changed"] <= 0:
+                raise RuntimeError("no compatible OpenRAC glTF meshes were enhanced")
+
+        import_cmd = [
+            sys.executable,
+            str(root / "editor" / "assets.py"),
+            "import",
+            str(exported),
+            "--levels",
+            str(levels),
+            "--out",
+            str(pack),
+            "--name",
+            "Graphics preparation · Geometry",
+            "--author",
+            "OpenRAC graphics helper",
+            "--description",
+            f"Geometry enhancement {mode} for {job['game']} {job['version']}",
+        ]
+        run(import_cmd, cwd=root, dry_run=dry_run)
+        if not dry_run:
+            report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            zip_pack(pack, archive)
+
+    changed = int(report.get("files_changed", 0))
+    before = int(report.get("triangles_before", 0))
+    after = int(report.get("triangles_after", 0))
+    collision_count = len(report.get("collision_rebuild_recommended", []))
+    return {
+        "format": 1,
+        "kind": RESULT_KIND,
+        "operation": job["operation"],
+        "ok": True,
+        "output": str(archive.resolve()),
+        "report": str(report_path.resolve()),
+        "geometry": {
+            "profile": mode,
+            "scope": scope,
+            "files_changed": changed,
+            "triangles_before": before,
+            "triangles_after": after,
+            "collision_rebuild_recommended": collision_count,
+        },
+        "message": (
+            f"Dry run valid; planned geometry output is {archive.resolve()}."
+            if dry_run
+            else f"Enhanced {changed} model files ({before} -> {after} triangles). "
+                 f"Collision review recommended for {collision_count} moved primitives. "
+                 "Install the generated ZIP through OpenRAC's Mods page."
+        ),
+    }
+
+
 def process(job: dict, args: argparse.Namespace) -> dict:
-    if job["operation"] == "ai.meshes":
-        raise NotImplementedError(
-            "AI mesh preparation needs an explicit mesh backend; current official OpenRAC ships no mesh upscaler"
-        )
     root = openrac_root(args.openrac_root)
     levels = levels_dir(root, job, args.levels)
     output = Path(args.out or f"graphics-helper-{job['game']}-{job['version']}").expanduser().resolve()
+    if job["operation"] == "ai.meshes":
+        return mesh_job(job, root, levels, output, dry_run=args.dry_run)
     return texture_job(job, root, levels, output, args.upscaler, dry_run=args.dry_run)
 
 
