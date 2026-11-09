@@ -24,8 +24,8 @@ export function texturePackManifest(info, count, options = {}) {
     name: ai ? "Graphics preparation AI 4x" : `Graphics preparation ${options.scale ?? 4}x`,
     textures: count,
     madeWith: ai
-      ? `Graphics preparation 0.15.1 (dual-CNN ${options.mode ?? "balanced"} · ${options.detailQuality ?? "high"} detail)`
-      : `Graphics preparation 0.15.1 (${options.edgePreserving ? "edge-preserving" : "smooth"})`,
+      ? `Graphics preparation ${info.mod?.version ?? "0.21.2"} (dual-CNN ${options.mode ?? "balanced"} · ${options.detailQuality ?? "high"} detail)`
+      : `Graphics preparation ${info.mod?.version ?? "0.21.2"} (${options.edgePreserving ? "edge-preserving" : "smooth"})`,
   };
 }
 
