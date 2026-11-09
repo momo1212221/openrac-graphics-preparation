@@ -124,16 +124,40 @@ async function exportGeometryJob() {
   setBusy(true);
   let token=null;
   try{
+    if(info?.services?.includes("graphics-preparation")){
+      setMessage("Preparing geometry natively. OpenRAC exports the render meshes, refines them offline and activates the verified overrides for the next game start.");
+      const result=await controller.service("ai.meshes",{
+        mode:"enhanced",
+        options:job.options,
+      });
+      if(result?.available===false){
+        throw new Error("The installed launcher does not yet provide the integrated geometry backend.");
+      }
+      const processed=Number(result?.processed)||0;
+      const discovered=Number(result?.discovered)||processed;
+      const warning=issues.length ? " Review: "+issues.join("; ")+"." : "";
+      setMessage(
+        "Geometry ready: "+processed+" enhanced render mesh(es)"
+        +(discovered ? " from "+discovered+" discovered source mesh(es)" : "")
+        +". OpenRAC will load them automatically on the next game start."
+        +warning
+      );
+      return;
+    }
+
     token=await controller.saveStart(name,"json");
     if(!token){setMessage("Geometry job save cancelled.");return}
     await controller.saveWrite(token,encoder.encode(JSON.stringify(job,null,2)+"\n"));
     const saved=await controller.saveEnd(token,true);
     token=null;
     const warning=issues.length ? " Review: "+issues.join("; ")+"." : "";
-    setMessage("Saved geometry job "+saved+". Run it with helper/openrac_graphics_helper.py against your OpenRAC checkout; the helper exports glTF, refines it and creates a normal overrides ZIP."+warning);
+    setMessage(
+      "This launcher is too old for native geometry preparation. Saved compatibility job "+saved
+      +"; run it with helper/openrac_graphics_helper.py against your OpenRAC checkout."+warning
+    );
   }catch(error){
     if(token)await controller.saveEnd(token,false).catch(()=>undefined);
-    setMessage("Geometry job export failed: "+(error instanceof Error?error.message:String(error)),true);
+    setMessage("Geometry preparation failed safely: "+(error instanceof Error?error.message:String(error)),true);
   }finally{
     setBusy(false);
   }
