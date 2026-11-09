@@ -10,9 +10,9 @@ test('global Modern PS5 target enables guarded high-quality texture and geometry
   assert.equal(preset.sourceColorLock,true);
   assert.equal(preset.qualityGuard,true);
   assert.equal(preset.master8x,true);
-  assert.equal(preset.materialMaps,'key');
+  assert.equal(preset.materialMaps,'all');
   assert.equal(preset.mipmapMaps,undefined);
-  assert.equal(preset.mipmaps,'key');
+  assert.equal(preset.mipmaps,'all');
   assert.equal(preset.geometryProfile,'modern');
   assert.equal(preset.geometryAdaptiveSubdivision,true);
   assert.equal(preset.geometryAssetAwareRemesh,true);
