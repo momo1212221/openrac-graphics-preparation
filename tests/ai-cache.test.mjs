@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {cacheKey} from '../src/ai-cache.js';
+import {cacheKey,cacheKeyMatchesDigest,newestCacheRowForDigest} from '../src/ai-cache.js';
 
 test('cache keys include source digest and all output-affecting detail options',()=>{
   const digest='ab'.repeat(32);
@@ -41,4 +41,32 @@ test('material sidecar settings do not invalidate cached AI pixels',()=>{
 
 test('cache key is null without a cryptographic source digest',()=>{
   assert.equal(cacheKey(null,{mode:'balanced'}),null);
+});
+
+
+test('latest cached AI result is selected by source digest, not current settings',()=>{
+  const digest='ef'.repeat(32);
+  const older={
+    key:cacheKey(digest,{mode:'faithful',detailQuality:'high',textureScope:'world'}),
+    bytes:new Uint8Array([1]),created:100,lastUsed:900,detailQuality:'high',
+  };
+  const latest={
+    key:cacheKey(digest,{mode:'enhanced',detailQuality:'max',textureScope:'world',master8x:true}),
+    bytes:new Uint8Array([2]),created:200,lastUsed:300,detailQuality:'max',
+  };
+  const otherDigest='12'.repeat(32);
+  const unrelated={
+    key:cacheKey(otherDigest,{mode:'enhanced',detailQuality:'max'}),
+    bytes:new Uint8Array([3]),created:999,lastUsed:999,
+  };
+  assert.equal(cacheKeyMatchesDigest(latest.key,digest),true);
+  assert.equal(cacheKeyMatchesDigest(unrelated.key,digest),false);
+  assert.equal(newestCacheRowForDigest([older,unrelated,latest],digest),latest);
+});
+
+test('legacy cache rows without created timestamp fall back to lastUsed ordering',()=>{
+  const digest='34'.repeat(32);
+  const a={key:cacheKey(digest,{mode:'balanced',detailQuality:'high'}),bytes:new Uint8Array([1]),lastUsed:10};
+  const b={key:cacheKey(digest,{mode:'balanced',detailQuality:'max'}),bytes:new Uint8Array([2]),lastUsed:20};
+  assert.equal(newestCacheRowForDigest([a,b],digest),b);
 });
