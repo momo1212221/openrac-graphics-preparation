@@ -15,6 +15,9 @@ test('geometry job defaults use the modern adaptive target safely',()=>{
   assert.equal(cfg.shapeRefine,false);
   assert.equal(cfg.allowCollisionMismatch,false);
   assert.equal(cfg.adaptiveSubdivision,true);
+  assert.equal(cfg.microDisplacement,false);
+  assert.equal(cfg.heightSource,'auto');
+  assert.equal(cfg.displacementStrength,0.8);
   assert.equal(cfg.creaseAngleDegrees,null);
 
   const job=buildGeometryJob({game:'rac1',version:'pal'},cfg);
@@ -29,6 +32,9 @@ test('geometry job defaults use the modern adaptive target safely',()=>{
     shape_refine:false,
     allow_collision_mismatch:false,
     adaptive_subdivision:true,
+    micro_displacement:false,
+    height_source:'auto',
+    displacement_strength:0.8,
   });
 });
 
@@ -39,6 +45,9 @@ test('modern PS5-target preset turns on safe static shape refinement',()=>{
   assert.equal(cfg.shapeRefine,true);
   assert.equal(cfg.allowCollisionMismatch,false);
   assert.equal(cfg.adaptiveSubdivision,true);
+  assert.equal(cfg.microDisplacement,true);
+  assert.equal(cfg.heightSource,'auto');
+  assert.equal(cfg.displacementStrength,0.8);
   assert.equal(cfg.triangleBudget,null);
   assert.equal(cfg.creaseAngleDegrees,null);
 });
@@ -50,16 +59,23 @@ test('geometry settings clamp budgets and crease angle and expose risky collisio
     shapeRefine:true,
     allowCollisionMismatch:true,
     adaptiveSubdivision:false,
+    microDisplacement:true,
+    heightSource:'sidecar',
+    displacementStrength:99,
     creaseAngleDegrees:500,
     triangleBudget:9_999_999,
   });
   assert.equal(cfg.triangleBudget,1_000_000);
   assert.equal(cfg.creaseAngleDegrees,120);
   assert.equal(cfg.adaptiveSubdivision,false);
+  assert.equal(cfg.microDisplacement,true);
+  assert.equal(cfg.heightSource,'sidecar');
+  assert.equal(cfg.displacementStrength,1.5);
   const issues=geometryJobIssues({game:'rac1',version:'pal'},cfg);
   assert.ok(issues.some(v=>v.includes('collision')));
   assert.ok(issues.some(v=>v.includes('experimental')));
   assert.ok(issues.some(v=>v.includes('uniform subdivision')));
+  assert.ok(issues.some(v=>v.includes('height.png')));
 });
 
 test('geometry job filename is deterministic and sanitized',()=>{
