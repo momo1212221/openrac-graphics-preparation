@@ -1,4 +1,5 @@
 import {validateMaterialMaps} from "./material-map-quality.js";
+import {fuseEmissivePrediction} from "./emissive-cnn-fusion.js";
 import {calibratePbrMaps,validatePbrCalibration} from "./pbr-calibration.js";
 import {deriveAlbedoSidecar,validateAlbedoSidecar} from "./albedo-delight.js";
 import {deriveHeightBands,mergeHeightBands,normalFromHeight,deriveHeightSurfaceMaps} from "./material-height.js";
@@ -124,7 +125,23 @@ export function deriveMaterialMaps(image,material="generic",options={}){
   const {width:w,height:h,data}=image;
 
   // Detect emission first so de-lighting cannot flatten intentional lamps, plasma or weapon LEDs.
-  const {emissive,emissivePixels}=deriveEmissiveFromSource(image,material);
+  const heuristicEmission=deriveEmissiveFromSource(image,material);
+  // Offline CNN refinement is opt-in and only accepts a prepared pixel-aligned prediction.
+  // Without one, preserve the historical mask, albedo de-lighting, file output and AI cache.
+  const cnn=options.emissivePrediction
+    ?fuseEmissivePrediction({
+      source:image,
+      heuristic:heuristicEmission.emissive,
+      prediction:options.emissivePrediction,
+      material,
+      mode:options.emissiveCnnMode==="verify"?"verify":"augment",
+      confidence:options.emissiveCnnConfidence??0.94,
+      allowGreenEmission:options.emissiveAllowGreenEmission===true,
+      modelSha256:options.emissiveCnnModelSha256??null,
+    })
+    :null;
+  const emissive=cnn?.emissive??heuristicEmission.emissive;
+  const emissivePixels=cnn?.emissivePixels??heuristicEmission.emissivePixels;
 
   // Stage 1: remove bounded low-frequency lighting bias before any geometry reconstruction,
   // while protecting the source-derived emissive mask.
@@ -229,6 +246,7 @@ export function deriveMaterialMaps(image,material="generic",options={}){
     ...maps,
     ...(reliefPreview?{reliefPreview}:{}),
     emissivePixels,
+    ...(cnn?{emissiveCnn:cnn.report}:{}),
     pbrCalibration,
     pbrValidation,
     albedoDelight:{...albedoResult,image:undefined},
@@ -284,6 +302,7 @@ export async function generateMaterialMapPngs(bytes,material="generic",options={
       albedoDelight:maps.albedoDelight,albedoValidation:maps.albedoValidation,
       heightPipeline:maps.heightPipeline,
       quality:validateMaterialMaps(maps),
+      ...(maps.emissiveCnn?{emissiveCnn:maps.emissiveCnn}:{}),
     };
     const names=[
       "albedo","normal","roughness","height","ao","emissive","specular","metallic",
