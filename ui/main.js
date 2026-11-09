@@ -765,7 +765,7 @@ async function createPack({ai, cacheOnly=false}) {
         for (const member of group.members) {
           // The cleaned albedo is the actual colour replacement. OpenRAC generates the ordinary
           // 3D mip chain at upload time; material sidecars get their own specialised mip filters.
-          await zip.add(packPath(member), generatedMaps?.albedo || prepared.bytes);
+          await zip.add(packPath(member), generatedMaps?.albedoValidation?.ok ? generatedMaps.albedo : prepared.bytes);
           if (generatedMaps) {
             const root = `Materials/${member.hash}/`;
             await zip.add(root+"normal.png", generatedMaps.normal);
