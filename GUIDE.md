@@ -26,24 +26,17 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 5. Wähle die ZIP-Datei aus.
 6. Aktiviere **Graphics preparation**, falls OpenRAC den Mod nicht automatisch aktiviert.
 
-## 3. Spieltexturen erfassen
+## 3. Texturquellen
 
-Bevor der AI-Upscaler arbeiten kann, muss OpenRAC die verwendeten Texturen speichern.
+Mit einem aktuellen OpenRAC Dev Launcher musst du statische Welttexturen nicht mehr erst durch Spielen dumpen. Beim Öffnen von **Graphics preparation** stellt der Launcher fehlende Quellen automatisch aus den bereits extrahierten Level-PNGs bereit. Dabei wird derselbe OpenRAC-Texture-Hash wie im Renderer berechnet.
 
-1. Öffne **Models and textures**.
-2. Aktiviere **Save the game's textures while you play**.
-3. Starte das Spiel.
-4. Spiele die Level und Bereiche, deren Texturen du verbessern möchtest.
-
-Nur Texturen, die OpenRAC tatsächlich gesehen und gespeichert hat, können anschließend verarbeitet werden. Für einen möglichst vollständigen Planet- oder Level-Pack solltest du den betreffenden Bereich einmal vollständig durchspielen beziehungsweise besuchen.
+Bereits vorhandene Runtime-Dumps werden niemals überschrieben. Für Texturen, die nur während des Spiels entstehen oder nicht im statischen Level-Export liegen – insbesondere HUD, manche Animationen und dynamische Sonderfälle – kannst du weiterhin **Models and textures -> Save the game's textures while you play** aktivieren und den betreffenden Inhalt einmal starten.
 
 ## 4. Graphics preparation öffnen
 
-Kehre nach dem Erfassen der Texturen zum Launcher zurück und öffne **Graphics preparation**.
+Öffne **Graphics preparation**. Der Mod prüft zuerst vorhandene Runtime-Dumps. Sind dort keine Texturen vorhanden und unterstützt der Launcher die native Graphics-preparation-Schnittstelle, werden statische Level-Texturen automatisch ergänzt und anschließend normal verarbeitet.
 
-Der Mod durchsucht die gespeicherten OpenRAC-Texturen automatisch.
-
-Wenn keine Texturen gefunden werden, prüfe zuerst, ob **Save the game's textures while you play** aktiviert war und ob du danach tatsächlich ein Level gestartet hast.
+Bleibt die Liste leer, verwendest du entweder einen älteren Launcher oder für diesen Spielstand fehlen extrahierte Level-Daten. In diesem Fall bleibt der bisherige Runtime-Dump-Weg als Fallback erhalten.
 
 ## 5. Empfohlene Einstellungen
 
