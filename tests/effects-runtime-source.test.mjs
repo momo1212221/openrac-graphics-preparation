@@ -46,3 +46,12 @@ test('native runtime reads effects only from enabled plugins.json entries',()=>{
   assert.match(parser,/enabled/);
   assert.match(parser,/safe_plugin_id/);
 });
+
+
+test('native runtime filters authored effects to the running game and disc',()=>{
+  const source=readFileSync(root+'effects-runtime/src/mod.cpp','utf8');
+  const parser=readFileSync(root+'effects-runtime/src/plugin_list.h','utf8');
+  assert.match(source,/effects_plugin_id\(mod\.game\(\), mod\.version\(\)\)/);
+  assert.match(source,/if \(id != expected\) continue/);
+  assert.match(parser,/graphics-effects-/);
+});

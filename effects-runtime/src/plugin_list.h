@@ -109,4 +109,15 @@ inline std::vector<std::string> parse_active_plugin_ids(std::string_view text) {
     if (!c.done()) throw std::runtime_error("trailing data in plugins.json");
     return out;
 }
+inline std::string effects_plugin_id(std::string_view game, std::string_view version) {
+    const auto safe_part=[](std::string_view part) {
+        if (part.empty()) return false;
+        for (unsigned char c : part) {
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return false;
+        }
+        return true;
+    };
+    if (!safe_part(game) || !safe_part(version)) throw std::runtime_error("unsafe game/version id");
+    return "graphics-effects-" + std::string(game) + "-" + std::string(version);
+}
 } // namespace graphics_effects

@@ -50,6 +50,8 @@ int main() {
     assert(ids.size() == 2);
     assert(ids[0] == "graphics-preparation");
     assert(ids[1] == "fx-on");
+    assert(graphics_effects::effects_plugin_id("rac1", "pal") == "graphics-effects-rac1-pal");
+    assert(graphics_effects::effects_plugin_id("rac2", "ntsc2") == "graphics-effects-rac2-ntsc2");
 
     bool bad = false;
     try {
