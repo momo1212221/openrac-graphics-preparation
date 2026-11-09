@@ -673,7 +673,7 @@ async function createPack({ai}) {
             }
             const mipMeta = {
               format:1,
-              generator:"Graphics preparation 0.17.1",
+              generator:"Graphics preparation 0.17.2",
               sourceHash:member.hash,
               sourceWidth:generatedMips.sourceWidth,
               sourceHeight:generatedMips.sourceHeight,
@@ -701,7 +701,7 @@ async function createPack({ai}) {
             await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.17.1",
+              generator:"Graphics preparation 0.17.2",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
@@ -1192,7 +1192,7 @@ async function start() {
   await qualityLab.start();
   document.addEventListener("graphics-effects-change", () => render());
   document.addEventListener("graphics-quality-lab-change", () => render());
-  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.17.1 · adaptive standard-launcher AI`;
+  subtitle.textContent = `${info.game} / ${info.version} · Mod 0.17.2 · adaptive standard-launcher AI`;
   const saved = await controller.storeGet("texture-preparation").catch(() => null);
   if (saved && typeof saved === "object") {
     state = {
