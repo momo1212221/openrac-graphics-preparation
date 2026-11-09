@@ -1,9 +1,13 @@
-Graphics preparation 0.17.1 fixes the OpenRAC launcher store-key failure in long-running AI exports.
+Graphics preparation 0.17.2 fixes native installation from a GitHub release link.
 
-- Fixes **"a bad key"** appearing after the duplicate scan and before the AI texture loop.
-- The AI resume journal no longer uses a colon in its persistent store key.
-- Pack ids are sanitized to OpenRAC's documented `[a-z0-9_-]` key alphabet and the complete key is capped at 64 characters.
-- `ModController.storeGet/storeSet` now validate that same launcher contract locally, preventing future invalid keys from reaching the bridge.
-- Tests cover colon/dot removal, lowercasing, the 64-character limit and rejection of invalid store keys.
-- Persistent IndexedDB AI texture results are separate from the run journal, so cached completed textures remain reusable after the hotfix.
-- The one-package native runtime, AI/material pipeline, 90/94/97 quality gates and effects integration from 0.17.0 remain unchanged.
+- Publishes the exact OpenRAC native asset names required by the launcher:
+  - `graphics-preparation-0.17.2-macos-arm64.zip`
+  - `graphics-preparation-0.17.2-macos-x86_64.zip`
+  - `graphics-preparation-0.17.2-linux-x86_64.zip`
+  - `graphics-preparation-0.17.2-linux-aarch64.zip`
+  - `graphics-preparation-0.17.2-windows-x86_64.zip`
+- Each platform archive is a complete Graphics preparation install, not only the native runtime library: it includes the launcher tool UI, local ONNX/WASM AI stack, models/material pipeline and only that platform's native library.
+- The joined `graphics-preparation-0.17.2.zip` remains available for manual installation.
+- `SHA256SUMS` covers the joined archive and every platform archive.
+- Release CI refuses publication if any expected platform asset or checksum line is missing.
+- Includes the 0.17.1 OpenRAC store-key hotfix for the previous **"a bad key"** failure.
