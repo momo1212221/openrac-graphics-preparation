@@ -277,7 +277,7 @@ export class EffectsEditor {
       card.append(vecFields("Colour RGB",light.colour,async v=>{light.colour=v;await this.persist()}));
       const g=node("div",undefined,"effect-grid four");
       g.append(field("Intensity",light.intensity,async v=>{light.intensity=v;await this.persist()},{min:"0"}));
-      g.append(field("Range",light.range,async v=>{light.range=v;await this.persist()},{min:"0"}));
+      g.append(field("Range",light.range,async v=>{light.range=v;await this.persist()},{min:"0.01",step:"0.01"}));
       if(light.type==="spot"){
         g.append(field("Inner angle",light.inner_angle,async v=>{light.inner_angle=v;await this.persist()},{step:"0.05",min:"0",max:"1.55"}));
         g.append(field("Outer angle",light.outer_angle,async v=>{light.outer_angle=v;await this.persist()},{step:"0.05",min:"0",max:"1.56"}));

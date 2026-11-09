@@ -338,17 +338,26 @@ export function objectLightIssues(state){
   const issues=[];
   const rows=Array.isArray(state?.lights)?state.lights:[];
   if(rows.length>4096)issues.push("Enhanced renderer supports at most 4096 authored local lights");
+  const rawVec=(value)=>Array.isArray(value)&&value.length===3&&value.every(v=>typeof v==="number"&&Number.isFinite(v));
   rows.forEach((raw,index)=>{
+    raw=raw&&typeof raw==="object"?raw:{};
     const light=normalizeLight(raw), label=`Light ${index+1} (${light.name})`;
     if(!light.object)issues.push(`${label}: no object is selected`);
-    if(!Number.isFinite(light.range)||light.range<=0)issues.push(`${label}: range must be positive`);
-    if(!Number.isFinite(light.intensity)||light.intensity<0)issues.push(`${label}: intensity must be non-negative`);
-    if(!light.position.every(Number.isFinite)||!light.colour.every(v=>Number.isFinite(v)&&v>=0))issues.push(`${label}: position/colour must be finite and colour non-negative`);
+    if(String(raw.object||"").length>512)issues.push(`${label}: object key exceeds 512 bytes`);
+    if(raw.range!==undefined&&(!Number.isFinite(Number(raw.range))||Number(raw.range)<=0))issues.push(`${label}: range must be positive`);
+    if(raw.intensity!==undefined&&(!Number.isFinite(Number(raw.intensity))||Number(raw.intensity)<0))issues.push(`${label}: intensity must be non-negative`);
+    if(raw.position!==undefined&&!rawVec(raw.position))issues.push(`${label}: position must contain three finite numbers`);
+    if(raw.colour!==undefined&&(!rawVec(raw.colour)||raw.colour.some(v=>v<0)))issues.push(`${label}: colour must contain three finite non-negative numbers`);
     if(light.type==="spot"){
-      const axis=Math.hypot(...light.direction);
+      if(raw.direction!==undefined&&!rawVec(raw.direction))issues.push(`${label}: direction must contain three finite numbers`);
+      const direction=rawVec(raw.direction)?raw.direction:light.direction;
+      const axis=Math.hypot(...direction);
       if(!Number.isFinite(axis)||axis<1e-6)issues.push(`${label}: spot direction must be non-zero`);
-      const inner=Math.min(light.inner_angle,light.outer_angle), outer=Math.max(light.inner_angle,light.outer_angle);
-      if(inner<0||outer>=Math.PI/2)issues.push(`${label}: spot angles must satisfy 0 <= inner <= outer < pi/2`);
+      const inner=raw.inner_angle===undefined?light.inner_angle:Number(raw.inner_angle);
+      const outer=raw.outer_angle===undefined?light.outer_angle:Number(raw.outer_angle);
+      if(!Number.isFinite(inner)||!Number.isFinite(outer)||inner<0||outer<inner||outer>=Math.PI/2){
+        issues.push(`${label}: spot angles must satisfy 0 <= inner <= outer < pi/2`);
+      }
     }
   });
   return issues;

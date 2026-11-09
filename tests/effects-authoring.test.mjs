@@ -338,3 +338,27 @@ test('object selector rejects traversal but preserves glb/gltf suffixes used by 
   const [level]=await loadLevels(controller);
   assert.deepEqual(level.objects.map(x=>x.key),['ties/tie_1.glb','ties/tie_2.gltf']);
 });
+
+
+test('object-light validation never silently repairs values stock Enhanced rejects',()=>{
+  const state={
+    lights:[
+      {object:'mobys/lamp.glb',name:'zero range',type:'point',position:[0,0,0],colour:[1,1,1],intensity:1,range:0},
+      {object:'mobys/lamp.glb',name:'negative colour',type:'point',position:[0,0,0],colour:[1,-.1,1],intensity:1,range:2},
+      {object:'mobys/lamp.glb',name:'bad cone',type:'spot',position:[0,0,0],colour:[1,1,1],intensity:1,range:2,direction:[0,0,-1],inner_angle:1,outer_angle:.5},
+      {object:'mobys/lamp.glb',name:'zero axis',type:'spot',position:[0,0,0],colour:[1,1,1],intensity:1,range:2,direction:[0,0,0],inner_angle:.2,outer_angle:.5},
+    ],
+  };
+  const issues=objectLightIssues(state).join('\n');
+  assert.match(issues,/zero range.*range must be positive/);
+  assert.match(issues,/negative colour.*colour must contain three finite non-negative numbers/);
+  assert.match(issues,/bad cone.*spot angles/);
+  assert.match(issues,/zero axis.*spot direction must be non-zero/);
+});
+
+test('valid stock Enhanced point and spot lights pass raw validation unchanged',()=>{
+  assert.deepEqual(objectLightIssues({lights:[
+    {object:'mobys/lamp.glb',name:'point',type:'point',position:[1,2,3],colour:[2,.5,0],intensity:0,range:.01},
+    {object:'ties/tie_5.gltf',name:'spot',type:'spot',position:[0,0,0],colour:[1,1,1],intensity:3,range:20,direction:[0,0,-1],inner_angle:.2,outer_angle:.55},
+  ]}),[]);
+});
