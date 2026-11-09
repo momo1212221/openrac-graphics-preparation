@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.21.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.21.2 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 The normal texture-AI workflow needs no custom launcher service, Python helper or external executable.
 Geometry Enhancement is optional and uses the bundled Python helper only for OpenRAC's official
@@ -18,15 +18,14 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.21.1.zip`.
-3. In **Models and textures**, enable **Save the game's textures while you play**.
-4. Play the content whose textures you want to prepare.
-5. Open **Graphics preparation**.
-6. Choose Faithful, Balanced or Maximum Detail.
-7. Choose whether to preserve micro-detail and stars/tiny lights.
-8. Press **Prepare AI graphics**.
-9. Choose where OpenRAC should save the generated texture-pack ZIP.
-10. Add that ZIP through **Mods -> Add a mod**.
+2. Install `graphics-preparation-0.21.2.zip`.
+3. Open **Graphics preparation**. Current Dev Launchers automatically recover static world textures from the already extracted level data.
+4. For HUD, animated or other runtime-only textures, optionally enable **Models and textures -> Save the game's textures while you play** and play the relevant content once.
+5. Choose Faithful, Balanced or Maximum Detail.
+6. Choose whether to preserve micro-detail and stars/tiny lights.
+7. Press **Prepare AI graphics**.
+8. Choose where OpenRAC should save the generated texture-pack ZIP.
+9. Add that ZIP through **Mods -> Add a mod**.
 
 Step 10 is required because the stock Mod Tool protocol deliberately allows a mod page to save files
 and no longer needs to install a second effects runtime: the native particle/glow/haze runtime is built into Graphics preparation 0.17.0.
