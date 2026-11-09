@@ -963,7 +963,9 @@ def enhance_gltf(
                 *(abs(after_box[0][i]-before_box[0][i]) for i in range(3)),
                 *(abs(after_box[1][i]-before_box[1][i]) for i in range(3)),
             ) / scale
-            collision_warning = moved_max > scale * 0.002
+            displacement_max = float(displacement.get("max_move", 0.0)) if isinstance(displacement, dict) else 0.0
+            total_vertex_move = max(moved_max, displacement_max)
+            collision_warning = total_vertex_move > scale * 0.002
             row.update(
                 changed=True,
                 vertices_before=vertex_count,
@@ -980,8 +982,8 @@ def enhance_gltf(
                 crease_vertices_split=crease_vertices_split,
                 micro_displacement=displacement,
                 shape_refine=profile.shape_relax > 0,
-                max_vertex_move=moved_max,
-                mean_vertex_move=moved_mean,
+                max_vertex_move=total_vertex_move,
+                mean_vertex_move=max(moved_mean, float(displacement.get("mean_move", 0.0)) if isinstance(displacement, dict) else 0.0),
                 bbox_relative_shift=bbox_shift,
                 collision_rebuild_recommended=collision_warning,
             )
