@@ -1,13 +1,10 @@
-Graphics preparation 0.17.2 fixes native installation from a GitHub release link.
+Graphics preparation 0.17.3 preserves the user's previous AI upscale while making the staged material maps easy to add afterwards.
 
-- Publishes the exact OpenRAC native asset names required by the launcher:
-  - `graphics-preparation-0.17.2-macos-arm64.zip`
-  - `graphics-preparation-0.17.2-macos-x86_64.zip`
-  - `graphics-preparation-0.17.2-linux-x86_64.zip`
-  - `graphics-preparation-0.17.2-linux-aarch64.zip`
-  - `graphics-preparation-0.17.2-windows-x86_64.zip`
-- Each platform archive is a complete Graphics preparation install, not only the native runtime library: it includes the launcher tool UI, local ONNX/WASM AI stack, models/material pipeline and only that platform's native library.
-- The joined `graphics-preparation-0.17.2.zip` remains available for manual installation.
-- `SHA256SUMS` covers the joined archive and every platform archive.
-- Release CI refuses publication if any expected platform asset or checksum line is missing.
-- Includes the 0.17.1 OpenRAC store-key hotfix for the previous **"a bad key"** failure.
+- Adds **Add materials to last AI run** to the normal OpenRAC Mod Tool page.
+- The material rebuild never starts Real-ESRGAN or the detail CNN. It reads the existing persistent AI cache and generates the staged Albedo/Height/Normal/AO/Roughness/Curvature sidecars from those cached 4x pixels.
+- Auto-detail exports can recover an existing Standard/High/Max cache entry instead of requiring the current automatic planner to choose the exact same quality tier.
+- A cache miss in this special rebuild path uses the deterministic 4x fallback only; it never silently launches a new AI inference pass.
+- The existing IndexedDB database, cache-key pipeline identity and completed-run record are unchanged. Upgrading from 0.17.2 does not clear or migrate the user's cached AI results.
+- The saved pack records `ai_cache_only_material_rebuild: true` and `material_maps_mode: all-from-last-ai-cache` so it is auditable.
+- Normal/Roughness/AO/Height still require OpenRAC's enhanced material-sidecar renderer to affect live lighting; the generated maps themselves remain deterministic and inspectable in Quality Lab.
+- Existing one-package native runtime, particles/glow/haze, CNN models, quality guard, duplicate elimination and resume behavior are unchanged.

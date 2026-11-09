@@ -712,7 +712,7 @@ async function createPack({ai, cacheOnly=false}) {
             }
             const mipMeta = {
               format:1,
-              generator:"Graphics preparation 0.17.2",
+              generator:"Graphics preparation 0.17.3",
               sourceHash:member.hash,
               sourceWidth:generatedMips.sourceWidth,
               sourceHeight:generatedMips.sourceHeight,
@@ -740,7 +740,7 @@ async function createPack({ai, cacheOnly=false}) {
             await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.17.2",
+              generator:"Graphics preparation 0.17.3",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
