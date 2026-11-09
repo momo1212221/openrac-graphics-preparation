@@ -17,3 +17,12 @@ test('strict checker matches power-of-two and budget rules',()=>{
  const issues=bakerSettingsIssues({...valid,probeResolution:96,maximumProbes:513,spacing:1,rays:15,bounces:33}).join('\n');
  assert.match(issues,/power of two/); assert.match(issues,/1 to 512/); assert.match(issues,/between 2 and 1024/); assert.match(issues,/16 to 1048576/); assert.match(issues,/0 to 32/);
 });
+
+
+test('missing profile uses the stock Enhanced baker defaults',()=>{
+  const out=normalizeBakerSettings({},{});
+  assert.deepEqual(out,{
+    skyIntensity:1,skyWeight:.7,surfaceEmissionScale:1,environmentProbes:false,
+    probeResolution:64,maximumProbes:512,spacing:24,rays:128,bounces:2,adaptiveRays:true,
+  });
+});

@@ -165,7 +165,7 @@ export class EffectsEditor {
     bgrid.append(field("Sky intensity",this.state.baker.skyIntensity,v=>void this.updateBaker("skyIntensity",v),{step:"0.05",min:"0",max:"1000000"}));
     bgrid.append(field("Sky weight",this.state.baker.skyWeight,v=>void this.updateBaker("skyWeight",v),{step:"0.05",min:"0",max:"1"}));
     bgrid.append(field("Surface emission",this.state.baker.surfaceEmissionScale,v=>void this.updateBaker("surfaceEmissionScale",v),{step:"0.1",min:"0",max:"1000000"}));
-    bgrid.append(selectField("Probe resolution",String(this.state.baker.probeResolution),[16,32,64,128,256].map(v=>[String(v),String(v)]),v=>void this.updateBaker("probeResolution",Number(v))));
+    bgrid.append(selectField("Probe resolution",String(this.state.baker.probeResolution),[4,8,16,32,64,128,256].map(v=>[String(v),String(v)]),v=>void this.updateBaker("probeResolution",Number(v))));
     bgrid.append(field("Maximum probes",this.state.baker.maximumProbes,v=>void this.updateBaker("maximumProbes",Math.round(v)),{step:"1",min:"1",max:"512"}));
     bgrid.append(field("Probe spacing",this.state.baker.spacing,v=>void this.updateBaker("spacing",v),{step:"1",min:"2",max:"1024"}));
     bgrid.append(field("Rays / probe",this.state.baker.rays,v=>void this.updateBaker("rays",Math.round(v)),{step:"16",min:"16",max:"1048576"}));

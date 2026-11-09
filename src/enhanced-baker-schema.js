@@ -3,8 +3,8 @@
 
 export const BAKER_RESOLUTIONS=Object.freeze([4,8,16,32,64,128,256]);
 export const DEFAULT_BAKER_SETTINGS=Object.freeze({
-  skyIntensity:0.5, skyWeight:0.3, surfaceEmissionScale:1, environmentProbes:true,
-  probeResolution:64, maximumProbes:512, spacing:24, rays:256, bounces:3, adaptiveRays:true,
+  skyIntensity:1, skyWeight:0.7, surfaceEmissionScale:1, environmentProbes:false,
+  probeResolution:64, maximumProbes:512, spacing:24, rays:128, bounces:2, adaptiveRays:true,
 });
 
 const own=(v,k)=>v&&typeof v==="object"&&Object.prototype.hasOwnProperty.call(v,k);
@@ -20,15 +20,15 @@ export function normalizeBakerSettings(value={},baseProfile={}){
   const enabled=pick(value,"environmentProbes",env,"enabled",DEFAULT_BAKER_SETTINGS.environmentProbes);
   const adaptive=pick(value,"adaptiveRays",baseProfile,"adaptive_rays",DEFAULT_BAKER_SETTINGS.adaptiveRays);
   return {
-    skyIntensity:clamp(finite(pick(value,"skyIntensity",baseProfile,"sky_intensity",0.5),0.5),0,1e6),
-    skyWeight:clamp(finite(pick(value,"skyWeight",baseProfile,"sky_weight",0.3),0.3),0,1),
-    surfaceEmissionScale:clamp(finite(pick(value,"surfaceEmissionScale",baseProfile,"surface_emission_scale",1),1),0,1e6),
+    skyIntensity:clamp(finite(pick(value,"skyIntensity",baseProfile,"sky_intensity",DEFAULT_BAKER_SETTINGS.skyIntensity),DEFAULT_BAKER_SETTINGS.skyIntensity),0,1e6),
+    skyWeight:clamp(finite(pick(value,"skyWeight",baseProfile,"sky_weight",DEFAULT_BAKER_SETTINGS.skyWeight),DEFAULT_BAKER_SETTINGS.skyWeight),0,1),
+    surfaceEmissionScale:clamp(finite(pick(value,"surfaceEmissionScale",baseProfile,"surface_emission_scale",DEFAULT_BAKER_SETTINGS.surfaceEmissionScale),DEFAULT_BAKER_SETTINGS.surfaceEmissionScale),0,1e6),
     environmentProbes:enabled!==false,
-    probeResolution:nearestResolution(pick(value,"probeResolution",env,"resolution",64)),
-    maximumProbes:integer(pick(value,"maximumProbes",env,"maximum_probes",512),512,1,512),
-    spacing:clamp(finite(pick(value,"spacing",env,"spacing",24),24),2,1024),
-    rays:integer(pick(value,"rays",baseProfile,"rays",256),256,16,1048576),
-    bounces:integer(pick(value,"bounces",baseProfile,"bounces",3),3,0,32),
+    probeResolution:nearestResolution(pick(value,"probeResolution",env,"resolution",DEFAULT_BAKER_SETTINGS.probeResolution)),
+    maximumProbes:integer(pick(value,"maximumProbes",env,"maximum_probes",DEFAULT_BAKER_SETTINGS.maximumProbes),DEFAULT_BAKER_SETTINGS.maximumProbes,1,512),
+    spacing:clamp(finite(pick(value,"spacing",env,"spacing",DEFAULT_BAKER_SETTINGS.spacing),DEFAULT_BAKER_SETTINGS.spacing),2,1024),
+    rays:integer(pick(value,"rays",baseProfile,"rays",DEFAULT_BAKER_SETTINGS.rays),DEFAULT_BAKER_SETTINGS.rays,16,1048576),
+    bounces:integer(pick(value,"bounces",baseProfile,"bounces",DEFAULT_BAKER_SETTINGS.bounces),DEFAULT_BAKER_SETTINGS.bounces,0,32),
     adaptiveRays:adaptive!==false,
   };
 }
