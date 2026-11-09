@@ -25,6 +25,20 @@ test('cache keys include source digest and all output-affecting detail options',
   assert.match(a,/stars1/);
 });
 
+
+test('material sidecar settings do not invalidate cached AI pixels',()=>{
+  const digest='cd'.repeat(32);
+  const base={
+    mode:'balanced',detailQuality:'high',textureScope:'world',detailCnn:true,
+    sourceColorLock:true,qualityGuard:true,preserveMicrodetail:true,preserveStars:true,
+    master8x:true,specializedFingerprint:'model-a',
+  };
+  assert.equal(
+    cacheKey(digest,{...base,materialMaps:'off',materialCurvature:false}),
+    cacheKey(digest,{...base,materialMaps:'all',materialCurvature:true}),
+  );
+});
+
 test('cache key is null without a cryptographic source digest',()=>{
   assert.equal(cacheKey(null,{mode:'balanced'}),null);
 });
