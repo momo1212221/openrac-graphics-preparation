@@ -1,7 +1,7 @@
 name: mod
 on: [push, pull_request, workflow_dispatch]
 concurrency:
-  group: mod-${{ github.ref }}
+  group: mod-v2-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
