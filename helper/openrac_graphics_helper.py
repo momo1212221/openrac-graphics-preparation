@@ -171,15 +171,18 @@ def texture_job(job: dict, root: Path, levels: Path, output: Path, upscaler: str
 def mesh_job(job: dict, root: Path, levels: Path, output: Path, *, dry_run: bool) -> dict:
     options = job.get("options") if isinstance(job.get("options"), dict) else {}
     mode = str(options.get("profile", "high"))
-    if mode not in {"enhanced", "high", "ultra", "experimental"}:
-        raise ValueError("mesh profile must be enhanced, high, ultra or experimental")
+    if mode not in {"enhanced", "high", "ultra", "modern", "experimental"}:
+        raise ValueError("mesh profile must be enhanced, high, ultra, modern or experimental")
     scope = str(options.get("scope", "all"))
     if scope not in {"mobys", "scenery", "terrain", "all"}:
         raise ValueError("mesh scope must be mobys, scenery, terrain or all")
     geometry_options = {
         "shape_refine": bool(options.get("shape_refine", False)),
         "allow_collision_mismatch": bool(options.get("allow_collision_mismatch", False)),
+        "adaptive_subdivision": options.get("adaptive_subdivision", True) is not False,
     }
+    if isinstance(options.get("crease_angle_degrees"), (int, float)):
+        geometry_options["crease_angle_degrees"] = float(options["crease_angle_degrees"])
     if isinstance(options.get("triangle_budget"), (int, float)):
         geometry_options["triangle_budget"] = int(options["triangle_budget"])
 
@@ -217,6 +220,8 @@ def mesh_job(job: dict, root: Path, levels: Path, output: Path, *, dry_run: bool
             report["scope"] = scope
             report["shape_refine"] = geometry_options["shape_refine"]
             report["allow_collision_mismatch"] = geometry_options["allow_collision_mismatch"]
+            report["adaptive_subdivision"] = geometry_options["adaptive_subdivision"]
+            report["crease_angle_degrees"] = geometry_options.get("crease_angle_degrees")
             if report["files_changed"] <= 0:
                 raise RuntimeError("no compatible OpenRAC glTF meshes were enhanced")
 
