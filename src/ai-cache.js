@@ -85,6 +85,17 @@ function txDone(tx) {
   });
 }
 
+export async function cacheGetBest(digest, options = {}, qualities = ["high"]) {
+  if (!digest) return null;
+  const ordered=[...new Set(qualities.filter((q)=>["standard","high","max"].includes(q)))];
+  for (const detailQuality of ordered) {
+    const key=cacheKey(digest,{...options,detailQuality});
+    const hit=await cacheGet(key);
+    if(hit)return {key,detailQuality,hit};
+  }
+  return null;
+}
+
 export async function cacheGet(key) {
   if (!key || !available()) return null;
   try {
