@@ -22,6 +22,7 @@ import {buildQualityReport} from "../src/quality-report.js";
 import {aiRunStoreKey,aiRunSignature,beginAiRun,checkpointAiRun,interruptAiRun,completeAiRun,aiRunProgress} from "../src/ai-run-state.js";
 import {PauseGate} from "../src/pause-gate.js";
 import {ProgressEstimator,formatDuration} from "../src/progress-estimator.js";
+import {buildGeometryJob,geometryJobFilename,geometryJobIssues,normalizeGeometrySettings} from "../src/geometry-job.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -61,6 +62,11 @@ let state = {
   materialMaps: "off",
   materialCurvature: true,
   mipmaps: "off",
+  geometryProfile: "high",
+  geometryScope: "all",
+  geometryShapeRefine: false,
+  geometryAllowCollisionMismatch: false,
+  geometryTriangleBudget: 0,
 };
 
 const el = (tag, text, cls) => {
@@ -81,6 +87,36 @@ function setBusy(value) {
 }
 
 async function savePrefs() { await controller.storeSet("texture-preparation", state); }
+
+async function exportGeometryJob() {
+  if (busy) return;
+  const settings=normalizeGeometrySettings({
+    profile:state.geometryProfile,
+    scope:state.geometryScope,
+    shapeRefine:state.geometryShapeRefine,
+    allowCollisionMismatch:state.geometryAllowCollisionMismatch,
+    triangleBudget:state.geometryTriangleBudget || null,
+  });
+  const job=buildGeometryJob(info,settings);
+  const issues=geometryJobIssues(info,settings);
+  const name=geometryJobFilename(info,settings);
+  setBusy(true);
+  let token=null;
+  try{
+    token=await controller.saveStart(name,"json");
+    if(!token){setMessage("Geometry job save cancelled.");return}
+    await controller.saveWrite(token,encoder.encode(JSON.stringify(job,null,2)+"\n"));
+    const saved=await controller.saveEnd(token,true);
+    token=null;
+    const warning=issues.length ? " Review: "+issues.join("; ")+"." : "";
+    setMessage("Saved geometry job "+saved+". Run it with helper/openrac_graphics_helper.py against your OpenRAC checkout; the helper exports glTF, refines it and creates a normal overrides ZIP."+warning);
+  }catch(error){
+    if(token)await controller.saveEnd(token,false).catch(()=>undefined);
+    setMessage("Geometry job export failed: "+(error instanceof Error?error.message:String(error)),true);
+  }finally{
+    setBusy(false);
+  }
+}
 
 const currentRunKey = () => aiRunStoreKey(info?.packId || "openrac");
 const currentRunSignature = () => aiRunSignature(state);
@@ -1271,6 +1307,11 @@ async function start() {
       materialMaps: ["off","key","all"].includes(saved.materialMaps) ? saved.materialMaps : "off",
       materialCurvature: saved.materialCurvature !== false,
       mipmaps: ["off","key","all"].includes(saved.mipmaps) ? saved.mipmaps : "off",
+      geometryProfile: ["enhanced","high","ultra","experimental"].includes(saved.geometryProfile) ? saved.geometryProfile : "high",
+      geometryScope: ["all","terrain","scenery","mobys"].includes(saved.geometryScope) ? saved.geometryScope : "all",
+      geometryShapeRefine: saved.geometryShapeRefine === true,
+      geometryAllowCollisionMismatch: saved.geometryAllowCollisionMismatch === true,
+      geometryTriangleBudget: [0,60000,120000,250000].includes(Number(saved.geometryTriangleBudget)) ? Number(saved.geometryTriangleBudget) : 0,
     };
   }
   if (state.persistentCache) {
