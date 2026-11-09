@@ -10,6 +10,7 @@ test('main UI exposes adaptive hardware utilization controls',()=>{
   assert.match(code,/performanceMode:\s*"auto"/);
   assert.match(code,/AI hardware utilization/);
   assert.match(code,/Auto · benchmark hardware/);
+  assert.match(code,/\["8","8 lanes · maximum"\]/);
   assert.match(code,/warmAi\(state\.aiBackend, state\.performanceMode\)/);
   assert.match(code,/performanceMode:\s*state\.performanceMode/);
 });
