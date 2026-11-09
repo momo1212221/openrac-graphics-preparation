@@ -1,18 +1,17 @@
-Graphics preparation 0.18.0 adds the first production Geometry Enhancement pipeline on top of the existing texture/material stack.
+Graphics preparation 0.19.0 improves both handling and modern-graphics quality around the PS5-style target.
 
-- Adds a **3D Geometry Enhancement** panel to the normal launcher tool page.
-- Exports `ai.meshes` jobs with profile, asset scope, triangle budget, shape-refinement and collision-safety settings.
-- Ships the production helper inside the release: `helper/openrac_graphics_helper.py` and `helper/geometry_enhance.py`.
-- Uses OpenRAC's official `editor/assets.py export/import` glTF round trip and emits a normal overrides-pack ZIP.
-- **Enhanced** rebuilds normals/tangent space without topology growth.
-- **High** performs one crack-free midpoint subdivision pass.
-- **Ultra** performs up to two passes while respecting per-asset triangle budgets.
-- UVs, vertex colours, joint indices and normalized skin weights are interpolated for generated vertices.
-- Original skeletons/animations remain authoritative; the helper never invents bones or imports new animation data.
-- Existing tangents are regenerated from new positions, UVs and normals.
-- Morph targets, unknown attributes, malformed primitives and missing UVs are skipped instead of silently rewritten.
-- Shape refinement remains Off by default; with it Off, original positions stay exact and collision alignment is unchanged.
-- Moby/terrain position movement is separately protected unless the user explicitly allows visual/collision mismatch.
-- Writes `geometry-report.json` with file/primitive counts, before/after triangle totals, applied subdivision levels, budget limits, vertex-motion metrics and collision-review candidates.
-- Geometry runs independently from the existing texture AI cache; adding geometry does not rerun the user's saved texture pass.
-- Texture AI, material maps, cached material rebuild, native effects runtime and launcher-native platform release assets remain unchanged.
+- Adds a one-click **Modern / PS5 target** preset to the main launcher tool page.
+- The global preset enables Enhanced AI, Auto detail, dual-CNN fidelity gating, source-colour lock, Quality Guard, selective 8x masters, key material sidecars/mipmaps and the Modern geometry profile.
+- Adds the **Modern** geometry profile with higher per-asset automatic triangle budgets.
+- Adaptive subdivision now spends triangles on long and/or strongly curved edges instead of uniformly multiplying every triangle.
+- Shared-edge selection is global, preventing T-junction cracks between neighbouring triangles.
+- Adds configurable **Crease preservation** with automatic per-asset defaults.
+- Hard shading creases are split into separate vertices before normal generation instead of being incorrectly smoothed together.
+- Rebuilt normals and tangents are corner-angle weighted, improving highlight stability after adaptive tessellation.
+- Shape refinement is crease-aware and does not smooth pinned hard edges.
+- The Modern preset may refine safe static scenery, while moby/terrain position movement remains locked unless visual/collision mismatch is explicitly enabled.
+- `geometry-report.json` moves to format 2 and reports changed/skipped primitives, skip reasons, adaptive edges, crease splits, budget-limited primitives, triangle totals and collision-review candidates.
+- The helper summary prints those quality metrics directly after a geometry run.
+- Existing UV, vertex-colour and skin-weight interpolation, original skeleton/animation authority, morph-target safety and official OpenRAC `assets.py` round trip remain intact.
+- Texture AI remains independently resumable from the persistent cache; changing geometry does not rerun completed texture inference.
+- This release intentionally does not invent fake high-frequency vertex noise. True material-aware Height -> micro-displacement is the next geometry-quality stage.
