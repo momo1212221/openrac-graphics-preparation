@@ -1055,7 +1055,7 @@ function render() {
     if(info?.services?.includes("graphics-preparation")){
       try{
         await controller.service("renderer.enable",{});
-        rendererNote=" Enhanced graphics was enabled so generated Normal/PBR sidecars are active in-game.";
+        rendererNote=" Vulkan/MoltenVK and Enhanced graphics were enabled so generated Normal/PBR sidecars are active in-game.";
       }catch(error){
         rendererError=true;
         rendererNote=" The preset was saved, but Enhanced graphics could not be enabled automatically: "
