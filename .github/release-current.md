@@ -1,5 +1,7 @@
-Graphics preparation 0.21.3 completes the native OpenRAC geometry/material path and hardens the iMac workflow.
+Graphics preparation 0.21.3 is a hotfix for the 0.21.2 texture-source bootstrap regression.
 
+- Fixes the missing `listTextureSources` ES-module import that made the Graphics preparation page fail immediately on launch.
+- Adds a package regression test so the UI cannot call the bootstrap helper without importing and shipping it.
 - Automatically recovers static texture sources from already extracted level PNGs when no runtime dump exists; existing runtime dumps are never overwritten.
 - The mod UI now reports its actual manifest version instead of a stale hard-coded number.
 - Declares the consented `graphics-preparation` launcher service so Geometry Enhancement can run from the normal mod page.
