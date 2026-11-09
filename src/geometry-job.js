@@ -12,7 +12,7 @@ export function normalizeGeometrySettings(value={}){
     scope,
     shapeRefine:value.shapeRefine===true,
     allowCollisionMismatch:value.allowCollisionMismatch===true,
-    triangleBudget:Number.isFinite(Number(value.triangleBudget))
+    triangleBudget:Number.isFinite(Number(value.triangleBudget)) && Number(value.triangleBudget)>0
       ? Math.max(256,Math.min(1_000_000,Math.round(Number(value.triangleBudget))))
       : null,
   };
