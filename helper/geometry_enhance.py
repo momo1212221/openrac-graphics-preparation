@@ -1344,10 +1344,13 @@ def enhance_export(
     mode: str = "high",
     options: dict | None = None,
     height_provider=None,
+    kinds: set[str] | None = None,
 ) -> dict:
     rows = []
     for path in sorted(export_dir.rglob("*.gltf")):
         if "/sky/" in path.as_posix():
+            continue
+        if kinds is not None and _kind(path) not in kinds:
             continue
         rows.append(enhance_gltf(path, mode=mode, options=options, height_provider=height_provider))
     changed = [row for row in rows if row.get("changed")]
