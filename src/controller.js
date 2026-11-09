@@ -22,6 +22,7 @@ export class ModController {
   }
 
   info() { return this.request("info"); }
+  service(operation, value, timeout = 60 * 60 * 1000) { return this.request("service", {operation, value}, timeout); }
   list(root) { return this.request("list", {root}); }
   read(root, path, start, length) {
     return this.request("read", {
