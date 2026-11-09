@@ -928,6 +928,17 @@ async function createPack({ai, cacheOnly=false}) {
 
     if (ai && !cacheOnly && aiRunState) await storeAiRun(completeAiRun(aiRunState));
 
+    let installedPack=null;
+    let installError="";
+    if (ai && info?.services?.includes("graphics-preparation")) {
+      try {
+        progress(1,1,"Activating texture pack",{sampleRate:false});
+        installedPack=await controller.service("texture.install",{});
+      } catch (error) {
+        installError=error instanceof Error?error.message:String(error);
+      }
+    }
+
     if (ai) {
       const degraded = stats.fallback + stats.original + stats.unreadable;
       if (cacheOnly) {
@@ -935,7 +946,12 @@ async function createPack({ai, cacheOnly=false}) {
         setMessage(
           `Saved ${saved}. Reused ${stats.cacheHits} cached AI source(s) and generated ${stats.materialMapSets} material sidecar set(s) without running AI`
           + (misses ? `; ${misses} uncached source group(s) used deterministic 4x fallback` : "")
-          + ". Add this ZIP through Mods → Add a mod. Your previous AI run state and cache were not replaced."
+          + (installedPack?.installed
+            ? `. Installed and enabled ${installedPack.textures||textures.length} prepared texture(s) directly in OpenRAC.`
+            : installError
+              ? `. Automatic install failed: ${installError}. The saved ZIP is still valid and can be imported manually.`
+              : ". Add this ZIP through Mods → Add a mod.")
+          + " Your previous AI run state and cache were not replaced."
         );
         return;
       }
@@ -970,7 +986,11 @@ async function createPack({ai, cacheOnly=false}) {
         stats.unreadable ? `${stats.unreadable} unreadable textures were skipped` : "",
         `restored ${stats.stars} stars/tiny lights and ${stats.microdetails} microdetails`,
         degraded ? "The pack is still valid; degraded textures did not abort the run." : "No texture needed a degraded fallback.",
-        "Add the ZIP through Mods → Add a mod.",
+        installedPack?.installed
+          ? `installed and enabled directly in OpenRAC (${installedPack.textures||textures.length} textures)`
+          : installError
+            ? `automatic install failed: ${installError}; the saved ZIP can still be imported manually`
+            : "Add the ZIP through Mods → Add a mod.",
       ].filter(Boolean).join(" · ");
       setMessage(summary, false);
     } else {
