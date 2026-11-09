@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const DB_NAME = "openrac-graphics-preparation-ai-cache";
-const DB_VERSION = 2;
+const DB_VERSION = 1;
 const STORE = "textures";
 const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v4|dual-cnn-v1|quality-guard-v3|tier-90-94-97-v2|seam-wrap-v1|auto-quality-v2|frequency-v2|master8x-v1|failure-v1|specialized-refine-v2|alpha-edge-v1";
 let dbPromise;
 let sessionDisabled = false;
 let writesSinceTrim = 0;
+let digestKeyIndex = null;
+let digestKeyIndexPromise = null;
 
 const request = (req) => new Promise((resolve, reject) => {
   req.onsuccess = () => resolve(req.result);
@@ -30,28 +32,6 @@ async function db() {
           ? open.transaction.objectStore(STORE)
           : database.createObjectStore(STORE, {keyPath:"key"});
         if (!store.indexNames.contains("lastUsed")) store.createIndex("lastUsed", "lastUsed");
-        if (!store.indexNames.contains("digestCreated")) {
-          store.createIndex("digestCreated", ["digest", "created"]);
-        }
-        // Version 1 rows predate the digest index. Backfill metadata in-place; the cached image
-        // bytes are not decoded, transformed or discarded.
-        const cursor = store.openCursor();
-        cursor.onsuccess = () => {
-          const at = cursor.result;
-          if (!at) return;
-          const row = at.value;
-          let changed = false;
-          if (!row.digest) {
-            row.digest = cacheDigestFromKey(row.key);
-            changed = !!row.digest;
-          }
-          if (!(Number(row.created) >= 0)) {
-            row.created = Number(row.lastUsed) || 0;
-            changed = true;
-          }
-          if (changed) at.update(row);
-          at.continue();
-        };
       };
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error || new Error("could not open persistent AI cache"));
@@ -117,6 +97,50 @@ export function cacheKeyMatchesDigest(key, digest) {
   return !!digest && cacheDigestFromKey(key) === digest;
 }
 
+async function cacheKeysByDigest(database) {
+  if (digestKeyIndex) return digestKeyIndex;
+  if (!digestKeyIndexPromise) {
+    digestKeyIndexPromise = (async () => {
+      const tx = database.transaction(STORE, "readonly");
+      const keys = await request(tx.objectStore(STORE).getAllKeys());
+      await txDone(tx);
+      const index = new Map();
+      for (const key of keys) {
+        const digest = cacheDigestFromKey(key);
+        if (!digest) continue;
+        const group = index.get(digest) || [];
+        group.push(key);
+        index.set(digest, group);
+      }
+      digestKeyIndex = index;
+      return index;
+    })().catch((error) => {
+      digestKeyIndexPromise = null;
+      throw error;
+    });
+  }
+  return digestKeyIndexPromise;
+}
+
+function indexCacheKey(key) {
+  if (!digestKeyIndex) return;
+  const digest = cacheDigestFromKey(key);
+  if (!digest) return;
+  const group = digestKeyIndex.get(digest) || [];
+  if (!group.includes(key)) group.push(key);
+  digestKeyIndex.set(digest, group);
+}
+
+function unindexCacheKey(key) {
+  if (!digestKeyIndex) return;
+  const digest = cacheDigestFromKey(key);
+  const group = digest ? digestKeyIndex.get(digest) : null;
+  if (!group) return;
+  const next = group.filter((entry)=>entry !== key);
+  if (next.length) digestKeyIndex.set(digest, next);
+  else digestKeyIndex.delete(digest);
+}
+
 function cacheHitFromRow(row) {
   if (!row || !(row.bytes instanceof Uint8Array || row.bytes instanceof ArrayBuffer)) return null;
   return {
@@ -180,12 +204,28 @@ export async function cacheGetLatest(digest) {
   if (!digest || !available()) return null;
   try {
     const database = await db();
+    const index = await cacheKeysByDigest(database);
+    const keys = index.get(digest) || [];
+    if (!keys.length) return null;
+
     const tx = database.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
-    const index = store.index("digestCreated");
-    const range = IDBKeyRange.bound([digest, 0], [digest, Number.MAX_SAFE_INTEGER]);
-    const cursor = await request(index.openCursor(range, "prev"));
-    const row = cursor?.value || null;
+    // Queue all matching reads before awaiting, so IndexedDB keeps the transaction alive. This
+    // loads only the few quality/model variants of one source texture, never the whole cache.
+    const rows = await Promise.all(keys.map((key)=>request(store.get(key))));
+    let row = null;
+    let newestCreated = -1;
+    let newestUsed = -1;
+    for (const candidate of rows) {
+      if (!cacheHitFromRow(candidate)) continue;
+      const created = Number(candidate.created) || 0;
+      const used = Number(candidate.lastUsed) || 0;
+      if (!row || created > newestCreated || (created === newestCreated && used > newestUsed)) {
+        row = candidate;
+        newestCreated = created;
+        newestUsed = used;
+      }
+    }
     const hit = cacheHitFromRow(row);
     if (!row || !hit) {
       await txDone(tx);
@@ -226,6 +266,7 @@ export async function trimCache(maxBytes) {
     for (const row of rows) {
       if (total <= target) break;
       store.delete(row.key);
+      unindexCacheKey(row.key);
       total -= row.size;
       removed++;
     }
@@ -242,7 +283,6 @@ export async function cachePut(key, result, maxBytes) {
   const bytes = result.bytes instanceof Uint8Array ? result.bytes : new Uint8Array(result.bytes);
   const row = {
     key,
-    digest:cacheDigestFromKey(key),
     bytes,
     size:bytes.byteLength,
     stars:Number(result.stars)||0,
@@ -276,6 +316,7 @@ export async function cachePut(key, result, maxBytes) {
 
   try {
     await put();
+    indexCacheKey(key);
     writesSinceTrim++;
     if (writesSinceTrim >= 32) {
       writesSinceTrim = 0;
@@ -287,6 +328,7 @@ export async function cachePut(key, result, maxBytes) {
     try {
       await trimCache(Math.max(64 * 1024 * 1024, maxBytes * 0.65));
       await put();
+      indexCacheKey(key);
       return true;
     } catch {
       sessionDisabled = true;
@@ -302,6 +344,8 @@ export async function clearAiCache() {
       try { (await dbPromise).close(); } catch {}
       dbPromise = undefined;
     }
+    digestKeyIndex = null;
+    digestKeyIndexPromise = null;
     await new Promise((resolve, reject) => {
       const req = indexedDB.deleteDatabase(DB_NAME);
       req.onsuccess = () => resolve();
