@@ -1,15 +1,13 @@
-Graphics preparation 0.21.0 adds asset-aware remeshing and deterministic LOD planning to the Modern / PS5 geometry path.
+Graphics preparation 0.21.1 completes the native OpenRAC geometry/material path and hardens the iMac workflow.
 
-- Classifies compatible primitives as Character, Weapon, Rock, Foliage, Terrain, Structure or Prop/Generic.
-- Uses role-specific automatic triangle-budget multipliers instead of treating every moby/scenery primitive alike.
-- Characters, weapons and rocks get lower adaptive edge thresholds and higher silhouette/curvature priority.
-- Foliage uses a tighter budget to avoid exploding alpha-card geometry.
-- Adds safe **Triangle topology optimization**: a shared diagonal is flipped only when triangle quality improves, the surface stays below the crease threshold, face orientation remains valid and UV orientation is not reversed.
-- Adds curvature-weighted **Silhouette refinement** on top of the existing volume-preserving shape pass.
-- Hard creases and open boundaries remain pinned during silhouette refinement.
-- Terrain and mobys keep the existing collision-safe position lock unless **Allow visual/collision mismatch** is explicitly enabled.
-- The one-click **Modern / PS5 target** enables Asset-aware Remesh, Topology Optimization, Silhouette Refinement at 100%, LOD Planning and bounded Height micro-displacement together.
-- Per-primitive reports now include asset role, effective role-specific triangle budget, topology quality/flips, silhouette-refinement QA and LOD policy.
-- Emits a separate `geometry-lod-plan.json` with deterministic LOD0/LOD1/LOD2 integration targets from the actual subdivision stages.
-- The stock OpenRAC assets importer currently accepts one replacement GLB per edited class, so 0.21.0 does not falsely claim runtime LOD switching. The high-detail remesh is already game-effective; the LOD plan is the explicit contract for the next importer/renderer integration.
-- Existing Height sidecars, conservative Diffuse fallback, crease preservation, angle-weighted normals/tangents, UV/skinning interpolation, Quality Guard and collision QA remain intact.
+- Declares the consented `graphics-preparation` launcher service so Geometry Enhancement can run from the normal mod page.
+- Uses the native `ai.meshes` service when the launcher supports it, with the existing JSON/helper workflow retained only as a compatibility fallback.
+- Keeps geometry generation offline and stages the complete result before activation.
+- Imports geometry with `--strict`, so a refused mesh aborts the preparation instead of installing a partial override set.
+- The OpenRAC launcher validates the generated render pack, rejects symlinks and any `collision.glb`, backs up the previous active geometry tree, then activates the verified `level_NN` overrides.
+- The launcher automatically mounts the activated geometry from `prepared-graphics/meshes/<version>` on the next game start.
+- Adds a bundled-Python fallback for standalone/macOS launcher installs.
+- Enhanced material maps are enabled for key materials by default for new configurations; existing explicit Off choices remain respected.
+- Generated Normal, Roughness, Height, AO, Emissive, Specular, Metallic, Cavity, Curvature and Edge-Wear sidecars keep the original texture hash layout expected by OpenRAC.
+- Preserves the existing AI texture cache: material-sidecar rebuilding and geometry preparation do not invalidate the previous Real-ESRGAN results.
+- Keeps the 0.21.0 asset-aware remesh, topology optimization, silhouette refinement, LOD planning, collision-safe defaults and bounded Height micro-displacement.
