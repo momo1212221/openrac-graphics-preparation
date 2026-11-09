@@ -16,7 +16,8 @@ root=Path(__file__).resolve().parents[1]
 PINNED_BASE_X4PLUS_SHA256="a64fb7ec8780e6e67a99cf380067961a0aab618c934171240eea2724217fd304"
 
 m=json.loads((root/"openrac-mod.json").read_text())
-assert set(m["tool"])=={"page"}
+assert set(m["tool"])=={"page","service"}
+assert m["tool"]["service"]=="graphics-preparation"
 assert (root/m["tool"]["page"]).is_file()
 assert m.get("type")=="native"
 assert m.get("api")=="1.14"
