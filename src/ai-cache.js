@@ -6,6 +6,8 @@ const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v4|dual-cnn-v1|qua
 let dbPromise;
 let sessionDisabled = false;
 let writesSinceTrim = 0;
+let digestKeyIndex = null;
+let digestKeyIndexPromise = null;
 
 const request = (req) => new Promise((resolve, reject) => {
   req.onsuccess = () => resolve(req.result);
@@ -85,6 +87,86 @@ function txDone(tx) {
   });
 }
 
+export function cacheDigestFromKey(key) {
+  if (typeof key !== "string") return null;
+  const match = key.match(/(?:^|\|)([0-9a-f]{64})(?=\||$)/);
+  return match ? match[1] : null;
+}
+
+export function cacheKeyMatchesDigest(key, digest) {
+  return !!digest && cacheDigestFromKey(key) === digest;
+}
+
+async function cacheKeysByDigest(database) {
+  if (digestKeyIndex) return digestKeyIndex;
+  if (!digestKeyIndexPromise) {
+    digestKeyIndexPromise = (async () => {
+      const tx = database.transaction(STORE, "readonly");
+      const keys = await request(tx.objectStore(STORE).getAllKeys());
+      await txDone(tx);
+      const index = new Map();
+      for (const key of keys) {
+        const digest = cacheDigestFromKey(key);
+        if (!digest) continue;
+        const group = index.get(digest) || [];
+        group.push(key);
+        index.set(digest, group);
+      }
+      digestKeyIndex = index;
+      return index;
+    })().catch((error) => {
+      digestKeyIndexPromise = null;
+      throw error;
+    });
+  }
+  return digestKeyIndexPromise;
+}
+
+function indexCacheKey(key) {
+  if (!digestKeyIndex) return;
+  const digest = cacheDigestFromKey(key);
+  if (!digest) return;
+  const group = digestKeyIndex.get(digest) || [];
+  if (!group.includes(key)) group.push(key);
+  digestKeyIndex.set(digest, group);
+}
+
+function unindexCacheKey(key) {
+  if (!digestKeyIndex) return;
+  const digest = cacheDigestFromKey(key);
+  const group = digest ? digestKeyIndex.get(digest) : null;
+  if (!group) return;
+  const next = group.filter((entry)=>entry !== key);
+  if (next.length) digestKeyIndex.set(digest, next);
+  else digestKeyIndex.delete(digest);
+}
+
+function cacheHitFromRow(row) {
+  if (!row || !(row.bytes instanceof Uint8Array || row.bytes instanceof ArrayBuffer)) return null;
+  return {
+    bytes: row.bytes instanceof Uint8Array ? row.bytes : new Uint8Array(row.bytes),
+    stars: Number(row.stars) || 0,
+    microdetails: Number(row.microdetails) || 0,
+    size: Number(row.size) || row.bytes.byteLength || 0,
+    textureClass: row.textureClass || null,
+    detailQuality: row.detailQuality || null,
+    material: row.material || null,
+    metrics: row.metrics || null,
+    classification: row.classification || null,
+    materialInfo: row.materialInfo || null,
+    wrap: row.wrap || null,
+    failures: row.failures || null,
+    masterScale:Number(row.masterScale)||4,
+    internalMaster:row.internalMaster===true,
+    specializedCnnUsed:row.specializedCnnUsed===true,
+    specializedRejected:row.specializedRejected===true,
+    specializedModelSha:row.specializedModelSha||null,
+    textureComplexity:Number(row.textureComplexity)||0,
+    tileGeometry:row.tileGeometry||null,
+    alphaEdges:row.alphaEdges||null,
+  };
+}
+
 export async function cacheGetBest(digest, options = {}, qualities = ["high"]) {
   if (!digest) return null;
   const ordered=[...new Set(qualities.filter((q)=>["standard","high","max"].includes(q)))];
@@ -103,35 +185,56 @@ export async function cacheGet(key) {
     const tx = database.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
     const row = await request(store.get(key));
-    if (!row || !(row.bytes instanceof Uint8Array || row.bytes instanceof ArrayBuffer)) {
+    const hit = cacheHitFromRow(row);
+    if (!hit) {
       await txDone(tx);
       return null;
     }
     row.lastUsed = Date.now();
     store.put(row);
     await txDone(tx);
-    return {
-      bytes: row.bytes instanceof Uint8Array ? row.bytes : new Uint8Array(row.bytes),
-      stars: Number(row.stars) || 0,
-      microdetails: Number(row.microdetails) || 0,
-      size: Number(row.size) || row.bytes.byteLength || 0,
-      textureClass: row.textureClass || null,
-      detailQuality: row.detailQuality || null,
-      material: row.material || null,
-      metrics: row.metrics || null,
-      classification: row.classification || null,
-      materialInfo: row.materialInfo || null,
-      wrap: row.wrap || null,
-      failures: row.failures || null,
-      masterScale:Number(row.masterScale)||4,
-      internalMaster:row.internalMaster===true,
-      specializedCnnUsed:row.specializedCnnUsed===true,
-      specializedRejected:row.specializedRejected===true,
-      specializedModelSha:row.specializedModelSha||null,
-      textureComplexity:Number(row.textureComplexity)||0,
-      tileGeometry:row.tileGeometry||null,
-      alphaEdges:row.alphaEdges||null,
-    };
+    return hit;
+  } catch {
+    sessionDisabled = true;
+    return null;
+  }
+}
+
+export async function cacheGetLatest(digest) {
+  if (!digest || !available()) return null;
+  try {
+    const database = await db();
+    const index = await cacheKeysByDigest(database);
+    const keys = index.get(digest) || [];
+    if (!keys.length) return null;
+
+    const tx = database.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    // Queue all matching reads before awaiting, so IndexedDB keeps the transaction alive. This
+    // loads only the few quality/model variants of one source texture, never the whole cache.
+    const rows = await Promise.all(keys.map((key)=>request(store.get(key))));
+    let row = null;
+    let newestCreated = -1;
+    let newestUsed = -1;
+    for (const candidate of rows) {
+      if (!cacheHitFromRow(candidate)) continue;
+      const created = Number(candidate.created) || 0;
+      const used = Number(candidate.lastUsed) || 0;
+      if (!row || created > newestCreated || (created === newestCreated && used > newestUsed)) {
+        row = candidate;
+        newestCreated = created;
+        newestUsed = used;
+      }
+    }
+    const hit = cacheHitFromRow(row);
+    if (!row || !hit) {
+      await txDone(tx);
+      return null;
+    }
+    row.lastUsed = Date.now();
+    store.put(row);
+    await txDone(tx);
+    return {key:row.key, detailQuality:row.detailQuality||null, hit};
   } catch {
     sessionDisabled = true;
     return null;
@@ -163,6 +266,7 @@ export async function trimCache(maxBytes) {
     for (const row of rows) {
       if (total <= target) break;
       store.delete(row.key);
+      unindexCacheKey(row.key);
       total -= row.size;
       removed++;
     }
@@ -212,6 +316,7 @@ export async function cachePut(key, result, maxBytes) {
 
   try {
     await put();
+    indexCacheKey(key);
     writesSinceTrim++;
     if (writesSinceTrim >= 32) {
       writesSinceTrim = 0;
@@ -223,6 +328,7 @@ export async function cachePut(key, result, maxBytes) {
     try {
       await trimCache(Math.max(64 * 1024 * 1024, maxBytes * 0.65));
       await put();
+      indexCacheKey(key);
       return true;
     } catch {
       sessionDisabled = true;
@@ -238,6 +344,8 @@ export async function clearAiCache() {
       try { (await dbPromise).close(); } catch {}
       dbPromise = undefined;
     }
+    digestKeyIndex = null;
+    digestKeyIndexPromise = null;
     await new Promise((resolve, reject) => {
       const req = indexedDB.deleteDatabase(DB_NAME);
       req.onsuccess = () => resolve();

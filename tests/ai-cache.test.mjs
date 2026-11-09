@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {cacheKey} from '../src/ai-cache.js';
+import {cacheDigestFromKey,cacheKey,cacheKeyMatchesDigest} from '../src/ai-cache.js';
 
 test('cache keys include source digest and all output-affecting detail options',()=>{
   const digest='ab'.repeat(32);
@@ -25,6 +25,37 @@ test('cache keys include source digest and all output-affecting detail options',
   assert.match(a,/stars1/);
 });
 
+
+test('material sidecar settings do not invalidate cached AI pixels',()=>{
+  const digest='cd'.repeat(32);
+  const base={
+    mode:'balanced',detailQuality:'high',textureScope:'world',detailCnn:true,
+    sourceColorLock:true,qualityGuard:true,preserveMicrodetail:true,preserveStars:true,
+    master8x:true,specializedFingerprint:'model-a',
+  };
+  assert.equal(
+    cacheKey(digest,{...base,materialMaps:'off',materialCurvature:false}),
+    cacheKey(digest,{...base,materialMaps:'all',materialCurvature:true}),
+  );
+});
+
 test('cache key is null without a cryptographic source digest',()=>{
   assert.equal(cacheKey(null,{mode:'balanced'}),null);
+});
+
+
+test('cache digest identity survives changed AI settings and model fingerprints',()=>{
+  const digest='ef'.repeat(32);
+  const a=cacheKey(digest,{mode:'faithful',detailQuality:'high',textureScope:'world'});
+  const b=cacheKey(digest,{
+    mode:'enhanced',detailQuality:'max',textureScope:'ui',master8x:true,
+    specializedFingerprint:'aa'.repeat(32),materialOverride:'metal',textureClassOverride:'diffuse',
+  });
+  const other='12'.repeat(32);
+  assert.equal(cacheDigestFromKey(a),digest);
+  assert.equal(cacheDigestFromKey(b),digest);
+  assert.equal(cacheKeyMatchesDigest(a,digest),true);
+  assert.equal(cacheKeyMatchesDigest(b,digest),true);
+  assert.equal(cacheKeyMatchesDigest(cacheKey(other,{mode:'enhanced'}),digest),false);
+  assert.equal(cacheDigestFromKey('not-a-cache-key'),null);
 });

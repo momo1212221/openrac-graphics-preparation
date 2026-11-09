@@ -8,7 +8,7 @@ import {upscalePng} from "../src/upscale.js";
 import {ZipStream} from "../src/zip.js";
 import {EffectsEditor} from "./effects.js";
 import {buildDuplicatePlan} from "../src/dedup.js";
-import {cacheGetBest, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, trimCache} from "../src/ai-cache.js";
+import {cacheGetBest, cacheGetLatest, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, trimCache} from "../src/ai-cache.js";
 import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
@@ -338,17 +338,14 @@ async function createPack({ai, cacheOnly=false}) {
 
   try {
     let specializedFingerprint="none";
-    if (ai) {
-      if (cacheOnly) {
-        progress(0, 1, "Cached AI pass · locating the last prepared textures…");
-        specializedFingerprint=await specializedRegistryIdentity();
-      } else {
-        progress(0, 1, "AI preflight · model + 128×128 inference check…");
-        [aiReady,specializedFingerprint]=await Promise.all([
-          warmAi(state.aiBackend),
-          specializedRegistryIdentity(),
-        ]);
-      }
+    if (cacheOnly) {
+      progress(0, 1, "Cached AI pass · locating the latest prepared texture for each source…");
+    } else if (ai) {
+      progress(0, 1, "AI preflight · model + 128×128 inference check…");
+      [aiReady,specializedFingerprint]=await Promise.all([
+        warmAi(state.aiBackend),
+        specializedRegistryIdentity(),
+      ]);
     }
 
     let workGroups = textures.map((texture) => ({members:[texture], verified:true}));
@@ -377,7 +374,7 @@ async function createPack({ai, cacheOnly=false}) {
     }
 
     const suffix = ai
-      ? (cacheOnly ? `ai-${state.aiMode}-4x-materials` : `ai-${state.aiMode}-4x`)
+      ? (cacheOnly ? "ai-cached-4x-materials" : `ai-${state.aiMode}-4x`)
       : `${state.scale}x`;
     if (ai && !cacheOnly) {
       const previous=currentRunProgress();
@@ -469,7 +466,9 @@ async function createPack({ai, cacheOnly=false}) {
           const qualities = state.detailQuality === "auto"
             ? [effectiveDetailQuality, "max", "high", "standard"]
             : [effectiveDetailQuality];
-          const cached = await cacheGetBest(digest, cacheOptions, qualities);
+          const cached = cacheOnly
+            ? await cacheGetLatest(digest)
+            : await cacheGetBest(digest, cacheOptions, qualities);
           if (cached?.hit) {
             key=cached.key;
             const hit=cached.hit;
@@ -497,7 +496,7 @@ async function createPack({ai, cacheOnly=false}) {
               cached: true,
             };
             groupSampleRate=false;
-            progress((groupIndex + .82) / workGroups.length, 1, `Cache hit · ${baseLabel} · preparing sidecars/output`, {sampleRate:false});
+            progress((groupIndex + .82) / workGroups.length, 1, `${cacheOnly ? "Latest AI cache hit" : "Cache hit"} · ${baseLabel} · preparing sidecars/output`, {sampleRate:false});
           } else {
             stats.cacheMisses++;
           }
@@ -521,7 +520,7 @@ async function createPack({ai, cacheOnly=false}) {
           stats.warnings.push({
             hashes:group.members.map((member)=>member.hash),
             strategy:"cache-only-miss",
-            error:"No matching persistent AI cache entry; deterministic 4x fallback used and no AI inference was run.",
+            error:"No persistent AI cache entry exists for this source texture; deterministic 4x fallback used and no AI inference was run.",
           });
           groupSampleRate=false;
         }
