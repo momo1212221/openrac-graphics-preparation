@@ -608,6 +608,17 @@ def mesh_job(
             export_cmd += ["--level", str(level)]
         run(export_cmd, cwd=root, dry_run=dry_run)
 
+        runtime_lod_requested = (
+            geometry_options["lod_planning"] and scope in {"mobys", "all"} and not dry_run
+        )
+        lod1_export = scratch / "lod1-export"
+        lod2_export = scratch / "lod2-export"
+        if runtime_lod_requested:
+            # Preserve the untouched export before LOD0 modifies it. LOD1 gets one adaptive pass;
+            # LOD2 is the original game mesh round-tripped through assets.py.
+            shutil.copytree(exported, lod1_export)
+            shutil.copytree(exported, lod2_export)
+
         pack_reader = MaterialPackReader(material_pack_path)
         height_provider = None
         height_stats = {"sidecar": 0, "diffuse-derived": 0, "missing": 0, "rejected": 0}
@@ -656,6 +667,30 @@ def mesh_job(
             if report["files_changed"] <= 0:
                 raise RuntimeError("no compatible OpenRAC glTF meshes were enhanced")
 
+        roles = report_moby_roles(report) if not dry_run else {}
+        eligible_lod_classes = set(roles)
+        lod1_report = None
+        lod2_marked = 0
+        if runtime_lod_requested and eligible_lod_classes:
+            lod1_options = dict(geometry_options)
+            # Medium LOD keeps the role-aware density/topology work, but never receives a second
+            # shape/displacement treatment. Its job is stable silhouette reduction, not another art pass.
+            lod1_options.update({
+                "lod_planning": False,
+                "shape_refine": False,
+                "silhouette_refine": False,
+                "micro_displacement": False,
+                "allow_collision_mismatch": False,
+            })
+            lod1_report = enhance_export(
+                lod1_export,
+                mode="high",
+                options=lod1_options,
+                height_provider=None,
+                kinds={"moby"},
+            )
+            lod2_marked = force_original_moby_edits(lod2_export)
+
         import_cmd = [
             sys.executable,
             str(root / "editor" / "assets.py"),
@@ -673,6 +708,47 @@ def mesh_job(
             f"Geometry enhancement {mode} for {job['game']} {job['version']}",
         ]
         run(import_cmd, cwd=root, dry_run=dry_run)
+        runtime_lod_files = 0
+        runtime_lod_levels = 0
+        if not dry_run and runtime_lod_requested and eligible_lod_classes:
+            sidecars: dict[int, dict] = {}
+            if lod1_report is not None and int(lod1_report.get("files_changed", 0)) > 0:
+                lod1_pack = scratch / "lod1-pack"
+                run(
+                    asset_import_command(
+                        root, lod1_export, levels, lod1_pack,
+                        name="Graphics preparation · Geometry LOD1", job=job,
+                    ),
+                    cwd=root,
+                )
+                runtime_lod_files += install_lod_stage(
+                    levels=levels,
+                    stage_pack=lod1_pack,
+                    final_pack=pack,
+                    stage=1,
+                    eligible_classes=eligible_lod_classes,
+                    roles=roles,
+                    sidecars=sidecars,
+                )
+            if lod2_marked > 0:
+                lod2_pack = scratch / "lod2-pack"
+                run(
+                    asset_import_command(
+                        root, lod2_export, levels, lod2_pack,
+                        name="Graphics preparation · Geometry LOD2", job=job,
+                    ),
+                    cwd=root,
+                )
+                runtime_lod_files += install_lod_stage(
+                    levels=levels,
+                    stage_pack=lod2_pack,
+                    final_pack=pack,
+                    stage=2,
+                    eligible_classes=eligible_lod_classes,
+                    roles=roles,
+                    sidecars=sidecars,
+                )
+            runtime_lod_levels = write_geometry_lod_sidecars(pack, sidecars)
         if not dry_run:
             report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             if geometry_options["lod_planning"]:
@@ -696,10 +772,14 @@ def mesh_job(
                     "game": job["game"],
                     "version": job["version"],
                     "profile": mode,
+                    "runtime_contract": "geometry-lods-v1",
+                    "runtime_lod_files": runtime_lod_files,
+                    "runtime_lod_levels": runtime_lod_levels,
                     "stock_runtime_supported": False,
                     "runtime_note": (
-                        "OpenRAC assets.py currently imports one replacement GLB per edited class. "
-                        "These LOD stages are deterministic integration targets, not a claim that stock runtime switching is active."
+                        "The pack now contains level_NN/geometry-lods.json and canonical LOD1/LOD2 "
+                        "moby GLBs. Runtime switching requires an OpenRAC build with geometry-lods-v1 "
+                        "support (implemented by the graphics runtime LOD integration branch/PR)."
                     ),
                     "assets": lod_assets,
                 }
@@ -751,6 +831,9 @@ def mesh_job(
             "topology_edge_flips": topology_flips,
             "lod_plans": lod_plans,
             "stock_runtime_lod_supported": bool(report.get("stock_runtime_lod_supported", False)),
+            "runtime_lod_contract": "geometry-lods-v1" if runtime_lod_levels else None,
+            "runtime_lod_files": runtime_lod_files,
+            "runtime_lod_levels": runtime_lod_levels,
         },
         "message": (
             f"Dry run valid; planned geometry output is {archive.resolve()}."
@@ -759,7 +842,8 @@ def mesh_job(
                  f"Adaptive edges: {adaptive_edges}; preserved crease splits: {crease_splits}; "
                  f"budget-limited primitives: {budget_limited}; skipped unsupported primitives: {skipped_primitives}; "
                  f"micro-displaced primitives: {displacement_primitives} ({displacement_sources}); "
-                 f"asset roles: {asset_roles}; topology flips: {topology_flips}; LOD plans: {lod_plans}. "
+                 f"asset roles: {asset_roles}; topology flips: {topology_flips}; LOD plans: {lod_plans}; "
+                 f"runtime LOD files: {runtime_lod_files} across {runtime_lod_levels} levels. "
                  f"Collision review recommended for {collision_count} moved primitives. "
                  "Install the generated ZIP through OpenRAC's Mods page."
         ),
