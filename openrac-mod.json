@@ -30,7 +30,8 @@
     ]
   },
   "tool": {
-    "page": "ui/index.html"
+    "page": "ui/index.html",
+    "service": "graphics-preparation"
   },
   "multiplayer": "cosmetic",
   "assets": "assets"
