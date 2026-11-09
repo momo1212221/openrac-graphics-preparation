@@ -6,7 +6,14 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from helper.openrac_graphics_helper import GeometryHeightProvider, MaterialPackReader
+from helper.openrac_graphics_helper import (
+    GeometryHeightProvider,
+    MaterialPackReader,
+    force_original_moby_edits,
+    install_lod_stage,
+    lod_distances_for_role,
+    write_geometry_lod_sidecars,
+)
 from helper.geometry_enhance import (
     HeightMap,
     _append_accessor,
@@ -434,6 +441,80 @@ class GeometryEnhanceTests(unittest.TestCase):
             primitive=report["primitives"][0]
             self.assertFalse(primitive["silhouette_refinement"]["applied"])
             self.assertEqual(primitive["silhouette_refinement"]["reason"],"collision-safe lock")
+
+    def test_runtime_lod_role_distances_are_ordered_and_character_keeps_detail_close(self):
+        character=lod_distances_for_role("character")
+        generic=lod_distances_for_role("generic")
+        self.assertLess(character[0],character[1])
+        self.assertLess(generic[0],generic[1])
+        self.assertLess(character[0],generic[0])
+
+    def test_force_original_moby_edit_uses_second_gltf_without_touching_asset_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            folder=root/"level_03/mobys/moby_7_test"
+            folder.mkdir(parents=True)
+            (folder/"moby_7.gltf").write_text('{"buffers":[{"uri":"moby_7.bin"}]}',encoding="utf-8")
+            (folder/"moby_7.bin").write_bytes(b"bin")
+            manifest={
+                "kind":"moby","class":7,"model":"moby_7.gltf",
+                "files":{"moby_7.gltf":"old","moby_7.bin":"old"},
+            }
+            original=json.dumps(manifest,sort_keys=True)
+            (folder/"asset.json").write_text(json.dumps(manifest),encoding="utf-8")
+            self.assertEqual(force_original_moby_edits(root),1)
+            marker=folder/"moby_7.gprep-lod2.gltf"
+            self.assertTrue(marker.is_file())
+            self.assertEqual(marker.read_bytes(),(folder/"moby_7.gltf").read_bytes())
+            self.assertEqual(
+                json.dumps(json.loads((folder/"asset.json").read_text()),sort_keys=True),
+                original,
+            )
+
+    def test_install_lod_stage_keeps_glb_beside_moby_for_relative_texture_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            levels=root/"levels"
+            stage=root/"stage"
+            final=root/"final"
+            level=levels/"level_03"
+            level.mkdir(parents=True)
+            (level/"manifest.json").write_text(json.dumps({
+                "classes":{"moby":{"7":{"mesh":"mobys/moby_7.glb"}}}
+            }),encoding="utf-8")
+            source=stage/"level_03/mobys/moby_7.glb"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"lod")
+            sidecars={}
+            copied=install_lod_stage(
+                levels=levels,stage_pack=stage,final_pack=final,stage=1,
+                eligible_classes={7},roles={7:"weapon"},sidecars=sidecars,
+            )
+            self.assertEqual(copied,1)
+            target=final/"level_03/mobys/moby_7.gprep-lod1.glb"
+            self.assertEqual(target.read_bytes(),b"lod")
+            self.assertFalse((final/"level_03/lods").exists())
+            entry=sidecars[3]["moby"]["7"]["lods"][0]
+            self.assertEqual(entry["mesh"],"mobys/moby_7.gprep-lod1.glb")
+            self.assertEqual(entry["distance"],lod_distances_for_role("weapon")[0])
+
+    def test_geometry_lod_sidecar_sorts_thresholds_and_writes_runtime_contract_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pack=Path(tmp)
+            sidecars={3:{
+                "format":1,
+                "moby":{"7":{"lods":[
+                    {"mesh":"mobys/a.gprep-lod2.glb","distance":120.0},
+                    {"mesh":"mobys/a.gprep-lod1.glb","distance":50.0},
+                ]}},
+            }}
+            self.assertEqual(write_geometry_lod_sidecars(pack,sidecars),1)
+            doc=json.loads((pack/"level_03/geometry-lods.json").read_text())
+            self.assertEqual(doc["format"],1)
+            self.assertEqual(
+                [row["distance"] for row in doc["moby"]["7"]["lods"]],
+                [50.0,120.0],
+            )
 
     def test_unsupported_morph_target_is_left_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
