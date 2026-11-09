@@ -1,6 +1,6 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.20.0** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.21.0** mit dem aktuellen **OpenRAC Dev Launcher**.
 
 Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für den normalen **Texture-AI-Lauf** werden kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm benötigt. Der neue optionale **3D Geometry Enhancement**-Pfad nutzt den mitgelieferten Python-Helper ausschließlich für OpenRACs offiziellen glTF-Export/Import über `editor/assets.py`.
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.20.0.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.21.0.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
@@ -569,3 +569,59 @@ Damit umfasst der automatische Pfad jetzt Texturrekonstruktion, PBR/Height, adap
 Crease-Preservation und echte begrenzte Oberflächengeometrie. Das ersetzt trotzdem keine vollständig
 von Hand neu modellierten AAA-Assets; besonders Charaktergesichter, Hände und große Silhouetten sollten
 weiterhin bewusst geprüft werden.
+
+
+## Asset-aware Remesh und LOD-Planung
+
+Ab 0.21.0 erweitert **Modern / PS5 target** die Geometry-Pipeline automatisch um:
+
+- **Asset-aware remesh:** On
+- **Triangle topology optimization:** On
+- **Silhouette refinement:** On
+- **Silhouette strength:** 100%
+- **LOD planning:** On
+
+Der Helper erkennt pro Primitive eine konservative Rolle: Character, Weapon, Rock, Foliage, Terrain,
+Structure oder Prop/Generic.
+
+Dadurch werden die Triangle-Budgets nicht mehr nur nach Terrain/Moby/Scenery verteilt. Charaktere,
+Waffen und Felsen bekommen gezielt mehr Dichte an langen, gekrümmten und outline-relevanten Kanten.
+Foliage bleibt absichtlich sparsamer, damit transparente Karten nicht unnötig vervielfacht werden.
+
+### Topology Optimization
+
+Nach der adaptiven Unterteilung darf der Helper sichere gemeinsame Diagonalen drehen, wenn:
+
+- die durchschnittliche Triangle-Qualität steigt;
+- keine harte Crease überschritten wird;
+- die neue Fläche nicht umklappt;
+- die UV-Orientierung erhalten bleibt.
+
+Das macht die zusätzlichen Polygone für Normalen, Skinning und Height-Displacement sinnvoller nutzbar.
+
+### Silhouette Refinement
+
+Die Silhouette-Stufe ist keine freie AI-Neumodellierung. Sie verwendet eine kleine,
+volumenerhaltende Glättung auf gekrümmten Bereichen und hält harte Kanten sowie offene Mesh-Ränder
+fest.
+
+Im sicheren Standard gilt weiterhin:
+
+- statische Rocks/Scenery dürfen leicht verfeinert werden;
+- Terrain bleibt positionsgesperrt;
+- Mobys/Characters/Weapons bleiben positionsgesperrt;
+- erst **Allow visual/collision mismatch** erlaubt bei Terrain/Mobys echte Positionsbewegung.
+
+### LOD Planning
+
+`geometry-report.json` enthält jetzt für jedes Primitive eine LOD-Policy. Zusätzlich schreibt der
+Helper:
+
+`geometry-lod-plan.json`
+
+Darin stehen Rolle, LOD0/LOD1/LOD2-Triangle-Ziele und die tatsächlich vorhandenen Subdivision-Stufen.
+
+Wichtig: Der aktuelle Stock-Importer von OpenRAC importiert bei bearbeiteten Klassen genau einen
+Replacement-GLB. Deshalb ist die LOD-Datei in 0.21.0 ein vorbereitetes Integrationsformat; das normale
+Override-ZIP verwendet bereits das hochwertige LOD0/Remesh, aber automatisches Runtime-Umschalten
+zwischen LOD0/1/2 wird noch nicht behauptet.
