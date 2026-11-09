@@ -788,7 +788,7 @@ async function createPack({ai, cacheOnly=false}) {
             await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.21.1",
+              generator:"Graphics preparation 0.21.2",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
