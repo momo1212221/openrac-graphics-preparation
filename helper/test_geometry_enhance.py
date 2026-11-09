@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from helper.openrac_graphics_helper import GeometryHeightProvider, MaterialPackReader
 from helper.geometry_enhance import (
     HeightMap,
     _append_accessor,
@@ -251,6 +252,79 @@ class GeometryEnhanceTests(unittest.TestCase):
             self.assertEqual(report["format"],2)
             self.assertIn("micro_displacement_primitives",report)
             self.assertIn("micro_displacement_sources",report)
+
+    def test_material_pack_sidecar_is_preferred_and_uses_metadata(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            pack=root/"materials.zip"
+            texture_hash="aaaaaaaaaaaaaaaa"
+            meta={
+                "sourceHash":texture_hash,
+                "material":"stone",
+                "quality":{"ok":True},
+                "heightPipeline":{"parallaxAuthoring":{
+                    "neutralHeight":0.5,
+                    "recommendedScale":0.06,
+                }},
+            }
+            with zipfile.ZipFile(pack,"w") as zf:
+                zf.writestr(f"Materials/{texture_hash}/height.png",b"height")
+                zf.writestr(f"Materials/{texture_hash}/material.json",json.dumps(meta))
+            reader=MaterialPackReader(pack)
+            try:
+                provider=GeometryHeightProvider(
+                    export_root=root,
+                    png_reader=lambda _data:(2,2,bytes([
+                        128,128,128,255, 255,255,255,255,
+                        128,128,128,255, 128,128,128,255,
+                    ])),
+                    material_pack=reader,
+                    height_source="auto",
+                )
+                doc={
+                    "materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],
+                    "textures":[{"source":0}],
+                    "images":[{"uri":"../../textures/aaaaaaaaaaaaaaaa.png"}],
+                }
+                result=provider(root/"level_00/ties/tie_5/model.gltf",doc,{"material":0},"tie")
+                self.assertIsNotNone(result)
+                self.assertEqual(result.source,"sidecar")
+                self.assertEqual(result.material,"stone")
+                self.assertAlmostEqual(result.recommended_scale,0.06)
+                self.assertEqual(provider.stats["sidecar"],1)
+            finally:
+                reader.close()
+
+    def test_auto_height_source_falls_back_to_exported_diffuse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            gltf=root/"level_00/ties/tie_5/model.gltf"
+            gltf.parent.mkdir(parents=True)
+            texture=root/"level_00/textures/bbbbbbbbbbbbbbbb.png"
+            texture.parent.mkdir(parents=True)
+            texture.write_bytes(b"diffuse")
+            reader=MaterialPackReader(None)
+            provider=GeometryHeightProvider(
+                export_root=root,
+                png_reader=lambda _data:(3,3,bytes([
+                    32,32,32,255, 64,64,64,255, 32,32,32,255,
+                    64,64,64,255, 240,240,240,255, 64,64,64,255,
+                    32,32,32,255, 64,64,64,255, 32,32,32,255,
+                ])),
+                material_pack=reader,
+                height_source="auto",
+            )
+            doc={
+                "materials":[{"name":"stone_wall","pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],
+                "textures":[{"source":0}],
+                "images":[{"uri":"../../textures/bbbbbbbbbbbbbbbb.png"}],
+            }
+            result=provider(gltf,doc,{"material":0},"tie")
+            self.assertIsNotNone(result)
+            self.assertEqual(result.source,"diffuse-derived")
+            self.assertEqual(result.material,"stone")
+            self.assertEqual(provider.stats["diffuse-derived"],1)
 
     def test_unsupported_morph_target_is_left_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
