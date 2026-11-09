@@ -44,10 +44,10 @@ test('specialized CNN is fail-open but verifies model bytes before session creat
 test('AI runtime exposes hardware-adaptive inference lanes with deterministic merge order',()=>{
   const code=readFileSync(root+'src/ai-runtime.js','utf8');
   assert.match(code,/benchmarkInferenceLanes/);
-  assert.match(code,/mapConcurrentStable/);
+  assert.match(code,/const runBatches=async\(width\)/);
   assert.match(code,/selectMeasuredLaneCount/);
   assert.match(code,/inferenceLanes/);
-  assert.match(code,/for\(const row of results\)/);
+  assert.match(code,/for\(const row of rows\)mergeResult\(row\)/);
 });
 
 test('AI runtime falls back to one lane if concurrent WebGPU execution fails',()=>{
@@ -55,4 +55,14 @@ test('AI runtime falls back to one lane if concurrent WebGPU execution fails',()
   assert.match(code,/if\(laneCount<=1\)throw error/);
   assert.match(code,/inferenceLanes=1/);
   assert.match(code,/runtime fallback/);
+  assert.match(code,/outputData\.data\.fill\(0\)/);
+  assert.match(code,/weights\.fill\(0\)/);
+});
+
+
+test('AI autotuner can probe up to eight lanes and stops on a sustained plateau',()=>{
+  const code=readFileSync(root+'src/ai-runtime.js','utf8');
+  assert.match(code,/shouldStopAutotune/);
+  assert.match(code,/lanes>=3&&shouldStopAutotune/);
+  assert.match(code,/for\(let lanes=1;lanes<=maxLanes;lanes\+\+\)/);
 });
