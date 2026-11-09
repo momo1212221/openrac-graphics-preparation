@@ -61,7 +61,7 @@ No game/disc assets are included.
 
 Graphics preparation also authors standard Enhanced graphics data:
 
-- runtime point/spot lights in root-level `object-lights.json`, matching the standard Enhanced renderer's mod override path;
+- runtime point/spot lights in `assets/level_NN/object-lights.json`, matching the standard Enhanced renderer's per-level mod root;
 - bake-only rectangular lights and GI/probe settings in `probe-bake.json`;
 - particle presets in `graphics-effects.tsv`.
 

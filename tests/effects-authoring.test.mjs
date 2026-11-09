@@ -234,7 +234,9 @@ test('effects ZIP stores Enhanced object lights at the mod root',async()=>{
     schemaVersion:EFFECTS_SCHEMA_VERSION,
     lights:[{object:'mobys/lamp',type:'point',range:8,intensity:2}],
   });
-  const saved=await exportEffectsMod(controller,{game:'rac1',version:'pal',packId:'test'},state,[]);
+  const saved=await exportEffectsMod(controller,{game:'rac1',version:'pal',packId:'test'},state,[
+    {dir:'level_01',level:1},{dir:'level_02',level:2},
+  ]);
   assert.equal(saved,'effects.zip');
   const size=chunks.reduce((n,c)=>n+c.length,0), bytes=new Uint8Array(size);
   let off=0;for(const c of chunks){bytes.set(c,off);off+=c.length}
@@ -245,7 +247,18 @@ test('effects ZIP stores Enhanced object lights at the mod root',async()=>{
     names.push(dec.decode(bytes.slice(off+30,off+30+nameLen)));
     off+=30+nameLen+extra+packed;
   }
-  assert.ok(names.includes('graphics-effects-rac1-pal/object-lights.json'));
+  assert.ok(names.includes('graphics-effects-rac1-pal/assets/level_01/object-lights.json'));
+  assert.ok(names.includes('graphics-effects-rac1-pal/assets/level_02/object-lights.json'));
   assert.ok(names.includes('graphics-effects-rac1-pal/graphics-effects.tsv'));
-  assert.ok(!names.some(name=>name.endsWith('/assets/object-lights.json')));
+  assert.ok(!names.includes('graphics-effects-rac1-pal/object-lights.json'));
+  assert.ok(!names.includes('graphics-effects-rac1-pal/assets/object-lights.json'));
+});
+
+
+test('object-light export refuses a package with no exported level roots',()=>{
+  const issues=effectExportIssues(normalizeEffects({
+    schemaVersion:EFFECTS_SCHEMA_VERSION,
+    lights:[{object:'mobys/lamp',type:'point',range:8}],
+  }),[]);
+  assert.ok(issues.some(x=>x.includes('at least one exported level')));
 });

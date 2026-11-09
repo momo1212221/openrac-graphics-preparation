@@ -253,7 +253,7 @@ export class EffectsEditor {
 
     const note=node("section",undefined,"panel");
     note.append(node("div","HOW IT APPLIES","eyebrow"));
-    note.append(node("p","Point/spot lights are written as object-lights.json at the generated mod root, exactly where the standard Enhanced renderer reads normal mod overrides. Area lights are bake-only and go into probe-bake.json. The current stock Mod Tool API can save that profile but cannot overwrite OpenRAC's extracted level folder or press Prepare lighting for you, so the final bake remains the built-in Enhanced graphics action.","info-note"));
+    note.append(node("p","Point/spot lights are written to assets/level_NN/object-lights.json, which is the per-level asset root used by the standard Enhanced renderer. Area lights are bake-only and go into probe-bake.json. The current stock Mod Tool API can save that profile but cannot overwrite OpenRAC's extracted level folder or press Prepare lighting for you, so the final bake remains the built-in Enhanced graphics action.","info-note"));
     sections.push(note);
     return sections;
   }
