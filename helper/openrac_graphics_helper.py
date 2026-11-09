@@ -428,6 +428,7 @@ def mesh_job(
     pack = output / "pack"
     archive = output / f"graphics-{job['game']}-{job['version']}-geometry-{mode}.zip"
     report_path = output / "geometry-report.json"
+    lod_plan_path = output / "geometry-lod-plan.json"
 
     with tempfile.TemporaryDirectory(prefix="openrac-geometry-") as scratch_name:
         scratch = Path(scratch_name)
@@ -507,6 +508,37 @@ def mesh_job(
         run(import_cmd, cwd=root, dry_run=dry_run)
         if not dry_run:
             report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            if geometry_options["lod_planning"]:
+                lod_assets = []
+                for file_row in report.get("files", []):
+                    for primitive in file_row.get("primitives", []):
+                        plan = primitive.get("lod_plan")
+                        if not isinstance(plan, dict):
+                            continue
+                        lod_assets.append({
+                            "file": file_row.get("file"),
+                            "mesh": primitive.get("mesh"),
+                            "primitive": primitive.get("primitive"),
+                            "asset_role": primitive.get("asset_role"),
+                            "triangles_before": primitive.get("triangles_before"),
+                            "triangles_after": primitive.get("triangles_after"),
+                            "plan": plan,
+                        })
+                lod_doc = {
+                    "format": 1,
+                    "game": job["game"],
+                    "version": job["version"],
+                    "profile": mode,
+                    "stock_runtime_supported": False,
+                    "runtime_note": (
+                        "OpenRAC assets.py currently imports one replacement GLB per edited class. "
+                        "These LOD stages are deterministic integration targets, not a claim that stock runtime switching is active."
+                    ),
+                    "assets": lod_assets,
+                }
+                lod_plan_path.write_text(
+                    json.dumps(lod_doc, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+                )
             zip_pack(pack, archive)
         pack_reader.close()
 
@@ -530,6 +562,10 @@ def mesh_job(
         "ok": True,
         "output": str(archive.resolve()),
         "report": str(report_path.resolve()),
+        "lod_plan": (
+            str(lod_plan_path.resolve())
+            if bool(geometry_options.get("lod_planning")) and not dry_run else None
+        ),
         "geometry": {
             "profile": mode,
             "scope": scope,
