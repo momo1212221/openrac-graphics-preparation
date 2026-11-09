@@ -333,6 +333,173 @@ class GeometryHeightProvider:
             return None
 
 
+_LOD_DISTANCES = {
+    "character": (65.0, 160.0),
+    "weapon": (50.0, 120.0),
+    "rock": (110.0, 260.0),
+    "foliage": (90.0, 180.0),
+    "terrain": (160.0, 360.0),
+    "structure": (120.0, 300.0),
+    "prop": (90.0, 220.0),
+    "generic": (90.0, 220.0),
+}
+
+
+def lod_distances_for_role(role: str) -> tuple[float, float]:
+    return _LOD_DISTANCES.get(str(role), _LOD_DISTANCES["generic"])
+
+
+def exported_moby_assets(export_dir: Path) -> list[tuple[Path, dict]]:
+    rows = []
+    for manifest_path in sorted(export_dir.glob("level_*/mobys/*/asset.json")):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if manifest.get("kind") != "moby" or not isinstance(manifest.get("class"), int):
+            continue
+        rows.append((manifest_path.parent, manifest))
+    return rows
+
+
+def force_original_moby_edits(export_dir: Path) -> int:
+    # assets.py deliberately ignores an untouched exported model. A second glTF filename is a clean
+    # way to ask the importer to round-trip the exact original geometry into an override GLB while
+    # keeping its sibling buffer, textures, skeleton and asset.json unchanged.
+    count = 0
+    for folder, manifest in exported_moby_assets(export_dir):
+        model = folder / str(manifest.get("model") or "")
+        if not model.is_file() or model.suffix.lower() != ".gltf":
+            continue
+        marker = model.with_name(model.stem + ".gprep-lod2.gltf")
+        marker.write_bytes(model.read_bytes())
+        count += 1
+    return count
+
+
+def report_moby_roles(report: dict) -> dict[int, str]:
+    priorities = {
+        "character": 7, "weapon": 6, "rock": 5, "structure": 4,
+        "prop": 3, "foliage": 2, "generic": 1, "terrain": 0,
+    }
+    roles: dict[int, str] = {}
+    for row in report.get("files", []):
+        if row.get("kind") != "moby" or not row.get("changed"):
+            continue
+        path = Path(str(row.get("file") or ""))
+        manifest_path = path.parent / "asset.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        class_id = manifest.get("class")
+        if not isinstance(class_id, int):
+            continue
+        candidates = [
+            str(p.get("asset_role") or "generic")
+            for p in row.get("primitives", [])
+            if p.get("changed")
+        ]
+        role = max(candidates or ["generic"], key=lambda value: priorities.get(value, 0))
+        previous = roles.get(class_id)
+        if previous is None or priorities.get(role, 0) > priorities.get(previous, 0):
+            roles[class_id] = role
+    return roles
+
+
+def asset_import_command(
+    root: Path,
+    export_dir: Path,
+    levels: Path,
+    out: Path,
+    *,
+    name: str,
+    job: dict,
+) -> list[str]:
+    return [
+        sys.executable,
+        str(root / "editor" / "assets.py"),
+        "import",
+        str(export_dir),
+        "--levels",
+        str(levels),
+        "--out",
+        str(out),
+        "--name",
+        name,
+        "--author",
+        "OpenRAC graphics helper",
+        "--description",
+        f"Geometry enhancement LOD stage for {job['game']} {job['version']}",
+    ]
+
+
+def install_lod_stage(
+    *,
+    levels: Path,
+    stage_pack: Path,
+    final_pack: Path,
+    stage: int,
+    eligible_classes: set[int],
+    roles: dict[int, str],
+    sidecars: dict[int, dict],
+) -> int:
+    copied = 0
+    for level_dir in sorted(stage_pack.glob("level_*")):
+        if not level_dir.is_dir() or not level_dir.name[6:].isdigit():
+            continue
+        level = int(level_dir.name[6:])
+        manifest_path = levels / level_dir.name / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for key, entry in (manifest.get("classes", {}).get("moby", {}) or {}).items():
+            try:
+                class_id = int(key)
+            except (TypeError, ValueError):
+                continue
+            if class_id not in eligible_classes or not isinstance(entry, dict):
+                continue
+            mesh = entry.get("mesh")
+            if not isinstance(mesh, str) or not mesh:
+                continue
+            source = stage_pack / level_dir.name / mesh
+            if not source.is_file():
+                continue
+            original_rel = Path(mesh)
+            # Keep the LOD beside the canonical moby model. port_glb materials use ../textures,
+            # so putting it into a deeper lods/ directory would break those relative texture URIs.
+            destination_name = original_rel.stem + f".gprep-lod{stage}" + original_rel.suffix
+            destination_rel = original_rel.with_name(destination_name)
+            destination = final_pack / level_dir.name / destination_rel
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            role = roles.get(class_id, "generic")
+            distance = lod_distances_for_role(role)[stage - 1]
+            doc = sidecars.setdefault(level, {"format": 1, "moby": {}})
+            cls = doc["moby"].setdefault(str(class_id), {"lods": []})
+            cls["lods"].append({
+                "mesh": destination_rel.as_posix(),
+                "distance": distance,
+            })
+            copied += 1
+    return copied
+
+
+def write_geometry_lod_sidecars(final_pack: Path, sidecars: dict[int, dict]) -> int:
+    written = 0
+    for level, document in sorted(sidecars.items()):
+        lods = document.get("moby", {})
+        for entry in lods.values():
+            entry["lods"].sort(key=lambda row: float(row["distance"]))
+        target = final_pack / f"level_{level:02}" / "geometry-lods.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        written += 1
+    return written
+
+
 def texture_job(job: dict, root: Path, levels: Path, output: Path, upscaler: str | None, *, dry_run: bool) -> dict:
     options = job.get("options") if isinstance(job.get("options"), dict) else {}
     scale = int(options.get("scale", 4 if job["operation"] == "textures.prepare" else 2))
