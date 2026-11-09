@@ -68,6 +68,11 @@ let state = {
   geometryShapeRefine: true,
   geometryAllowCollisionMismatch: false,
   geometryAdaptiveSubdivision: true,
+  geometryAssetAwareRemesh: true,
+  geometryTopologyOptimize: true,
+  geometrySilhouetteRefine: true,
+  geometrySilhouetteStrength: 1.0,
+  geometryLodPlanning: true,
   geometryMicroDisplacement: true,
   geometryHeightSource: "auto",
   geometryDisplacementStrength: 0.8,
@@ -102,6 +107,11 @@ async function exportGeometryJob() {
     shapeRefine:state.geometryShapeRefine,
     allowCollisionMismatch:state.geometryAllowCollisionMismatch,
     adaptiveSubdivision:state.geometryAdaptiveSubdivision,
+    assetAwareRemesh:state.geometryAssetAwareRemesh,
+    topologyOptimize:state.geometryTopologyOptimize,
+    silhouetteRefine:state.geometrySilhouetteRefine,
+    silhouetteStrength:state.geometrySilhouetteStrength,
+    lodPlanning:state.geometryLodPlanning,
     microDisplacement:state.geometryMicroDisplacement,
     heightSource:state.geometryHeightSource,
     displacementStrength:state.geometryDisplacementStrength,
@@ -1222,13 +1232,18 @@ function render() {
     state.geometryShapeRefine=preset.shapeRefine;
     state.geometryAllowCollisionMismatch=preset.allowCollisionMismatch;
     state.geometryAdaptiveSubdivision=preset.adaptiveSubdivision;
+    state.geometryAssetAwareRemesh=preset.assetAwareRemesh;
+    state.geometryTopologyOptimize=preset.topologyOptimize;
+    state.geometrySilhouetteRefine=preset.silhouetteRefine;
+    state.geometrySilhouetteStrength=preset.silhouetteStrength;
+    state.geometryLodPlanning=preset.lodPlanning;
     state.geometryMicroDisplacement=preset.microDisplacement;
     state.geometryHeightSource=preset.heightSource;
     state.geometryDisplacementStrength=preset.displacementStrength;
     state.geometryCreaseAngle=preset.creaseAngleDegrees||0;
     state.geometryTriangleBudget=preset.triangleBudget||0;
     await savePrefs();
-    setMessage("Modern / PS5 target applied: adaptive geometry, bounded Height micro-displacement, automatic crease preservation and collision-safe gameplay surfaces.");
+    setMessage("Modern / PS5 target applied: asset-aware remesh, silhouette refinement, topology optimization, LOD planning, bounded Height micro-displacement and collision-safe gameplay surfaces.");
     render();
   };
   const presetButtons=el("div",undefined,"button-row");
@@ -1286,6 +1301,56 @@ function render() {
     state.geometryAdaptiveSubdivision=value;await savePrefs();render();
   }));
   geometry.append(adaptiveGeometry.row);
+
+  const assetAwareRemesh = settingRow(
+    "Asset-aware remesh",
+    "Recommended. Classifies each primitive as Character, Weapon, Rock, Foliage, Terrain, Structure or Prop and adjusts triangle budget, edge density and silhouette priority per role.",
+  );
+  assetAwareRemesh.control.append(toggle(state.geometryAssetAwareRemesh,"Asset-aware remesh",async(value)=>{
+    state.geometryAssetAwareRemesh=value;await savePrefs();render();
+  }));
+  geometry.append(assetAwareRemesh.row);
+
+  const topologyOptimize = settingRow(
+    "Triangle topology optimization",
+    "Flips safe shared diagonals only when average triangle quality improves without crossing hard creases or reversing the UV orientation. This improves deformation, normals and Height displacement on the denser mesh.",
+  );
+  topologyOptimize.control.append(toggle(state.geometryTopologyOptimize,"Triangle topology optimization",async(value)=>{
+    state.geometryTopologyOptimize=value;await savePrefs();render();
+  }));
+  geometry.append(topologyOptimize.row);
+
+  const silhouetteRefine = settingRow(
+    "Silhouette refinement",
+    "Uses asset-specific, volume-preserving smoothing after subdivision. Rocks and static scenery can round coarse PS2 outlines more strongly; terrain and mobys remain position-locked unless visual/collision mismatch is explicitly allowed.",
+  );
+  silhouetteRefine.control.append(toggle(state.geometrySilhouetteRefine,"Silhouette refinement",async(value)=>{
+    state.geometrySilhouetteRefine=value;await savePrefs();render();
+  }));
+  geometry.append(silhouetteRefine.row);
+
+  const silhouetteStrength = settingRow(
+    "Silhouette strength",
+    "Scales the role-specific refinement envelope. 100% is the recommended PS5 target; this does not bypass collision locks or crease/boundary pins.",
+  );
+  silhouetteStrength.control.append(select([
+    [0.5,"50% · conservative"],
+    [0.8,"80% · subtle"],
+    [1.0,"100% · recommended"],
+    [1.25,"125% · stronger"],
+  ],state.geometrySilhouetteStrength,async(value)=>{
+    state.geometrySilhouetteStrength=Number(value)||1;await savePrefs();render();
+  }));
+  geometry.append(silhouetteStrength.row);
+
+  const lodPlanning = settingRow(
+    "LOD planning",
+    "Builds per-asset LOD0/LOD1/LOD2 triangle targets from the actual subdivision stages. Stock OpenRAC currently imports one replacement GLB, so the plan is recorded for integration/reporting instead of pretending runtime switching already works.",
+  );
+  lodPlanning.control.append(toggle(state.geometryLodPlanning,"LOD planning",async(value)=>{
+    state.geometryLodPlanning=value;await savePrefs();render();
+  }));
+  geometry.append(lodPlanning.row);
 
   const microDisplacement = settingRow(
     "Height micro-displacement",
@@ -1489,6 +1554,11 @@ async function start() {
       geometryShapeRefine: saved.geometryShapeRefine === true,
       geometryAllowCollisionMismatch: saved.geometryAllowCollisionMismatch === true,
       geometryAdaptiveSubdivision: saved.geometryAdaptiveSubdivision !== false,
+      geometryAssetAwareRemesh: saved.geometryAssetAwareRemesh !== false,
+      geometryTopologyOptimize: saved.geometryTopologyOptimize !== false,
+      geometrySilhouetteRefine: saved.geometrySilhouetteRefine !== false,
+      geometrySilhouetteStrength: [0.5,0.8,1,1.25].includes(Number(saved.geometrySilhouetteStrength)) ? Number(saved.geometrySilhouetteStrength) : 1,
+      geometryLodPlanning: saved.geometryLodPlanning !== false,
       geometryMicroDisplacement: saved.geometryMicroDisplacement !== false,
       geometryHeightSource: ["auto","sidecar","diffuse"].includes(saved.geometryHeightSource) ? saved.geometryHeightSource : "auto",
       geometryDisplacementStrength: [0.5,0.8,1,1.25].includes(Number(saved.geometryDisplacementStrength)) ? Number(saved.geometryDisplacementStrength) : 0.8,
