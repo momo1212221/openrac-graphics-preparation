@@ -17,6 +17,18 @@ namespace {
 
 using graphics_effects::Emitter;
 
+struct Particle {
+    int prop = -1;
+    std::array<float, 3> position{};
+    std::array<float, 3> velocity{};
+    std::array<float, 4> tint{1, 1, 1, 1};
+    float age = 0;
+    float life = 1;
+    float size = 0.1f;
+    float grow = 0;
+    float gravity = 0;
+    std::uint32_t blend = OPENRAC_PROP_ADD;
+};
 std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac::Mod& mod) {
     std::vector<Emitter> out;
     std::error_code ec;
