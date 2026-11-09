@@ -68,6 +68,9 @@ let state = {
   geometryShapeRefine: true,
   geometryAllowCollisionMismatch: false,
   geometryAdaptiveSubdivision: true,
+  geometryMicroDisplacement: true,
+  geometryHeightSource: "auto",
+  geometryDisplacementStrength: 0.8,
   geometryCreaseAngle: 0,
   geometryTriangleBudget: 0,
 };
@@ -99,6 +102,9 @@ async function exportGeometryJob() {
     shapeRefine:state.geometryShapeRefine,
     allowCollisionMismatch:state.geometryAllowCollisionMismatch,
     adaptiveSubdivision:state.geometryAdaptiveSubdivision,
+    microDisplacement:state.geometryMicroDisplacement,
+    heightSource:state.geometryHeightSource,
+    displacementStrength:state.geometryDisplacementStrength,
     creaseAngleDegrees:state.geometryCreaseAngle || null,
     triangleBudget:state.geometryTriangleBudget || null,
   });
@@ -1216,10 +1222,13 @@ function render() {
     state.geometryShapeRefine=preset.shapeRefine;
     state.geometryAllowCollisionMismatch=preset.allowCollisionMismatch;
     state.geometryAdaptiveSubdivision=preset.adaptiveSubdivision;
+    state.geometryMicroDisplacement=preset.microDisplacement;
+    state.geometryHeightSource=preset.heightSource;
+    state.geometryDisplacementStrength=preset.displacementStrength;
     state.geometryCreaseAngle=preset.creaseAngleDegrees||0;
     state.geometryTriangleBudget=preset.triangleBudget||0;
     await savePrefs();
-    setMessage("Modern / PS5 target applied: adaptive geometry, automatic crease preservation and collision-safe shape refinement.");
+    setMessage("Modern / PS5 target applied: adaptive geometry, bounded Height micro-displacement, automatic crease preservation and collision-safe gameplay surfaces.");
     render();
   };
   const presetButtons=el("div",undefined,"button-row");
@@ -1278,6 +1287,42 @@ function render() {
   }));
   geometry.append(adaptiveGeometry.row);
 
+  const microDisplacement = settingRow(
+    "Height micro-displacement",
+    "Turns material Height into real bounded surface geometry after subdivision. Boundaries and hard creases are pinned. Terrain and mobys stay locked unless visual/collision mismatch is explicitly allowed.",
+  );
+  microDisplacement.control.append(toggle(state.geometryMicroDisplacement,"Height micro-displacement",async(value)=>{
+    state.geometryMicroDisplacement=value;await savePrefs();render();
+  }));
+  geometry.append(microDisplacement.row);
+
+  const heightSource = settingRow(
+    "Height source",
+    "Auto prefers Materials/<hash>/height.png from your prepared pack and falls back to a conservative Diffuse-derived height. Sidecar only never guesses missing relief.",
+  );
+  heightSource.control.append(select([
+    ["auto","Auto · sidecar first, Diffuse fallback"],
+    ["sidecar","Sidecar only · highest fidelity"],
+    ["diffuse","Diffuse-derived · conservative fallback"],
+  ],state.geometryHeightSource,async(value)=>{
+    state.geometryHeightSource=value;await savePrefs();render();
+  }));
+  geometry.append(heightSource.row);
+
+  const displacementStrength = settingRow(
+    "Displacement strength",
+    "Scales only inside the material safety cap. Even 100% cannot exceed the material's bounded maximum; Diffuse fallback is additionally reduced.",
+  );
+  displacementStrength.control.append(select([
+    [0.5,"50% · conservative"],
+    [0.8,"80% · recommended"],
+    [1.0,"100% · material cap"],
+    [1.25,"125% · aggressive"],
+  ],state.geometryDisplacementStrength,async(value)=>{
+    state.geometryDisplacementStrength=Number(value)||0.8;await savePrefs();render();
+  }));
+  geometry.append(displacementStrength.row);
+
   const creaseAngle = settingRow(
     "Crease preservation",
     "Prevents low-poly hard edges from being incorrectly smoothed. Auto uses stricter angles for characters/objects and a wider angle for terrain.",
@@ -1317,7 +1362,7 @@ function render() {
   geometryButtons.append(geometryJobButton);
   geometry.append(geometryButtons);
   geometry.append(el("p",
-    "Run: python3 helper/openrac_graphics_helper.py <geometry-job.json> --openrac-root /path/to/OpenRAC. The helper creates geometry-report.json plus an installable OpenRAC override ZIP. Animations remain from the game; unknown bones, missing UVs, morph targets and unsupported primitive layouts are never silently rewritten.",
+    "Run: python3 helper/openrac_graphics_helper.py <geometry-job.json> --openrac-root /path/to/OpenRAC. For the best displacement quality add --material-pack <your-ai-pack.zip>; if exactly one compatible material pack sits beside the job JSON it is auto-detected. The helper creates geometry-report.json plus an installable OpenRAC override ZIP. Animations remain from the game; unknown bones, missing UVs, morph targets and unsupported primitive layouts are never silently rewritten.",
     "muted"));
   content.append(geometry);
 
@@ -1444,6 +1489,9 @@ async function start() {
       geometryShapeRefine: saved.geometryShapeRefine === true,
       geometryAllowCollisionMismatch: saved.geometryAllowCollisionMismatch === true,
       geometryAdaptiveSubdivision: saved.geometryAdaptiveSubdivision !== false,
+      geometryMicroDisplacement: saved.geometryMicroDisplacement !== false,
+      geometryHeightSource: ["auto","sidecar","diffuse"].includes(saved.geometryHeightSource) ? saved.geometryHeightSource : "auto",
+      geometryDisplacementStrength: [0.5,0.8,1,1.25].includes(Number(saved.geometryDisplacementStrength)) ? Number(saved.geometryDisplacementStrength) : 0.8,
       geometryCreaseAngle: [0,45,55,65,75].includes(Number(saved.geometryCreaseAngle)) ? Number(saved.geometryCreaseAngle) : 0,
       geometryTriangleBudget: [0,60000,120000,250000].includes(Number(saved.geometryTriangleBudget)) ? Number(saved.geometryTriangleBudget) : 0,
     };
