@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EFFECTS_SCHEMA_VERSION,bakerExportIssues,bakerSettingsForLevel,effectExportIssues,loadLevels,manifestObjectPosition,mergedAreaLights,
-  normalizeAreaLight,normalizeEffects,normalizeParticle,objectLightCatalog,objectLightIssues,bakerProfile,particleConfig,placementsFromLevel,readProbeProfile,setBakerSettingsForLevel,exportEffectsMod,
+  normalizeAreaLight,normalizeEffects,normalizeParticle,objectLightCatalog,objectLightIssues,bakerProfile,particleConfig,placementsFromLevel,readProbeProfile,setBakerSettingsForLevel,exportBakerProfile,exportEffectsMod,
 } from '../src/effects-authoring.js';
 
 test('runtime point and spot lights serialize to the official object-lights format',()=>{
