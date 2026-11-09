@@ -731,7 +731,7 @@ def _face_normal(a: tuple, b: tuple, c: tuple) -> tuple[float, float, float]:
     ), (0.0, 0.0, 1.0))
 
 
-def _adaptive_threshold(mode: str, pass_index: int) -> tuple[float, float]:
+def _adaptive_threshold(mode: str, pass_index: int, role: str = "generic") -> tuple[float, float]:
     base = {
         "high": (0.045, 0.16),
         "ultra": (0.032, 0.13),
@@ -739,7 +739,11 @@ def _adaptive_threshold(mode: str, pass_index: int) -> tuple[float, float]:
         "experimental": (0.020, 0.08),
     }.get(mode, (0.05, 0.18))
     factor = 0.52 ** max(0, pass_index)
-    return base[0] * factor, base[1]
+    policy = remesh_policy(role)
+    return (
+        base[0] * factor * policy.length_scale,
+        base[1] * max(.55, min(1.25, policy.length_scale)),
+    )
 
 
 def select_adaptive_edges(
@@ -749,6 +753,7 @@ def select_adaptive_edges(
     triangle_budget: int,
     mode: str,
     pass_index: int,
+    role: str = "generic",
 ) -> set[tuple[int, int]]:
     triangle_count = len(indices) // 3
     available = max(0, triangle_budget - triangle_count)
@@ -765,19 +770,30 @@ def select_adaptive_edges(
             edge = (x,y) if x < y else (y,x)
             edge_faces.setdefault(edge, []).append(face_index)
 
-    min_length, min_curvature = _adaptive_threshold(mode, pass_index)
+    policy = remesh_policy(role)
+    min_length, min_curvature = _adaptive_threshold(mode, pass_index, role)
     candidates = []
     for edge, faces in edge_faces.items():
         a, b = edge
         length_ratio = math.dist(positions[a], positions[b]) / diagonal
         curvature = 0.0
+        boundary = len(faces) == 1
         if len(faces) >= 2:
             n1, n2 = face_normals[faces[0]], face_normals[faces[1]]
             curvature = max(0.0, min(2.0, 1.0 - sum(n1[i]*n2[i] for i in range(3))))
-        if length_ratio < min_length and curvature < min_curvature:
+        if (
+            length_ratio < min_length
+            and curvature < min_curvature
+            and not (boundary and length_ratio >= min_length * .65)
+        ):
             continue
-        # Length targets low-density areas; curvature prioritises silhouettes/creases.
-        score = length_ratio + curvature * (0.55 if mode in {"modern","experimental"} else 0.40)
+        # Role-specific scoring spends density on visible outlines/curves for characters,
+        # weapons and rocks, while foliage/terrain stay more conservative.
+        score = (
+            length_ratio
+            + curvature * policy.curvature_weight
+            + (policy.boundary_weight if boundary else 0.0)
+        )
         candidates.append((score, edge, max(1, len(faces))))
 
     selected: set[tuple[int, int]] = set()
@@ -1133,38 +1149,72 @@ def enhance_gltf(
             data["POSITION"] = before_positions
             before_box = _bbox(before_positions)
             triangles_before = len(indices) // 3
+            role = classify_asset_role(path, doc, primitive, kind, data)
+            role_policy = remesh_policy(role)
+            explicit_budget = isinstance(options.get("triangle_budget"), (int, float))
+            effective_budget = profile.triangle_budget if explicit_budget else max(
+                256, min(1_000_000, round(profile.triangle_budget * role_policy.budget_multiplier))
+            )
             requested = profile.subdivisions
             applied = 0
             budget_limited = False
             adaptive_edges_split = 0
+            lod_stage_triangles = [triangles_before]
             for pass_index in range(requested):
                 if profile.adaptive_subdivision:
                     selected = select_adaptive_edges(
                         data["POSITION"], indices,
-                        triangle_budget=profile.triangle_budget,
+                        triangle_budget=effective_budget,
                         mode=profile.mode,
                         pass_index=pass_index,
+                        role=role,
                     )
                     if not selected:
-                        if len(indices)//3 >= profile.triangle_budget:
+                        if len(indices)//3 >= effective_budget:
                             budget_limited = True
                         break
                     adaptive_edges_split += len(selected)
                     data, indices = subdivide_selected_edges(data, indices, selected)
                     applied += 1
+                    lod_stage_triangles.append(len(indices)//3)
                 else:
-                    if (len(indices) // 3) * 4 > profile.triangle_budget:
+                    if (len(indices) // 3) * 4 > effective_budget:
                         budget_limited = True
                         break
                     data, indices = subdivide_once(data, indices)
                     applied += 1
+                    lod_stage_triangles.append(len(indices)//3)
+
+            topology = {"flips": 0, "quality_before": 1.0, "quality_after": 1.0, "quality_gain": 0.0}
+            if options.get("topology_optimize", True) is not False:
+                indices, topology = optimize_triangle_topology(
+                    data, indices, profile.crease_angle_degrees
+                )
 
             moved_max = moved_mean = 0.0
+            silhouette = {"applied": False, "reason": "disabled", "max_move": 0.0, "mean_move": 0.0}
             if profile.shape_relax > 0:
-                relaxed, moved_max, moved_mean = relax_positions(
-                    data["POSITION"], indices, profile.shape_relax, profile.crease_angle_degrees
+                use_asset_refine = options.get("asset_aware_remesh", True) is not False and bool(
+                    options.get("silhouette_refine", True)
                 )
-                data["POSITION"] = relaxed
+                if use_asset_refine:
+                    strength = max(
+                        profile.shape_relax,
+                        role_policy.silhouette_relax * max(
+                            0.0, min(1.5, float(options.get("silhouette_strength", 1.0)))
+                        ),
+                    )
+                    refined, silhouette = refine_silhouette_positions(
+                        data["POSITION"], indices, strength, profile.crease_angle_degrees
+                    )
+                    data["POSITION"] = refined
+                    moved_max = float(silhouette.get("max_move", 0.0))
+                    moved_mean = float(silhouette.get("mean_move", 0.0))
+                else:
+                    relaxed, moved_max, moved_mean = relax_positions(
+                        data["POSITION"], indices, profile.shape_relax, profile.crease_angle_degrees
+                    )
+                    data["POSITION"] = relaxed
 
             crease_vertices_split = 0
             if profile.recalc_normals:
@@ -1235,9 +1285,14 @@ def enhance_gltf(
                 subdivisions_requested=requested,
                 subdivisions_applied=applied,
                 budget_limited=budget_limited,
-                triangle_budget=profile.triangle_budget,
+                triangle_budget=effective_budget,
+                asset_role=role,
+                asset_aware_remesh=options.get("asset_aware_remesh", True) is not False,
                 adaptive_subdivision=profile.adaptive_subdivision,
                 adaptive_edges_split=adaptive_edges_split,
+                topology_optimization=topology,
+                silhouette_refinement=silhouette,
+                lod_plan=build_lod_plan(role, lod_stage_triangles, len(indices)//3),
                 crease_angle_degrees=profile.crease_angle_degrees,
                 crease_vertices_split=crease_vertices_split,
                 micro_displacement=displacement,
@@ -1290,6 +1345,11 @@ def enhance_export(
     after = sum(int(p.get("triangles_after", 0)) for p in changed_primitives)
     adaptive_edges = sum(int(p.get("adaptive_edges_split", 0)) for p in changed_primitives)
     crease_splits = sum(int(p.get("crease_vertices_split", 0)) for p in changed_primitives)
+    topology_flips = sum(int((p.get("topology_optimization") or {}).get("flips", 0)) for p in changed_primitives)
+    roles: dict[str,int] = {}
+    for primitive in changed_primitives:
+        role = str(primitive.get("asset_role") or "generic")
+        roles[role] = roles.get(role, 0) + 1
     displacement_rows = [
         p.get("micro_displacement", {}) for p in changed_primitives
         if isinstance(p.get("micro_displacement"), dict)
@@ -1322,6 +1382,10 @@ def enhance_export(
         "triangle_multiplier": (after / before if before else 1.0),
         "adaptive_edges_split": adaptive_edges,
         "crease_vertices_split": crease_splits,
+        "asset_roles": roles,
+        "topology_edge_flips": topology_flips,
+        "lod_plans": len([p for p in changed_primitives if p.get("lod_plan")]),
+        "stock_runtime_lod_supported": False,
         "micro_displacement_primitives": len(displacement_applied),
         "micro_displacement_sources": displacement_sources,
         "micro_displacement_max_move": max((float(row.get("max_move", 0.0)) for row in displacement_applied), default=0.0),
