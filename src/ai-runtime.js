@@ -147,6 +147,9 @@ async function gpuSessionOptions(capture) {
   ortGpu.env.wasm.numThreads = 1;
   ortGpu.env.wasm.proxy = false;
   ortGpu.env.wasm.wasmBinary = wasm;
+  // This flag only affects adapter selection before the first WebGPU session exists.
+  // It is a hint, not a correctness requirement; unsupported runtimes simply ignore it.
+  try{if(ortGpu.env.webgpu)ortGpu.env.webgpu.powerPreference="high-performance";}catch{}
   const session = await ortGpu.InferenceSession.create(model, {
     executionProviders: ["webgpu"],
     graphOptimizationLevel: "all",
