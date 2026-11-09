@@ -33,3 +33,10 @@ test('bake area lights have explicit placement controls',()=>{
 });
 
 test('runtime effect picker includes smog',()=>{const source=readFileSync(root+'ui/effects.js','utf8');assert.match(source,/\["smog","Smog"\]/)});
+
+
+test('UI documents the stock Enhanced object-light root path',()=>{
+  const source=readFileSync(root+'ui/effects.js','utf8');
+  assert.match(source,/object-lights\.json at the generated mod root/);
+  assert.doesNotMatch(source,/assets\/object-lights\.json/);
+});

@@ -12,7 +12,7 @@ It uses only the official OpenRAC Mod API:
 No launcher fork, service, filesystem bridge or external executable is required.
 
 The companion Graphics preparation page exports a small script/data mod containing
-assets/object-lights.json and graphics-effects.tsv. Enhanced graphics reads the authored
+object-lights.json and graphics-effects.tsv. Enhanced graphics reads the authored
 point/spot lights directly; this runtime reads only the particle/haze rows.
 
 Particles are capped at 192 live props to stay below OpenRAC's shared 256-prop limit.
