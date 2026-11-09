@@ -8,7 +8,7 @@ import {upscalePng} from "../src/upscale.js";
 import {ZipStream} from "../src/zip.js";
 import {EffectsEditor} from "./effects.js";
 import {buildDuplicatePlan} from "../src/dedup.js";
-import {cacheGet, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, trimCache} from "../src/ai-cache.js";
+import {cacheGetBest, cacheInfo, cacheKey, cachePut, clearAiCache, sourceDigest, trimCache} from "../src/ai-cache.js";
 import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
@@ -206,7 +206,7 @@ function progress(done, total, label, {sampleRate=true}={}) {
   }
 }
 
-async function createPack({ai}) {
+async function createPack({ai, cacheOnly=false}) {
   if (busy) return;
   if (!textures.length) {
     setMessage("No saved OpenRAC textures found. Enable texture dumping in Models and textures, play the game, then return here.", true);
@@ -214,7 +214,7 @@ async function createPack({ai}) {
   }
 
   setBusy(true);
-  if (ai) activeAiRun = true;
+  if (ai && !cacheOnly) activeAiRun = true;
   let zip = null;
   const stats = {
     ai: 0,
@@ -258,11 +258,16 @@ async function createPack({ai}) {
   try {
     let specializedFingerprint="none";
     if (ai) {
-      progress(0, 1, "AI preflight · model + 128×128 inference check…");
-      [aiReady,specializedFingerprint]=await Promise.all([
-        warmAi(state.aiBackend),
-        specializedRegistryIdentity(),
-      ]);
+      if (cacheOnly) {
+        progress(0, 1, "Cached AI pass · locating the last prepared textures…");
+        specializedFingerprint=await specializedRegistryIdentity();
+      } else {
+        progress(0, 1, "AI preflight · model + 128×128 inference check…");
+        [aiReady,specializedFingerprint]=await Promise.all([
+          warmAi(state.aiBackend),
+          specializedRegistryIdentity(),
+        ]);
+      }
     }
 
     let workGroups = textures.map((texture) => ({members:[texture], verified:true}));
@@ -290,8 +295,10 @@ async function createPack({ai}) {
       );
     }
 
-    const suffix = ai ? `ai-${state.aiMode}-4x` : `${state.scale}x`;
-    if (ai) {
+    const suffix = ai
+      ? (cacheOnly ? `ai-${state.aiMode}-4x-materials` : `ai-${state.aiMode}-4x`)
+      : `${state.scale}x`;
+    if (ai && !cacheOnly) {
       const previous=currentRunProgress();
       if (previous.compatible && previous.completed>0) {
         setMessage(
@@ -304,7 +311,7 @@ async function createPack({ai}) {
     const token = await controller.saveStart(outputName(info, suffix), "zip");
     if (!token) { setMessage("Save cancelled."); return; }
     zip = new ZipStream(controller, token);
-    if (ai) {
+    if (ai && !cacheOnly) {
       await storeAiRun(beginAiRun(aiRunState,{
         packId:info.packId,
         signature:currentRunSignature(),
@@ -313,6 +320,10 @@ async function createPack({ai}) {
       aiProgressEstimator.reset(workGroups.length);
       progressTracking=true;
       progress(0,1,`AI · 0/${workGroups.length} unique textures · estimating remaining time…`,{sampleRate:false});
+    } else if (cacheOnly) {
+      progressTracking=true;
+      aiProgressEstimator.reset(workGroups.length);
+      progress(0,1,`Cached material rebuild · 0/${workGroups.length} unique textures`,{sampleRate:false});
     }
 
     let included = 0;
@@ -374,9 +385,13 @@ async function createPack({ai}) {
 
         if (state.persistentCache) {
           digest = await sourceDigest(source);
-          key = cacheKey(digest, cacheOptions);
-          const hit = await cacheGet(key);
-          if (hit) {
+          const qualities = state.detailQuality === "auto"
+            ? [effectiveDetailQuality, "max", "high", "standard"]
+            : [effectiveDetailQuality];
+          const cached = await cacheGetBest(digest, cacheOptions, qualities);
+          if (cached?.hit) {
+            key=cached.key;
+            const hit=cached.hit;
             stats.cacheHits++;
             prepared = {
               bytes: hit.bytes,
@@ -386,7 +401,7 @@ async function createPack({ai}) {
               microdetails: hit.microdetails,
               textureClass: hit.textureClass,
               material: hit.material,
-              detailQuality: hit.detailQuality,
+              detailQuality: hit.detailQuality || cached.detailQuality,
               metrics: hit.metrics,
               classification: hit.classification,
               materialInfo: hit.materialInfo,
@@ -405,6 +420,29 @@ async function createPack({ai}) {
           } else {
             stats.cacheMisses++;
           }
+        }
+
+        if (!prepared && cacheOnly) {
+          // Never run either CNN in this mode. A deterministic fallback is safe for entries that
+          // were not cacheable in the previous pass; all cached AI results remain byte-identical.
+          prepared = {
+            bytes: await upscalePng(source,4,true),
+            strategy:"fallback",
+            attempts:0,
+            stars:0,
+            microdetails:0,
+            backend:"cache-only-fallback",
+            skipped:true,
+            skipReason:"cache-miss-no-ai-rerun",
+            errors:[],
+            cached:false,
+          };
+          stats.warnings.push({
+            hashes:group.members.map((member)=>member.hash),
+            strategy:"cache-only-miss",
+            error:"No matching persistent AI cache entry; deterministic 4x fallback used and no AI inference was run.",
+          });
+          groupSampleRate=false;
         }
 
         if (!prepared && override.quality === "no-ai") {
@@ -611,9 +649,10 @@ async function createPack({ai}) {
           });
         }
         let generatedMaps = null;
+        const materialMode = cacheOnly ? "all" : state.materialMaps;
         if (
-          state.materialMaps !== "off" &&
-          shouldGenerateMaterialMaps(prepared.textureClass, prepared.material, state.materialMaps)
+          materialMode !== "off" &&
+          shouldGenerateMaterialMaps(prepared.textureClass, prepared.material, materialMode)
         ) {
           try {
             progress((groupIndex + .82) / workGroups.length, 1, `Material maps · ${baseLabel}`, {sampleRate:false});
@@ -739,8 +778,10 @@ async function createPack({ai}) {
       }
       if (ai) {
         progress(groupIndex + 1, workGroups.length, `Complete · ${baseLabel}`, {sampleRate:groupSampleRate});
-        await checkpointCurrentRun(group.members.map((member)=>member.hash));
-        await pauseAtSafeBoundary(baseLabel);
+        if (!cacheOnly) {
+          await checkpointCurrentRun(group.members.map((member)=>member.hash));
+          await pauseAtSafeBoundary(baseLabel);
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
@@ -774,7 +815,8 @@ async function createPack({ai}) {
       materials: stats.materials,
       average_quality_score: stats.qualityScoreCount ? Number((stats.qualityScoreSum/stats.qualityScoreCount).toFixed(1)) : null,
       material_map_sets: stats.materialMapSets,
-      material_maps_mode: state.materialMaps,
+      material_maps_mode: cacheOnly ? "all-from-last-ai-cache" : state.materialMaps,
+      ai_cache_only_material_rebuild: cacheOnly,
       material_curvature: state.materialCurvature,
       mipmap_sets: stats.mipmapSets,
       mipmap_levels: stats.mipmapLevels,
@@ -799,15 +841,24 @@ async function createPack({ai}) {
     zip = null;
 
     if (!saved) {
-      if (ai && aiRunState) await storeAiRun(interruptAiRun(aiRunState));
+      if (ai && !cacheOnly && aiRunState) await storeAiRun(interruptAiRun(aiRunState));
       setMessage("Save cancelled. Completed AI textures remain cached and can be reused next time.");
       return;
     }
 
-    if (ai && aiRunState) await storeAiRun(completeAiRun(aiRunState));
+    if (ai && !cacheOnly && aiRunState) await storeAiRun(completeAiRun(aiRunState));
 
     if (ai) {
       const degraded = stats.fallback + stats.original + stats.unreadable;
+      if (cacheOnly) {
+        const misses=stats.warnings.filter((row)=>row.strategy==="cache-only-miss").length;
+        setMessage(
+          `Saved ${saved}. Reused ${stats.cacheHits} cached AI source(s) and generated ${stats.materialMapSets} material sidecar set(s) without running AI`
+          + (misses ? `; ${misses} uncached source group(s) used deterministic 4x fallback` : "")
+          + ". Add this ZIP through Mods → Add a mod. Your previous AI run state and cache were not replaced."
+        );
+        return;
+      }
       const qualitySummary=buildQualityReport(stats.qualityRows,{limit:20,materialMaps:stats.materialQualityRows});
       const weakestMaterial=qualitySummary.materialBreakdown?.[0]||null;
       const summary = [
@@ -847,12 +898,12 @@ async function createPack({ai}) {
     }
   } catch (error) {
     if (zip) await zip.cancel().catch(() => undefined);
-    if (ai && aiRunState) await storeAiRun(interruptAiRun(aiRunState)).catch(()=>undefined);
+    if (ai && !cacheOnly && aiRunState) await storeAiRun(interruptAiRun(aiRunState)).catch(()=>undefined);
     const text = error instanceof Error ? error.message : String(error);
     setMessage(`Pack output stopped safely: ${text}. Completed AI textures remain cached for resume; no half-finished ZIP was kept.`, true);
   } finally {
     if (ai) {
-      activeAiRun = false;
+      if (!cacheOnly) activeAiRun = false;
       progressTracking = false;
       aiPauseGate.reset();
       if (pauseButton) {
@@ -907,8 +958,15 @@ function render() {
       setMessage("Pause requested. The current texture finishes first; pausing happens at the next safe checkpoint.");
     }
   };
+  const materialReuseButton = el("button", "Add materials to last AI run");
+  materialReuseButton.title = "Rebuilds the texture-pack ZIP from persistent AI results and generates Normal/Roughness/AO/Height sidecars without running AI again.";
+  materialReuseButton.disabled = !state.persistentCache || cacheState.entries===0;
+  materialReuseButton.onclick = () => {
+    setMessage("Reusing the last persistent AI results. No Real-ESRGAN or detail-CNN inference will run; material maps are generated from those cached 4x textures.");
+    void createPack({ai:true,cacheOnly:true});
+  };
   const runButtons=el("div",undefined,"button-row");
-  runButtons.append(prepareButton,pauseButton);
+  runButtons.append(prepareButton,materialReuseButton,pauseButton);
   prepareCard.append(left, runButtons);
   const progressWrap = el("div", undefined, "progress span");
   progressWrap.append(el("div", "Ready.", "progress-label"));
