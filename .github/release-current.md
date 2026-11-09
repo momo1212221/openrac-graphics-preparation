@@ -1,5 +1,7 @@
-Graphics preparation 0.21.1 completes the native OpenRAC geometry/material path and hardens the iMac workflow.
+Graphics preparation 0.21.2 completes the native OpenRAC geometry/material path and hardens the iMac workflow.
 
+- Automatically recovers static texture sources from already extracted level PNGs when no runtime dump exists; existing runtime dumps are never overwritten.
+- The mod UI now reports its actual manifest version instead of a stale hard-coded number.
 - Declares the consented `graphics-preparation` launcher service so Geometry Enhancement can run from the normal mod page.
 - Uses the native `ai.meshes` service when the launcher supports it, with the existing JSON/helper workflow retained only as a compatibility fallback.
 - Keeps geometry generation offline and stages the complete result before activation.
