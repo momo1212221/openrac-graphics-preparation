@@ -4,15 +4,18 @@ import {
   buildGeometryJob,
   geometryJobFilename,
   geometryJobIssues,
+  modernGeometryPreset,
   normalizeGeometrySettings,
 } from '../src/geometry-job.js';
 
-test('geometry job defaults are conservative and OpenRAC-helper compatible',()=>{
+test('geometry job defaults use the modern adaptive target safely',()=>{
   const cfg=normalizeGeometrySettings({});
-  assert.equal(cfg.profile,'high');
+  assert.equal(cfg.profile,'modern');
   assert.equal(cfg.scope,'all');
   assert.equal(cfg.shapeRefine,false);
   assert.equal(cfg.allowCollisionMismatch,false);
+  assert.equal(cfg.adaptiveSubdivision,true);
+  assert.equal(cfg.creaseAngleDegrees,null);
 
   const job=buildGeometryJob({game:'rac1',version:'pal'},cfg);
   assert.equal(job.format,1);
@@ -21,25 +24,42 @@ test('geometry job defaults are conservative and OpenRAC-helper compatible',()=>
   assert.equal(job.game,'rac1');
   assert.equal(job.version,'pal');
   assert.deepEqual(job.options,{
-    profile:'high',
+    profile:'modern',
     scope:'all',
     shape_refine:false,
     allow_collision_mismatch:false,
+    adaptive_subdivision:true,
   });
 });
 
-test('geometry settings clamp budgets and expose risky collision choices',()=>{
+test('modern PS5-target preset turns on safe static shape refinement',()=>{
+  const cfg=modernGeometryPreset();
+  assert.equal(cfg.profile,'modern');
+  assert.equal(cfg.scope,'all');
+  assert.equal(cfg.shapeRefine,true);
+  assert.equal(cfg.allowCollisionMismatch,false);
+  assert.equal(cfg.adaptiveSubdivision,true);
+  assert.equal(cfg.triangleBudget,null);
+  assert.equal(cfg.creaseAngleDegrees,null);
+});
+
+test('geometry settings clamp budgets and crease angle and expose risky collision choices',()=>{
   const cfg=normalizeGeometrySettings({
     profile:'experimental',
     scope:'terrain',
     shapeRefine:true,
     allowCollisionMismatch:true,
+    adaptiveSubdivision:false,
+    creaseAngleDegrees:500,
     triangleBudget:9_999_999,
   });
   assert.equal(cfg.triangleBudget,1_000_000);
+  assert.equal(cfg.creaseAngleDegrees,120);
+  assert.equal(cfg.adaptiveSubdivision,false);
   const issues=geometryJobIssues({game:'rac1',version:'pal'},cfg);
   assert.ok(issues.some(v=>v.includes('collision')));
   assert.ok(issues.some(v=>v.includes('experimental')));
+  assert.ok(issues.some(v=>v.includes('uniform subdivision')));
 });
 
 test('geometry job filename is deterministic and sanitized',()=>{
