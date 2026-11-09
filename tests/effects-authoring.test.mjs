@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EFFECTS_SCHEMA_VERSION,bakerExportIssues,bakerSettingsForLevel,effectExportIssues,loadLevels,manifestObjectPosition,
-  normalizeAreaLight,normalizeEffects,normalizeParticle,objectLightCatalog,objectLightIssues,bakerProfile,particleConfig,placementsFromLevel,setBakerSettingsForLevel,
+  normalizeAreaLight,normalizeEffects,normalizeParticle,objectLightCatalog,objectLightIssues,bakerProfile,particleConfig,placementsFromLevel,setBakerSettingsForLevel,exportEffectsMod,
 } from '../src/effects-authoring.js';
 
 test('runtime point and spot lights serialize to the official object-lights format',()=>{
@@ -220,4 +220,32 @@ test('gltf and glb object mesh names normalize to the renderer object-light key'
 test('object-light export validation rejects missing object and zero spot axis',()=>{
  const state=normalizeEffects({lights:[{object:'',type:'point',range:4},{object:'mobys/lamp',type:'spot',direction:[0,0,0],range:5}]});
  const issues=objectLightIssues(state).join('\n'); assert.match(issues,/no object is selected/); assert.match(issues,/spot direction must be non-zero/);
+});
+
+
+test('effects ZIP stores Enhanced object lights at the mod root',async()=>{
+  const chunks=[];
+  const controller={
+    saveStart:async()=> 'token',
+    saveWrite:async(_token,bytes)=>chunks.push(new Uint8Array(bytes)),
+    saveEnd:async(_token,ok)=>ok?'effects.zip':null,
+  };
+  const state=normalizeEffects({
+    schemaVersion:EFFECTS_SCHEMA_VERSION,
+    lights:[{object:'mobys/lamp',type:'point',range:8,intensity:2}],
+  });
+  const saved=await exportEffectsMod(controller,{game:'rac1',version:'pal',packId:'test'},state,[]);
+  assert.equal(saved,'effects.zip');
+  const size=chunks.reduce((n,c)=>n+c.length,0), bytes=new Uint8Array(size);
+  let off=0;for(const c of chunks){bytes.set(c,off);off+=c.length}
+  const view=new DataView(bytes.buffer), dec=new TextDecoder(), names=[];
+  off=0;
+  while(off+30<=bytes.length&&view.getUint32(off,true)===0x04034b50){
+    const packed=view.getUint32(off+18,true), nameLen=view.getUint16(off+26,true), extra=view.getUint16(off+28,true);
+    names.push(dec.decode(bytes.slice(off+30,off+30+nameLen)));
+    off+=30+nameLen+extra+packed;
+  }
+  assert.ok(names.includes('graphics-effects-rac1-pal/object-lights.json'));
+  assert.ok(names.includes('graphics-effects-rac1-pal/graphics-effects.tsv'));
+  assert.ok(!names.some(name=>name.endsWith('/assets/object-lights.json')));
 });
