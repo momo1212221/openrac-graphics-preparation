@@ -11,6 +11,8 @@ from helper.geometry_enhance import (
     enhance_gltf,
     geometry_profile,
     read_accessor,
+    select_adaptive_edges,
+    split_crease_vertices,
 )
 
 
@@ -124,6 +126,46 @@ class GeometryEnhanceTests(unittest.TestCase):
         self.assertEqual(safe.shape_relax,0.0)
         self.assertGreater(risky.shape_relax,0.0)
         self.assertGreater(static.shape_relax,0.0)
+
+    def test_modern_profile_uses_larger_adaptive_budget_without_collision_movement(self):
+        profile=geometry_profile("modern","moby",{"shape_refine":True})
+        self.assertEqual(profile.subdivisions,2)
+        self.assertEqual(profile.triangle_budget,120_000)
+        self.assertTrue(profile.adaptive_subdivision)
+        self.assertEqual(profile.shape_relax,0.0)
+        self.assertAlmostEqual(profile.crease_angle_degrees,50.0)
+
+    def test_adaptive_selection_spends_budget_on_long_or_curved_edges(self):
+        positions=[
+            (0.0,0.0,0.0),(4.0,0.0,0.0),(0.0,4.0,0.0),
+            (0.2,0.2,0.0),
+        ]
+        indices=[0,1,2, 0,3,1]
+        selected=select_adaptive_edges(
+            positions,indices,triangle_budget=5,mode="modern",pass_index=0
+        )
+        self.assertTrue(selected)
+        # Each selected edge has a globally consistent key, preventing T-junction cracks.
+        self.assertTrue(all(a < b for a,b in selected))
+        self.assertLessEqual(len(indices)//3 + sum(
+            2 if edge == (0,1) else 1 for edge in selected
+        ),5)
+
+    def test_crease_preservation_splits_shared_vertex_across_a_hard_fold(self):
+        attrs={
+            "POSITION":[
+                (0.0,0.0,0.0),(1.0,0.0,0.0),(0.0,1.0,0.0),(0.0,0.0,1.0),
+            ],
+            "TEXCOORD_0":[
+                (0.0,0.0),(1.0,0.0),(0.0,1.0),(1.0,1.0),
+            ],
+        }
+        # Two triangles meet at roughly 90 degrees and share vertices 0 and 1.
+        out,new_indices,splits=split_crease_vertices(attrs,[0,1,2, 0,3,1],55.0)
+        self.assertGreaterEqual(splits,2)
+        self.assertGreater(len(out["POSITION"]),len(attrs["POSITION"]))
+        self.assertNotEqual(new_indices[0],new_indices[3])
+        self.assertNotEqual(new_indices[1],new_indices[5])
 
     def test_unsupported_morph_target_is_left_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
