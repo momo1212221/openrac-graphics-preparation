@@ -39,3 +39,20 @@ test('specialized CNN is fail-open but verifies model bytes before session creat
   assert.match(code,/acceptSpecializedRefinement/);
   assert.match(code,/catch\{\s*outData=baseline;\s*\}/);
 });
+
+
+test('AI runtime exposes hardware-adaptive inference lanes with deterministic merge order',()=>{
+  const code=readFileSync(root+'src/ai-runtime.js','utf8');
+  assert.match(code,/benchmarkInferenceLanes/);
+  assert.match(code,/mapConcurrentStable/);
+  assert.match(code,/selectMeasuredLaneCount/);
+  assert.match(code,/inferenceLanes/);
+  assert.match(code,/for\(const row of results\)/);
+});
+
+test('AI runtime falls back to one lane if concurrent WebGPU execution fails',()=>{
+  const code=readFileSync(root+'src/ai-runtime.js','utf8');
+  assert.match(code,/if\(laneCount<=1\)throw error/);
+  assert.match(code,/inferenceLanes=1/);
+  assert.match(code,/runtime fallback/);
+});
