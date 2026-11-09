@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const DB_NAME = "openrac-graphics-preparation-ai-cache";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = "textures";
 const PIPELINE = "realesrgan-x4plus-725b1db7|adaptive-context-v4|dual-cnn-v1|quality-guard-v3|tier-90-94-97-v2|seam-wrap-v1|auto-quality-v2|frequency-v2|master8x-v1|failure-v1|specialized-refine-v2|alpha-edge-v1";
 let dbPromise;
@@ -30,6 +30,28 @@ async function db() {
           ? open.transaction.objectStore(STORE)
           : database.createObjectStore(STORE, {keyPath:"key"});
         if (!store.indexNames.contains("lastUsed")) store.createIndex("lastUsed", "lastUsed");
+        if (!store.indexNames.contains("digestCreated")) {
+          store.createIndex("digestCreated", ["digest", "created"]);
+        }
+        // Version 1 rows predate the digest index. Backfill metadata in-place; the cached image
+        // bytes are not decoded, transformed or discarded.
+        const cursor = store.openCursor();
+        cursor.onsuccess = () => {
+          const at = cursor.result;
+          if (!at) return;
+          const row = at.value;
+          let changed = false;
+          if (!row.digest) {
+            row.digest = cacheDigestFromKey(row.key);
+            changed = !!row.digest;
+          }
+          if (!(Number(row.created) >= 0)) {
+            row.created = Number(row.lastUsed) || 0;
+            changed = true;
+          }
+          if (changed) at.update(row);
+          at.continue();
+        };
       };
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error || new Error("could not open persistent AI cache"));
@@ -85,8 +107,14 @@ function txDone(tx) {
   });
 }
 
+export function cacheDigestFromKey(key) {
+  if (typeof key !== "string") return null;
+  const match = key.match(/(?:^|\\|)([0-9a-f]{64})(?=\\||$)/);
+  return match ? match[1] : null;
+}
+
 export function cacheKeyMatchesDigest(key, digest) {
-  return typeof key === "string" && !!digest && key.includes(`|${digest}|`);
+  return !!digest && cacheDigestFromKey(key) === digest;
 }
 
 function cacheHitFromRow(row) {
@@ -113,21 +141,6 @@ function cacheHitFromRow(row) {
     tileGeometry:row.tileGeometry||null,
     alphaEdges:row.alphaEdges||null,
   };
-}
-
-export function newestCacheRowForDigest(rows, digest) {
-  if (!digest || !Array.isArray(rows)) return null;
-  let newest = null;
-  let newestCreated = -1;
-  for (const row of rows) {
-    if (!cacheKeyMatchesDigest(row?.key, digest) || !cacheHitFromRow(row)) continue;
-    const created = Number(row.created) > 0 ? Number(row.created) : Number(row.lastUsed) || 0;
-    if (!newest || created > newestCreated) {
-      newest = row;
-      newestCreated = created;
-    }
-  }
-  return newest;
 }
 
 export async function cacheGetBest(digest, options = {}, qualities = ["high"]) {
@@ -169,8 +182,10 @@ export async function cacheGetLatest(digest) {
     const database = await db();
     const tx = database.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
-    const rows = await request(store.getAll());
-    const row = newestCacheRowForDigest(rows, digest);
+    const index = store.index("digestCreated");
+    const range = IDBKeyRange.bound([digest, 0], [digest, Number.MAX_SAFE_INTEGER]);
+    const cursor = await request(index.openCursor(range, "prev"));
+    const row = cursor?.value || null;
     const hit = cacheHitFromRow(row);
     if (!row || !hit) {
       await txDone(tx);
@@ -227,6 +242,7 @@ export async function cachePut(key, result, maxBytes) {
   const bytes = result.bytes instanceof Uint8Array ? result.bytes : new Uint8Array(result.bytes);
   const row = {
     key,
+    digest:cacheDigestFromKey(key),
     bytes,
     size:bytes.byteLength,
     stars:Number(result.stars)||0,
