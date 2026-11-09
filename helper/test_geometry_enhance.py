@@ -8,6 +8,7 @@ import unittest
 
 from helper.geometry_enhance import (
     _append_accessor,
+    enhance_export,
     enhance_gltf,
     geometry_profile,
     read_accessor,
@@ -166,6 +167,21 @@ class GeometryEnhanceTests(unittest.TestCase):
         self.assertGreater(len(out["POSITION"]),len(attrs["POSITION"]))
         self.assertNotEqual(new_indices[0],new_indices[3])
         self.assertNotEqual(new_indices[1],new_indices[5])
+
+    def test_export_report_exposes_adaptive_quality_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            write_fixture(root,"terrain")
+            write_fixture(root,"tie")
+            report=enhance_export(root,mode="modern")
+            self.assertEqual(report["format"],2)
+            self.assertGreaterEqual(report["files_seen"],2)
+            self.assertGreaterEqual(report["files_changed"],2)
+            self.assertGreater(report["adaptive_edges_split"],0)
+            self.assertIn("crease_vertices_split",report)
+            self.assertIn("budget_limited_primitives",report)
+            self.assertIn("primitives_skipped",report)
+            self.assertIn("skip_reasons",report)
 
     def test_unsupported_morph_target_is_left_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
