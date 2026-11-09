@@ -22,7 +22,7 @@ import {buildQualityReport} from "../src/quality-report.js";
 import {aiRunStoreKey,aiRunSignature,beginAiRun,checkpointAiRun,interruptAiRun,completeAiRun,aiRunProgress} from "../src/ai-run-state.js";
 import {PauseGate} from "../src/pause-gate.js";
 import {ProgressEstimator,formatDuration} from "../src/progress-estimator.js";
-import {buildGeometryJob,geometryJobFilename,geometryJobIssues,normalizeGeometrySettings} from "../src/geometry-job.js";
+import {buildGeometryJob,geometryJobFilename,geometryJobIssues,modernGeometryPreset,normalizeGeometrySettings} from "../src/geometry-job.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -62,10 +62,12 @@ let state = {
   materialMaps: "off",
   materialCurvature: true,
   mipmaps: "off",
-  geometryProfile: "high",
+  geometryProfile: "modern",
   geometryScope: "all",
-  geometryShapeRefine: false,
+  geometryShapeRefine: true,
   geometryAllowCollisionMismatch: false,
+  geometryAdaptiveSubdivision: true,
+  geometryCreaseAngle: 0,
   geometryTriangleBudget: 0,
 };
 
@@ -95,6 +97,8 @@ async function exportGeometryJob() {
     scope:state.geometryScope,
     shapeRefine:state.geometryShapeRefine,
     allowCollisionMismatch:state.geometryAllowCollisionMismatch,
+    adaptiveSubdivision:state.geometryAdaptiveSubdivision,
+    creaseAngleDegrees:state.geometryCreaseAngle || null,
     triangleBudget:state.geometryTriangleBudget || null,
   });
   const job=buildGeometryJob(info,settings);
@@ -1192,17 +1196,36 @@ function render() {
   const geometry = el("section", undefined, "panel");
   geometry.append(el("div", "3D GEOMETRY ENHANCEMENT", "eyebrow"));
   geometry.append(el("p",
-    "OpenRAC-native model round trip: export glTF → refine mesh/UV/skinning → recalculate tangent space → import as an overrides pack. Geometry runs independently from the texture AI cache.",
+    "Modern geometry path: adaptive subdivision spends triangles on long/curved areas, preserves hard creases, keeps UV/skinning intact and rebuilds tangent space. Geometry runs independently from the texture AI cache.",
     "info-note"));
+
+  const modernPresetButton=el("button","Use Modern / PS5 target","primary");
+  modernPresetButton.onclick=async()=>{
+    const preset=modernGeometryPreset();
+    state.geometryProfile=preset.profile;
+    state.geometryScope=preset.scope;
+    state.geometryShapeRefine=preset.shapeRefine;
+    state.geometryAllowCollisionMismatch=preset.allowCollisionMismatch;
+    state.geometryAdaptiveSubdivision=preset.adaptiveSubdivision;
+    state.geometryCreaseAngle=preset.creaseAngleDegrees||0;
+    state.geometryTriangleBudget=preset.triangleBudget||0;
+    await savePrefs();
+    setMessage("Modern / PS5 target applied: adaptive geometry, automatic crease preservation and collision-safe shape refinement.");
+    render();
+  };
+  const presetButtons=el("div",undefined,"button-row");
+  presetButtons.append(modernPresetButton);
+  geometry.append(presetButtons);
 
   const geometryProfile = settingRow(
     "Geometry profile",
-    "Enhanced recalculates smooth tangent space; High adds one crack-free subdivision pass; Ultra can add two passes inside per-asset triangle budgets. Experimental also permits stronger shape work when explicitly enabled.",
+    "Modern / PS5 target is recommended: up to two adaptive passes with higher per-asset budgets and crease preservation. High/Ultra remain useful for controlled comparisons; Experimental permits stronger manual-review shape work.",
   );
   geometryProfile.control.append(select([
     ["enhanced","Enhanced · tangent-space cleanup"],
     ["high","High · 1 subdivision pass"],
     ["ultra","Ultra · up to 2 passes"],
+    ["modern","Modern / PS5 target · recommended"],
     ["experimental","Experimental · manual review"],
   ],state.geometryProfile,async(value)=>{
     state.geometryProfile=value;await savePrefs();render();
@@ -1237,9 +1260,33 @@ function render() {
   }));
   geometry.append(geometryBudget.row);
 
+  const adaptiveGeometry = settingRow(
+    "Adaptive subdivision",
+    "Recommended. Splits globally shared edges by geometric density and curvature, so flat/dense regions do not waste the triangle budget and neighbouring triangles cannot form T-junction cracks.",
+  );
+  adaptiveGeometry.control.append(toggle(state.geometryAdaptiveSubdivision,"Adaptive subdivision",async(value)=>{
+    state.geometryAdaptiveSubdivision=value;await savePrefs();render();
+  }));
+  geometry.append(adaptiveGeometry.row);
+
+  const creaseAngle = settingRow(
+    "Crease preservation",
+    "Prevents low-poly hard edges from being incorrectly smoothed. Auto uses stricter angles for characters/objects and a wider angle for terrain.",
+  );
+  creaseAngle.control.append(select([
+    [0,"Auto · per asset type"],
+    [45,"45° · preserve more hard edges"],
+    [55,"55° · balanced"],
+    [65,"65° · smoother"],
+    [75,"75° · terrain-like"],
+  ],state.geometryCreaseAngle,async(value)=>{
+    state.geometryCreaseAngle=Number(value)||0;await savePrefs();render();
+  }));
+  geometry.append(creaseAngle.row);
+
   const shapeRefine = settingRow(
     "Shape refinement",
-    "Allows a very small volume-preserving surface relaxation after subdivision. Off keeps all original vertex positions exactly; recommended for the first production pass.",
+    "Adds a very small volume-preserving relaxation after subdivision. Modern / PS5 target enables it for safe static scenery, while terrain and mobys remain position-locked unless collision mismatch is explicitly allowed.",
   );
   shapeRefine.control.append(toggle(state.geometryShapeRefine,"Shape refinement",async(value)=>{
     state.geometryShapeRefine=value;await savePrefs();render();
@@ -1383,10 +1430,12 @@ async function start() {
       materialMaps: ["off","key","all"].includes(saved.materialMaps) ? saved.materialMaps : "off",
       materialCurvature: saved.materialCurvature !== false,
       mipmaps: ["off","key","all"].includes(saved.mipmaps) ? saved.mipmaps : "off",
-      geometryProfile: ["enhanced","high","ultra","experimental"].includes(saved.geometryProfile) ? saved.geometryProfile : "high",
+      geometryProfile: ["enhanced","high","ultra","modern","experimental"].includes(saved.geometryProfile) ? saved.geometryProfile : "modern",
       geometryScope: ["all","terrain","scenery","mobys"].includes(saved.geometryScope) ? saved.geometryScope : "all",
-      geometryShapeRefine: saved.geometryShapeRefine === true,
+      geometryShapeRefine: saved.geometryShapeRefine !== false,
       geometryAllowCollisionMismatch: saved.geometryAllowCollisionMismatch === true,
+      geometryAdaptiveSubdivision: saved.geometryAdaptiveSubdivision !== false,
+      geometryCreaseAngle: [0,45,55,65,75].includes(Number(saved.geometryCreaseAngle)) ? Number(saved.geometryCreaseAngle) : 0,
       geometryTriangleBudget: [0,60000,120000,250000].includes(Number(saved.geometryTriangleBudget)) ? Number(saved.geometryTriangleBudget) : 0,
     };
   }
