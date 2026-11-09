@@ -1,6 +1,6 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.17.1** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.17.2** mit dem aktuellen **OpenRAC Dev Launcher**.
 
 Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für die normale Nutzung werden **kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm** benötigt.
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.17.1.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.17.2.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
@@ -426,3 +426,13 @@ Ab 0.17.0 installierst du nur noch **Graphics preparation**.
 4. Erzeugte Runtime-Effects-Packs wie gewohnt installieren.
 
 Die native Runtime für Sparks, Smoke, Mist, Glow, Energy, Rain und Heat Haze steckt bereits im Graphics-preparation-ZIP. Der alte separate `graphics-effects-runtime`-Mod ist nur noch für ältere Installationen gedacht.
+
+
+### Native Release-Datei fehlt
+
+Bei nativen Mods lädt OpenRAC nicht die zusammengeführte ZIP, sondern die Plattformdatei
+`<id>-<version>-<platform>.zip`. Graphics preparation 0.17.2 veröffentlicht deshalb zusätzlich
+`graphics-preparation-0.17.2-macos-arm64.zip`, `graphics-preparation-0.17.2-macos-x86_64.zip`,
+`graphics-preparation-0.17.2-linux-x86_64.zip`, `graphics-preparation-0.17.2-linux-aarch64.zip`
+und `graphics-preparation-0.17.2-windows-x86_64.zip`. Auf Apple Silicon ist
+`graphics-preparation-0.17.2-macos-arm64.zip` die vom Launcher erwartete Datei.
