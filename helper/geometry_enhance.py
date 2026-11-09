@@ -1149,7 +1149,11 @@ def enhance_gltf(
             data["POSITION"] = before_positions
             before_box = _bbox(before_positions)
             triangles_before = len(indices) // 3
-            role = classify_asset_role(path, doc, primitive, kind, data)
+            asset_aware = options.get("asset_aware_remesh", True) is not False
+            role = (
+                classify_asset_role(path, doc, primitive, kind, data)
+                if asset_aware else ("terrain" if kind == "terrain" else "generic")
+            )
             role_policy = remesh_policy(role)
             explicit_budget = isinstance(options.get("triangle_budget"), (int, float))
             effective_budget = profile.triangle_budget if explicit_budget else max(
@@ -1193,6 +1197,12 @@ def enhance_gltf(
 
             moved_max = moved_mean = 0.0
             silhouette = {"applied": False, "reason": "disabled", "max_move": 0.0, "mean_move": 0.0}
+            if (
+                bool(options.get("silhouette_refine", True))
+                and kind in {"moby","terrain"}
+                and not bool(options.get("allow_collision_mismatch", False))
+            ):
+                silhouette["reason"] = "collision-safe lock"
             if profile.shape_relax > 0:
                 use_asset_refine = options.get("asset_aware_remesh", True) is not False and bool(
                     options.get("silhouette_refine", True)
@@ -1287,12 +1297,15 @@ def enhance_gltf(
                 budget_limited=budget_limited,
                 triangle_budget=effective_budget,
                 asset_role=role,
-                asset_aware_remesh=options.get("asset_aware_remesh", True) is not False,
+                asset_aware_remesh=asset_aware,
                 adaptive_subdivision=profile.adaptive_subdivision,
                 adaptive_edges_split=adaptive_edges_split,
                 topology_optimization=topology,
                 silhouette_refinement=silhouette,
-                lod_plan=build_lod_plan(role, lod_stage_triangles, len(indices)//3),
+                lod_plan=(
+                    build_lod_plan(role, lod_stage_triangles, len(indices)//3)
+                    if options.get("lod_planning", True) is not False else None
+                ),
                 crease_angle_degrees=profile.crease_angle_degrees,
                 crease_vertices_split=crease_vertices_split,
                 micro_displacement=displacement,
