@@ -404,6 +404,37 @@ class GeometryEnhanceTests(unittest.TestCase):
         self.assertFalse(plan["stock_import_runtime"])
         self.assertEqual(plan["role"],"weapon")
 
+    def test_remesh_and_lod_toggles_disable_role_policy_and_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=write_fixture(Path(tmp),"tie")
+            report=enhance_gltf(
+                path,mode="modern",
+                options={
+                    "asset_aware_remesh":False,
+                    "lod_planning":False,
+                    "shape_refine":True,
+                },
+            )
+            primitive=report["primitives"][0]
+            self.assertEqual(primitive["asset_role"],"generic")
+            self.assertFalse(primitive["asset_aware_remesh"])
+            self.assertIsNone(primitive["lod_plan"])
+
+    def test_moby_silhouette_refinement_reports_collision_safe_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=write_fixture(Path(tmp),"moby")
+            report=enhance_gltf(
+                path,mode="modern",
+                options={
+                    "shape_refine":True,
+                    "silhouette_refine":True,
+                    "allow_collision_mismatch":False,
+                },
+            )
+            primitive=report["primitives"][0]
+            self.assertFalse(primitive["silhouette_refinement"]["applied"])
+            self.assertEqual(primitive["silhouette_refinement"]["reason"],"collision-safe lock")
+
     def test_unsupported_morph_target_is_left_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=write_fixture(Path(tmp),"moby")
