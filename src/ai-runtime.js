@@ -13,7 +13,7 @@ import {detectOutputFailures} from "./failure-detect.js";
 import {resizePng,upscalePng} from "./upscale.js";
 import {acceptSpecializedRefinement,specializedModelFor,verifySpecializedModelBytes} from "./specialized-models.js";
 import {reconstructAlphaEdges} from "./alpha-reconstruct.js";
-import {hardwareSnapshot,laneCeiling,normalizePerformanceMode,selectMeasuredLaneCount} from "./ai-performance.js";
+import {hardwareSnapshot,laneCeiling,normalizePerformanceMode,selectMeasuredLaneCount,shouldStopAutotune} from "./ai-performance.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -435,6 +435,7 @@ async function benchmarkInferenceLanes(runtime,maxLanes){
         await Promise.all(batch);
       }
       rows.push({lanes,runs,elapsedMs:Math.max(.01,performance.now()-started)});
+      if(lanes>=3&&shouldStopAutotune(rows,{minimumGain:.06,patience:2}))break;
     }catch{
       break;
     }
@@ -442,21 +443,6 @@ async function benchmarkInferenceLanes(runtime,maxLanes){
   performanceMeasurements=rows;
   inferenceLanes=selectMeasuredLaneCount(rows);
   return inferenceLanes;
-}
-
-async function mapConcurrentStable(items,limit,worker){
-  const out=new Array(items.length);
-  const width=Math.max(1,Math.min(Number(limit)||1,items.length||1));
-  let next=0;
-  const lanes=Array.from({length:width},async()=>{
-    while(true){
-      const index=next++;
-      if(index>=items.length)return;
-      out[index]=await worker(items[index],index);
-    }
-  });
-  await Promise.all(lanes);
-  return out;
 }
 
 async function preflight(runtime) {
@@ -652,47 +638,21 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     const total=jobs.length;
     const laneCount=String(runtime.backend).startsWith("webgpu")?Math.max(1,inferenceLanes):1;
     let completed=0;
-    let results;
-    try{
-      results=await mapConcurrentStable(jobs,laneCount,async(job)=>{
-        const inputValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
-        let tile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,runtime,inputValues,geometry,wrap);
-        let fused=null;
-        if(detailRuntime){
-          try{
-            const detailValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
-            const detailTile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,detailRuntime,detailValues,geometry,wrap);
-            fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
-            tile=fused.image;
-          }catch{}
-        }
-        completed++;
-        onProgress(completed,total);
-        if(completed===total||completed%Math.max(4,laneCount*2)===0)await new Promise((resolve)=>setTimeout(resolve,0));
-        return {job,tile,fused};
-      });
-    }catch(error){
-      if(laneCount<=1)throw error;
-      inferenceLanes=1;
-      performanceMeasurements=[...performanceMeasurements,{lanes:laneCount,runs:0,elapsedMs:0,error:"runtime fallback"}];
-      results=await mapConcurrentStable(jobs,1,async(job)=>{
-        const inputValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
-        let tile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,runtime,inputValues,geometry,wrap);
-        let fused=null;
-        if(detailRuntime){
-          try{
-            const detailValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
-            const detailTile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,detailRuntime,detailValues,geometry,wrap);
-            fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
-            tile=fused.image;
-          }catch{}
-        }
-        completed++;
-        onProgress(Math.min(completed,total),total);
-        return {job,tile,fused};
-      });
-    }
-    for(const row of results){
+    const processJob=async(job)=>{
+      const inputValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+      let tile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,runtime,inputValues,geometry,wrap);
+      let fused=null;
+      if(detailRuntime){
+        try{
+          const detailValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+          const detailTile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,detailRuntime,detailValues,geometry,wrap);
+          fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
+          tile=fused.image;
+        }catch{}
+      }
+      return {job,tile,fused};
+    };
+    const mergeResult=(row)=>{
       const {job,tile,fused}=row;
       if(fused){
         cnnAgreementSum+=fused.agreement;
@@ -710,6 +670,31 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
         sourceWidth:source.width,sourceHeight:source.height,
         coreW:job.coreW,coreH:job.coreH,
       });
+      completed++;
+      onProgress(completed,total);
+    };
+    const runBatches=async(width)=>{
+      completed=0;
+      for(let offset=0;offset<jobs.length;offset+=width){
+        const batch=jobs.slice(offset,offset+width);
+        const rows=await Promise.all(batch.map(processJob));
+        for(const row of rows)mergeResult(row);
+        if(completed===total||completed%Math.max(4,width*2)===0){
+          await new Promise((resolve)=>setTimeout(resolve,0));
+        }
+      }
+    };
+    try{
+      await runBatches(laneCount);
+    }catch(error){
+      if(laneCount<=1)throw error;
+      inferenceLanes=1;
+      performanceMeasurements=[...performanceMeasurements,{lanes:laneCount,runs:0,elapsedMs:0,error:"runtime fallback"}];
+      outputData.data.fill(0);
+      weights.fill(0);
+      cnnAgreementSum=0;cnnConfidenceSum=0;cnnAgreementTiles=0;detailPixels=0;
+      rejectedDetailPixels=0;consideredDetailPixels=0;lowConfidencePixels=0;cnnConfidenceP10=1;
+      await runBatches(1);
     }
     outputCtx.putImageData(outputData,0,0);
     let outData = outputCtx.getImageData(0, 0, output.width, output.height);
