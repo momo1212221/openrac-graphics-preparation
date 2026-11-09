@@ -3,7 +3,7 @@ import {request} from "./bridge.js";
 import {ModController} from "../src/controller.js";
 import {resetAiSession, warmAi, upscaleAiMasterPng} from "../src/ai-runtime.js";
 import {prepareTextureFailSafe, readFailSafe} from "../src/resilience.js";
-import {textureFiles, texturePackManifest, outputName, packPath, mipmapPath} from "../src/texture-pack.js";
+import {textureFiles, texturePackManifest, outputName, packPath} from "../src/texture-pack.js";
 import {upscalePng} from "../src/upscale.js";
 import {ZipStream} from "../src/zip.js";
 import {EffectsEditor} from "./effects.js";
@@ -13,7 +13,6 @@ import {pathTextureScope} from "../src/texture-classify.js";
 import {prioritizeGroups} from "../src/priority.js";
 import {QualityLab} from "./quality-lab.js";
 import {generateMaterialMapPngs,shouldGenerateMaterialMaps} from "../src/material-maps.js";
-import {generateMipChain,shouldGenerateMipmaps} from "../src/mipmaps.js";
 import {QUALITY_POLICY_VERSION,chooseBetterQuality,evaluateQuality} from "../src/quality-policy.js";
 import {applyQualifiedDowngrade,qualityRecoveryProfiles,qualifiedTier} from "../src/quality-recovery.js";
 import {automaticDetailQuality,refinedDetailQuality} from "../src/quality-planner.js";
@@ -762,52 +761,13 @@ async function createPack({ai, cacheOnly=false}) {
           }
           progress((groupIndex + .90) / workGroups.length, 1, `Material maps complete · ${baseLabel}`, {sampleRate:groupSampleRate});
         }
-        let generatedMips = null;
-        if (
-          state.mipmaps !== "off" &&
-          shouldGenerateMipmaps(prepared.textureClass, prepared.material, state.mipmaps)
-        ) {
-          try {
-            progress((groupIndex + .90) / workGroups.length, 1, `Mipmaps · ${baseLabel}`, {sampleRate:false});
-            generatedMips = await generateMipChain(prepared.bytes,{maxLevels:6,minSize:1});
-            stats.mipmapSets += group.members.length;
-            stats.mipmapLevels += generatedMips.levels.length * group.members.length;
-          } catch (error) {
-            stats.warnings.push({
-              hashes:group.members.map((member)=>member.hash),
-              strategy:"mipmap-generation-failed",
-              error:error instanceof Error?error.message:String(error),
-            });
-          }
-          progress((groupIndex + .94) / workGroups.length, 1, `Mipmaps complete · ${baseLabel}`, {sampleRate:groupSampleRate});
-        }
-        const writeFraction=generatedMips?.94:(generatedMaps?.90:.82);
-        progress((groupIndex + writeFraction) / workGroups.length, 1, `Writing pack · ${baseLabel}`, {sampleRate:false});
+        progress((groupIndex + (generatedMaps?.90:.82)) / workGroups.length, 1, `Writing pack · ${baseLabel}`, {sampleRate:false});
         for (const member of group.members) {
-          await zip.add(packPath(member), prepared.bytes);
-          if (generatedMips) {
-            const root = `Mipmaps/${member.hash}/`;
-            for (const level of generatedMips.levels) {
-              await zip.add(mipmapPath(member,level.level),level.bytes);
-            }
-            const mipMeta = {
-              format:1,
-              generator:"Graphics preparation 0.21.1",
-              sourceHash:member.hash,
-              sourceWidth:generatedMips.sourceWidth,
-              sourceHeight:generatedMips.sourceHeight,
-              hardCutout:generatedMips.hardCutout,
-              targetAlphaCoverage:generatedMips.targetAlphaCoverage,
-              levels:generatedMips.levels.map((level)=>({
-                level:level.level,width:level.width,height:level.height,
-                alphaCoverage:level.alphaCoverage,alphaBias:level.alphaBias,
-              })),
-            };
-            await zip.add(root+"mipmaps.json",encoder.encode(JSON.stringify(mipMeta,null,2)+"\n"));
-          }
+          // The cleaned albedo is the actual colour replacement. OpenRAC generates the ordinary
+          // 3D mip chain at upload time; material sidecars get their own specialised mip filters.
+          await zip.add(packPath(member), generatedMaps?.albedo || prepared.bytes);
           if (generatedMaps) {
             const root = `Materials/${member.hash}/`;
-            await zip.add(root+"albedo.png", generatedMaps.albedo);
             await zip.add(root+"normal.png", generatedMaps.normal);
             await zip.add(root+"roughness.png", generatedMaps.roughness);
             await zip.add(root+"height.png", generatedMaps.height);
@@ -900,7 +860,7 @@ async function createPack({ai, cacheOnly=false}) {
       material_curvature: state.materialCurvature,
       mipmap_sets: stats.mipmapSets,
       mipmap_levels: stats.mipmapLevels,
-      mipmaps_mode: state.mipmaps,
+      mipmaps_mode: "openrac-runtime",
       internal_8x_masters: stats.master8xRuns,
       failure_rejected: stats.failureRejected,
       specialized_cnn_runs: stats.specializedCnnRuns,
@@ -1202,16 +1162,10 @@ function render() {
   general.append(curvature.row);
 
   const mipmaps = settingRow(
-    "Enhanced mipmaps",
-    "Builds alpha-stable distance mip chains from the final 4× texture. Intended for the enhanced renderer; keep Off for the stock launcher.",
+    "Runtime mipmaps",
+    "OpenRAC generates the normal 3D mip chain itself with trilinear filtering. Normal/ORMH/Emissive/Specular/Detail sidecars use the Enhanced renderer's specialised mip filters, so no unsupported Mipmaps/ folder is exported.",
   );
-  mipmaps.control.append(select([
-    ["off","Off · stock-compatible"],
-    ["key","Key materials only"],
-    ["all","All eligible diffuse/sky textures"],
-  ], state.mipmaps, async(value)=>{
-    state.mipmaps=value;await savePrefs();render();
-  }));
+  mipmaps.control.append(el("span","Automatic","status-ok"));
   general.append(mipmaps.row);
 
   const acceleration = settingRow(
