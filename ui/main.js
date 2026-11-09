@@ -1162,13 +1162,18 @@ function render() {
     "AI hardware utilization",
     aiReady?.performance
       ? `Auto-tuned to ${aiReady.performance.lanes} inference lane${aiReady.performance.lanes===1?"":"s"} · ${aiReady.performance.hardware.hardwareConcurrency} logical CPU threads detected`
-      : "Auto benchmarks WebGPU with 1–3 concurrent inference lanes and keeps the fastest stable setting. Manual modes are available for testing.",
+      : "Auto benchmarks WebGPU with up to 8 concurrent inference lanes, stops when added parallelism no longer helps and keeps the fastest stable setting.",
   );
   performance.control.append(select([
     ["auto","Auto · benchmark hardware"],
     ["1","1 lane · safest"],
-    ["2","2 lanes · high utilization"],
-    ["3","3 lanes · maximum utilization"],
+    ["2","2 lanes"],
+    ["3","3 lanes"],
+    ["4","4 lanes"],
+    ["5","5 lanes"],
+    ["6","6 lanes"],
+    ["7","7 lanes"],
+    ["8","8 lanes · maximum"],
   ], state.performanceMode, async (value) => {
     state.performanceMode = value;
     aiReady = null;
@@ -1456,7 +1461,7 @@ async function start() {
       preserveMicrodetail: saved.preserveMicrodetail !== false,
       preserveStars: saved.preserveStars !== false,
       aiBackend: ["auto","webgpu","wasm"].includes(saved.aiBackend) ? saved.aiBackend : "auto",
-      performanceMode: ["auto","1","2","3"].includes(String(saved.performanceMode)) ? String(saved.performanceMode) : "auto",
+      performanceMode: ["auto","1","2","3","4","5","6","7","8"].includes(String(saved.performanceMode)) ? String(saved.performanceMode) : "auto",
       persistentCache: saved.persistentCache !== false,
       cacheBudgetMb: [512,1024,2048,4096,8192,12288,15360,20480].includes(Number(saved.cacheBudgetMb)) ? Number(saved.cacheBudgetMb) : 2048,
       detailQuality: ["auto","standard","high","max"].includes(saved.detailQuality) ? saved.detailQuality : "auto",
