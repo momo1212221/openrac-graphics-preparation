@@ -407,6 +407,11 @@ def mesh_job(
         "shape_refine": bool(options.get("shape_refine", False)),
         "allow_collision_mismatch": bool(options.get("allow_collision_mismatch", False)),
         "adaptive_subdivision": options.get("adaptive_subdivision", True) is not False,
+        "asset_aware_remesh": options.get("asset_aware_remesh", True) is not False,
+        "topology_optimize": options.get("topology_optimize", True) is not False,
+        "silhouette_refine": options.get("silhouette_refine", True) is not False,
+        "silhouette_strength": max(0.0, min(1.5, float(options.get("silhouette_strength", 1.0)))),
+        "lod_planning": options.get("lod_planning", True) is not False,
         "micro_displacement": options.get("micro_displacement", False) is True,
         "displacement_strength": max(0.0, min(1.5, float(options.get("displacement_strength", 1.0)))),
     }
@@ -469,6 +474,11 @@ def mesh_job(
             report["shape_refine"] = geometry_options["shape_refine"]
             report["allow_collision_mismatch"] = geometry_options["allow_collision_mismatch"]
             report["adaptive_subdivision"] = geometry_options["adaptive_subdivision"]
+            report["asset_aware_remesh"] = geometry_options["asset_aware_remesh"]
+            report["topology_optimize"] = geometry_options["topology_optimize"]
+            report["silhouette_refine"] = geometry_options["silhouette_refine"]
+            report["silhouette_strength"] = geometry_options["silhouette_strength"]
+            report["lod_planning"] = geometry_options["lod_planning"]
             report["crease_angle_degrees"] = geometry_options.get("crease_angle_degrees")
             report["micro_displacement"] = geometry_options["micro_displacement"]
             report["displacement_strength"] = geometry_options["displacement_strength"]
@@ -510,6 +520,9 @@ def mesh_job(
     skipped_primitives = int(report.get("primitives_skipped", 0))
     displacement_primitives = int(report.get("micro_displacement_primitives", 0))
     displacement_sources = report.get("micro_displacement_sources", {})
+    topology_flips = int(report.get("topology_edge_flips", 0))
+    asset_roles = report.get("asset_roles", {})
+    lod_plans = int(report.get("lod_plans", 0))
     return {
         "format": 1,
         "kind": RESULT_KIND,
@@ -531,6 +544,10 @@ def mesh_job(
             "micro_displacement_primitives": displacement_primitives,
             "micro_displacement_sources": displacement_sources,
             "height_source_stats": report.get("height_source_stats", {}),
+            "asset_roles": asset_roles,
+            "topology_edge_flips": topology_flips,
+            "lod_plans": lod_plans,
+            "stock_runtime_lod_supported": bool(report.get("stock_runtime_lod_supported", False)),
         },
         "message": (
             f"Dry run valid; planned geometry output is {archive.resolve()}."
@@ -538,7 +555,8 @@ def mesh_job(
             else f"Enhanced {changed} model files ({before} -> {after} triangles). "
                  f"Adaptive edges: {adaptive_edges}; preserved crease splits: {crease_splits}; "
                  f"budget-limited primitives: {budget_limited}; skipped unsupported primitives: {skipped_primitives}; "
-                 f"micro-displaced primitives: {displacement_primitives} ({displacement_sources}). "
+                 f"micro-displaced primitives: {displacement_primitives} ({displacement_sources}); "
+                 f"asset roles: {asset_roles}; topology flips: {topology_flips}; LOD plans: {lod_plans}. "
                  f"Collision review recommended for {collision_count} moved primitives. "
                  "Install the generated ZIP through OpenRAC's Mods page."
         ),
