@@ -53,6 +53,7 @@ let state = {
   preserveMicrodetail: true,
   preserveStars: true,
   aiBackend: "auto",
+  performanceMode: "auto",
   persistentCache: true,
   cacheBudgetMb: 2048,
   detailQuality: "auto",
@@ -305,7 +306,7 @@ async function createPack({ai, cacheOnly=false}) {
       } else {
         progress(0, 1, "AI preflight · model + 128×128 inference check…");
         [aiReady,specializedFingerprint]=await Promise.all([
-          warmAi(state.aiBackend),
+          warmAi(state.aiBackend, state.performanceMode),
           specializedRegistryIdentity(),
         ]);
       }
@@ -506,6 +507,7 @@ async function createPack({ai, cacheOnly=false}) {
             preserveMicrodetail: state.preserveMicrodetail,
             preserveStars: state.preserveStars,
             backend: state.aiBackend,
+            performanceMode: state.performanceMode,
             detailQuality: effectiveDetailQuality,
             detailCnn: state.detailCnn,
             sourceColorLock: state.sourceColorLock,
@@ -556,6 +558,7 @@ async function createPack({ai, cacheOnly=false}) {
                 preserveMicrodetail: state.preserveMicrodetail,
                 preserveStars: state.preserveStars,
                 backend: state.aiBackend,
+                performanceMode: state.performanceMode,
                 texturePaths,
                 textureClassOverride: cacheOptions.textureClassOverride,
                 materialOverride: cacheOptions.materialOverride,
@@ -587,6 +590,7 @@ async function createPack({ai, cacheOnly=false}) {
               const recovered=await upscaleAiMasterPng(source,{
                 ...profile,
                 backend:state.aiBackend,
+                performanceMode:state.performanceMode,
                 texturePaths,
                 textureClassOverride:cacheOptions.textureClassOverride,
                 materialOverride:cacheOptions.materialOverride,
@@ -1154,6 +1158,25 @@ function render() {
   }));
   general.append(acceleration.row);
 
+  const performance = settingRow(
+    "AI hardware utilization",
+    aiReady?.performance
+      ? `Auto-tuned to ${aiReady.performance.lanes} inference lane${aiReady.performance.lanes===1?"":"s"} · ${aiReady.performance.hardware.hardwareConcurrency} logical CPU threads detected`
+      : "Auto benchmarks WebGPU with 1–3 concurrent inference lanes and keeps the fastest stable setting. Manual modes are available for testing.",
+  );
+  performance.control.append(select([
+    ["auto","Auto · benchmark hardware"],
+    ["1","1 lane · safest"],
+    ["2","2 lanes · high utilization"],
+    ["3","3 lanes · maximum utilization"],
+  ], state.performanceMode, async (value) => {
+    state.performanceMode = value;
+    aiReady = null;
+    await savePrefs();
+    render();
+  }));
+  general.append(performance.row);
+
   const cacheRow = settingRow(
     "Persistent AI cache",
     "Stores completed 4× AI results locally in the OpenRAC WebView so retries and later exports can skip Real-ESRGAN.",
@@ -1180,6 +1203,10 @@ function render() {
     [1024, "1 GB"],
     [2048, "2 GB"],
     [4096, "4 GB"],
+    [8192, "8 GB"],
+    [12288, "12 GB"],
+    [15360, "15 GB"],
+    [20480, "20 GB"],
   ], state.cacheBudgetMb, async (value) => {
     state.cacheBudgetMb = Number(value);
     await savePrefs();
@@ -1351,7 +1378,7 @@ function render() {
   source.control.append(refresh); assets.append(source.row);
 
   const backend = settingRow("AI backend", aiReady
-    ? `${aiReady.model} · ${aiReady.backend}${aiReady.fallbackReason ? ` · WebGPU fallback: ${aiReady.fallbackReason}` : ""}`
+    ? `${aiReady.model} · ${aiReady.backend} · ${aiReady.performance?.lanes ?? 1} inference lane${(aiReady.performance?.lanes ?? 1)===1?"":"s"}${aiReady.fallbackReason ? ` · WebGPU fallback: ${aiReady.fallbackReason}` : ""}`
     : "Bundled Real-ESRGAN x4plus · Auto tries WebGPU first, then optimized WASM.");
   backend.control.append(el("span", "Standard launcher", "status-ok"));
   assets.append(backend.row);
@@ -1429,8 +1456,9 @@ async function start() {
       preserveMicrodetail: saved.preserveMicrodetail !== false,
       preserveStars: saved.preserveStars !== false,
       aiBackend: ["auto","webgpu","wasm"].includes(saved.aiBackend) ? saved.aiBackend : "auto",
+      performanceMode: ["auto","1","2","3"].includes(String(saved.performanceMode)) ? String(saved.performanceMode) : "auto",
       persistentCache: saved.persistentCache !== false,
-      cacheBudgetMb: [512,1024,2048,4096].includes(Number(saved.cacheBudgetMb)) ? Number(saved.cacheBudgetMb) : 2048,
+      cacheBudgetMb: [512,1024,2048,4096,8192,12288,15360,20480].includes(Number(saved.cacheBudgetMb)) ? Number(saved.cacheBudgetMb) : 2048,
       detailQuality: ["auto","standard","high","max"].includes(saved.detailQuality) ? saved.detailQuality : "auto",
       detailCnn: saved.detailCnn !== false,
       sourceColorLock: saved.sourceColorLock !== false,
