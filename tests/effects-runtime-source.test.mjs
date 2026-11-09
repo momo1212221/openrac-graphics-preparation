@@ -36,3 +36,13 @@ test('effects export places object-lights.json where Enhanced Graphics actually 
  assert.match(source,/root\+"object-lights\.json"/);
  assert.doesNotMatch(source,/root\+"assets\/object-lights\.json"/);
 });
+
+
+test('native runtime reads effects only from enabled plugins.json entries',()=>{
+  const source=readFileSync(root+'effects-runtime/src/mod.cpp','utf8');
+  const parser=readFileSync(root+'effects-runtime/src/plugin_list.h','utf8');
+  assert.match(source,/parse_active_plugin_ids/);
+  assert.doesNotMatch(source,/directory_iterator\(plugins/);
+  assert.match(parser,/enabled/);
+  assert.match(parser,/safe_plugin_id/);
+});

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "openrac/mod.hpp"
 #include "config.h"
+#include "plugin_list.h"
 
 #include <algorithm>
 #include <array>
@@ -34,11 +35,29 @@ std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac
     std::error_code ec;
     if (plugins.empty() || !std::filesystem::is_directory(plugins, ec)) return out;
 
-    for (const auto& entry : std::filesystem::directory_iterator(plugins, ec)) {
-        if (ec || !entry.is_directory()) continue;
-        const auto file = entry.path() / "graphics-effects.tsv";
-        if (!std::filesystem::is_regular_file(file, ec)) continue;
+    const auto list = plugins / "plugins.json";
+    std::ifstream input(list, std::ios::binary);
+    if (!input) {
+        mod.warn("cannot read plugins.json; authored effects stay disabled");
+        return out;
+    }
+    std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (text.size() > 4u * 1024u * 1024u) {
+        mod.warn("plugins.json is unexpectedly large; authored effects stay disabled");
+        return out;
+    }
 
+    std::vector<std::string> active;
+    try {
+        active = graphics_effects::parse_active_plugin_ids(text);
+    } catch (const std::exception& error) {
+        mod.warn(std::string("cannot parse plugins.json; authored effects stay disabled: ") + error.what());
+        return out;
+    }
+
+    for (const auto& id : active) {
+        const auto file = plugins / id / "graphics-effects.tsv";
+        if (!std::filesystem::is_regular_file(file, ec)) continue;
         std::ifstream in(file);
         std::string line;
         int row = 0;
@@ -48,7 +67,7 @@ std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac
             try {
                 out.push_back(graphics_effects::parse_emitter_line(line));
             } catch (const std::exception& error) {
-                mod.warn("ignored " + file.filename().string() + " row " + std::to_string(row) + ": " + error.what());
+                mod.warn("ignored " + id + "/graphics-effects.tsv row " + std::to_string(row) + ": " + error.what());
             }
         }
     }
