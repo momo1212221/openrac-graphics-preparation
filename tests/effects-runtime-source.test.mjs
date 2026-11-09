@@ -25,3 +25,8 @@ test('same native runtime can identify as legacy runtime or unified graphics-pre
   assert.match(authoring,/graphics-preparation",version:">=0\.17\.0"/);
   assert.doesNotMatch(authoring,/graphics-effects-runtime",version:/);
 });
+
+test('native runtime parser is compiled and independently tested',()=>{
+ const cmake=readFileSync(root+'CMakeLists.txt','utf8'); const parser=readFileSync(root+'effects-runtime/src/config.h','utf8'); const nativeTest=readFileSync(root+'effects-runtime/tests/config_test.cpp','utf8');
+ assert.match(cmake,/graphics_effects_config_test/); assert.match(parser,/parse_emitter_line/); assert.match(parser,/preset=="smog"/); assert.match(nativeTest,/unknown/); assert.match(nativeTest,/2000000/);
+});
