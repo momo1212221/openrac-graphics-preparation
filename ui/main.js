@@ -1050,7 +1050,7 @@ function render() {
   globalModernPresetButton.onclick=async()=>{
     state=modernGraphicsPreset(state);
     await savePrefs();
-    setMessage("Modern / PS5 target applied: Enhanced AI, guarded Auto detail, selective 8x masters, key material maps/mipmaps and adaptive collision-safe geometry.");
+    setMessage("Modern / PS5 target applied: Enhanced AI, guarded Auto detail, selective 8x masters, full eligible material maps/mipmaps and adaptive collision-safe geometry.");
     render();
   };
   const runButtons=el("div",undefined,"button-row");
@@ -1444,13 +1444,16 @@ function render() {
   }));
   geometry.append(collisionMismatch.row);
 
-  const geometryJobButton=el("button","Export Geometry Job","primary");
+  const nativeGeometry=info?.services?.includes("graphics-preparation");
+  const geometryJobButton=el("button",nativeGeometry?"Prepare Geometry":"Export Geometry Job","primary");
   geometryJobButton.onclick=()=>void exportGeometryJob();
   const geometryButtons=el("div",undefined,"button-row");
   geometryButtons.append(geometryJobButton);
   geometry.append(geometryButtons);
   geometry.append(el("p",
-    "Run: python3 helper/openrac_graphics_helper.py <geometry-job.json> --openrac-root /path/to/OpenRAC. For the best displacement quality add --material-pack <your-ai-pack.zip>; if exactly one compatible material pack sits beside the job JSON it is auto-detected. The helper creates geometry-report.json plus an installable OpenRAC override ZIP. Animations remain from the game; unknown bones, missing UVs, morph targets and unsupported primitive layouts are never silently rewritten.",
+    nativeGeometry
+      ? "OpenRAC runs the bundled geometry helper through the consented launcher service, validates the complete render-mesh result, rejects collision replacements, backs up the previous geometry and activates the new level overrides automatically for the next game start."
+      : "Compatibility mode: save the Geometry Job and run helper/openrac_graphics_helper.py against your OpenRAC checkout. Current launchers use the native Prepare Geometry path instead.",
     "muted"));
   content.append(geometry);
 
