@@ -19,6 +19,7 @@ test('runtime point and spot lights serialize to the official object-lights form
 
 test('baker authoring preserves existing profile and adds official area_lights',()=>{
   const state=normalizeEffects({
+    selectedLevel:'level_01',
     baker:{skyIntensity:.7,skyWeight:.4,surfaceEmissionScale:2,environmentProbes:true,probeResolution:64,maximumProbes:256,spacing:16},
     areaLights:[{level:'level_01',placement:'manual',position:[1,2,3],axis_u:[2,0,0],axis_v:[0,2,0],radiance:[5,4,3]}],
   });
