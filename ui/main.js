@@ -1050,7 +1050,24 @@ function render() {
   globalModernPresetButton.onclick=async()=>{
     state=modernGraphicsPreset(state);
     await savePrefs();
-    setMessage("Modern / PS5 target applied: Enhanced AI, guarded Auto detail, selective 8x masters, full eligible material maps/mipmaps and adaptive collision-safe geometry.");
+    let rendererNote="";
+    let rendererError=false;
+    if(info?.services?.includes("graphics-preparation")){
+      try{
+        await controller.service("renderer.enable",{});
+        rendererNote=" Enhanced graphics was enabled so generated Normal/PBR sidecars are active in-game.";
+      }catch(error){
+        rendererError=true;
+        rendererNote=" The preset was saved, but Enhanced graphics could not be enabled automatically: "
+          +(error instanceof Error?error.message:String(error))
+          +". Enable Enhanced graphics manually before testing the material maps.";
+      }
+    }
+    setMessage(
+      "Modern / PS5 target applied: Enhanced AI, guarded Auto detail, selective 8x masters, full eligible material maps/mipmaps and adaptive collision-safe geometry."
+      +rendererNote,
+      rendererError
+    );
     render();
   };
   const runButtons=el("div",undefined,"button-row");
