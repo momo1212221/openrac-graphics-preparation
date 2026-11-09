@@ -504,6 +504,7 @@ def mesh_job(
             "OpenRAC graphics helper",
             "--description",
             f"Geometry enhancement {mode} for {job['game']} {job['version']}",
+            "--strict",
         ]
         run(import_cmd, cwd=root, dry_run=dry_run)
         if not dry_run:
