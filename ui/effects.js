@@ -48,7 +48,7 @@ const selectField=(label,value,rows,onchange)=>{
 export class EffectsEditor {
   constructor(controller,info,setMessage){
     this.controller=controller;this.info=info;this.setMessage=setMessage;
-    this.state=normalizeEffects(DEFAULT_EFFECTS);this.levels=[];this.profile={};this.positionClipboard=null;
+    this.state=normalizeEffects(DEFAULT_EFFECTS);this.levels=[];this.profile={};this.profileError="";this.positionClipboard=null;
   }
   async start(){
     const [levels,saved]=await Promise.all([
@@ -61,11 +61,21 @@ export class EffectsEditor {
     const level=this.currentLevel();
     if(!level?.objects.some(o=>o.key===this.state.selectedObject))this.state.selectedObject=level?.objects[0]?.key||"";
     if(!level?.placements?.some(o=>o.key===this.state.selectedPlacement))this.state.selectedPlacement=level?.placements?.[0]?.key||"";
-    this.profile=await readProbeProfile(this.controller,this.state.selectedLevel);
-    this.state.baker=bakerSettingsForLevel(this.state,this.state.selectedLevel,this.profile);
+    await this.loadProfile(this.state.selectedLevel);
     await this.persist();
   }
   currentLevel(){return this.levels.find(l=>l.dir===this.state.selectedLevel)}
+  async loadProfile(dir){
+    this.profileError="";
+    try{
+      this.profile=await readProbeProfile(this.controller,dir);
+    }catch(error){
+      this.profile={};
+      this.profileError=error instanceof Error?error.message:String(error);
+      this.setMessage(this.profileError,true);
+    }
+    this.state.baker=bakerSettingsForLevel(this.state,dir,this.profile);
+  }
   selectedPlacementInstance(){
     return this.currentLevel()?.placements?.find((row)=>row.key===this.state.selectedPlacement)||null;
   }
@@ -100,8 +110,7 @@ export class EffectsEditor {
     const level=this.currentLevel();
     if(!level?.objects.some(o=>o.key===this.state.selectedObject))this.state.selectedObject=level?.objects[0]?.key||"";
     if(!level?.placements?.some(o=>o.key===this.state.selectedPlacement))this.state.selectedPlacement=level?.placements?.[0]?.key||"";
-    this.profile=await readProbeProfile(this.controller,dir);
-    this.state.baker=bakerSettingsForLevel(this.state,dir,this.profile);
+    await this.loadProfile(dir);
     await this.persist();
     document.dispatchEvent(new CustomEvent("graphics-effects-change"));
   }
@@ -173,7 +182,7 @@ export class EffectsEditor {
     bgrid.append(toggleField("Adaptive rays",this.state.baker.adaptiveRays,v=>void this.updateBaker("adaptiveRays",v)));
     bgrid.append(toggleField("Environment probes",this.state.baker.environmentProbes,v=>void this.updateBaker("environmentProbes",v)));
     baker.append(bgrid);
-    const bakerIssues=bakerExportIssues(this.state,this.state.selectedLevel);
+    const bakerIssues=[...(this.profileError?[this.profileError]:[]),...bakerExportIssues(this.state,this.state.selectedLevel,this.profile)];
     if(bakerIssues.length)baker.append(node("p","Baker export blocked: "+bakerIssues.slice(0,3).join(" · ")+(bakerIssues.length>3?" · +"+(bakerIssues.length-3)+" more":""),"placement-warning"));
     lighting.append(baker);
     const buttons=node("div",undefined,"effect-actions");

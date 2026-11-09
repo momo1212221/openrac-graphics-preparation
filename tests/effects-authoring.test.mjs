@@ -290,3 +290,16 @@ test('area-light limit counts existing Enhanced profile lights too',()=>{
   });
   assert.ok(bakerExportIssues(state,'level_01',{version:1,area_lights:existing}).some(x=>x.includes('at most 64')));
 });
+
+
+test('missing probe profile uses defaults but malformed existing JSON is not hidden',async()=>{
+  const enc=new TextEncoder();
+  const missing={read:async()=>{throw new Error('not found')}};
+  assert.deepEqual(await readProbeProfile(missing,'level_01'),{});
+  const malformed={read:async()=>enc.encode('{broken').buffer};
+  await assert.rejects(()=>readProbeProfile(malformed,'level_01'),/invalid JSON/);
+  const arrayProfile={read:async()=>enc.encode('[]').buffer};
+  await assert.rejects(()=>readProbeProfile(arrayProfile,'level_01'),/must contain a JSON object/);
+  const oldVersion={read:async()=>enc.encode('{"version":2}').buffer};
+  await assert.rejects(()=>readProbeProfile(oldVersion,'level_01'),/expects version 1/);
+});

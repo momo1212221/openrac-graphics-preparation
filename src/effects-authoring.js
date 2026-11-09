@@ -235,13 +235,26 @@ export async function loadLevels(controller) {
 
 export async function readProbeProfile(controller, levelDir) {
   if (!levelDir) return {};
+  let raw;
   try {
-    const raw = await controller.read("levels", `${levelDir}/probe-bake.json`);
-    const value = JSON.parse(dec.decode(raw));
-    return value && typeof value === "object" ? value : {};
+    raw = await controller.read("levels", `${levelDir}/probe-bake.json`);
   } catch {
+    // A missing optional profile means the stock baker defaults.
     return {};
   }
+  let value;
+  try {
+    value = JSON.parse(dec.decode(raw));
+  } catch (error) {
+    throw new Error(`${levelDir}/probe-bake.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${levelDir}/probe-bake.json must contain a JSON object`);
+  }
+  if (value.version !== undefined && value.version !== 1) {
+    throw new Error(`${levelDir}/probe-bake.json uses unsupported version ${String(value.version)}; stock Enhanced baker expects version 1`);
+  }
+  return value;
 }
 
 export function objectLightCatalog(state) {

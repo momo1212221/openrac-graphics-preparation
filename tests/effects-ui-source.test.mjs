@@ -40,3 +40,11 @@ test('UI documents the stock Enhanced per-level object-light path',()=>{
   assert.match(source,/assets\/level_NN\/object-lights\.json/);
   assert.doesNotMatch(source,/object-lights\.json at the generated mod root/);
 });
+
+
+test('malformed existing baker profiles block export instead of falling back silently',()=>{
+  const source=readFileSync(root+'ui/effects.js','utf8');
+  assert.match(source,/profileError/);
+  assert.match(source,/this\.setMessage\(this\.profileError,true\)/);
+  assert.match(source,/bakerExportIssues\(this\.state,this\.state\.selectedLevel,this\.profile\)/);
+});
