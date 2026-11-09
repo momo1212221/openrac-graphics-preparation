@@ -89,6 +89,9 @@ def add_file(arcname,path):
 
 add_file("LICENSE",root/"LICENSE")
 add_file("README.md",root/"README.md")
+add_file("GUIDE.md",root/"GUIDE.md")
+add_file("helper/openrac_graphics_helper.py",root/"helper"/"openrac_graphics_helper.py")
+add_file("helper/geometry_enhance.py",root/"helper"/"geometry_enhance.py")
 for folder in ["ui","src","vendor","models"]:
     directory=root/folder
     if directory.is_dir():
