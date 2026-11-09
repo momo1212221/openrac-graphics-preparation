@@ -1,8 +1,8 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.17.3** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.18.0** mit dem aktuellen **OpenRAC Dev Launcher**.
 
-Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für die normale Nutzung werden **kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm** benötigt.
+Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für den normalen **Texture-AI-Lauf** werden kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm benötigt. Der neue optionale **3D Geometry Enhancement**-Pfad nutzt den mitgelieferten Python-Helper ausschließlich für OpenRACs offiziellen glTF-Export/Import über `editor/assets.py`.
 
 Repository: https://github.com/momo1212221/openrac-graphics-preparation
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.17.3.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.18.0.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
@@ -436,3 +436,38 @@ Bei nativen Mods lädt OpenRAC nicht die zusammengeführte ZIP, sondern die Plat
 `graphics-preparation-0.17.3-linux-x86_64.zip`, `graphics-preparation-0.17.3-linux-aarch64.zip`
 und `graphics-preparation-0.17.3-windows-x86_64.zip`. Auf Apple Silicon ist
 `graphics-preparation-0.17.3-macos-arm64.zip` die vom Launcher erwartete Datei.
+
+
+## 3D Geometry Enhancement
+
+Ab 0.18.0 kann der Mod zusätzlich einen **Geometry Job** erzeugen.
+
+Im Abschnitt **3D Geometry Enhancement** stehen vier Profile zur Verfügung:
+
+- **Enhanced:** neue Normalen/Tangenten, keine zusätzliche Unterteilung;
+- **High:** ein sicherer Subdivision-Durchlauf;
+- **Ultra:** bis zu zwei Durchläufe innerhalb des Triangle-Budgets;
+- **Experimental:** Ultra plus optionale Formverfeinerung für manuelle Tests.
+
+**3D asset scope** wählt Terrain, Scenery (Ties/Shrubs), Mobys oder alles zusammen.
+
+**Shape refinement** ist standardmäßig aus. Solange es aus bleibt, werden die ursprünglichen
+Vertexpositionen nicht verändert. Das ist die sichere erste Stufe: mehr Geometrie und bessere
+Tangent-Space-Daten, aber keine Collision-Verschiebung.
+
+Mit **Allow visual/collision mismatch** dürfen im Experimental-Pfad auch Terrain-/Moby-Positionen
+leicht verändert werden. Das ist ausdrücklich ein manueller Testmodus; `geometry-report.json`
+markiert betroffene Primitive für Collision-Review.
+
+Ablauf:
+
+1. Im Mod **Export Geometry Job** drücken.
+2. Die gespeicherte JSON-Datei mit dem Helper ausführen:
+   `python3 helper/openrac_graphics_helper.py <job.json> --openrac-root /pfad/zu/OpenRAC`
+3. Der Helper exportiert die passenden eigenen Spielmodelle über OpenRAC, verarbeitet die glTFs und
+   importiert die Änderungen wieder.
+4. Ergebnis sind `geometry-report.json` und ein normales installierbares Override-ZIP.
+5. Das ZIP über **Mods -> Add a mod** installieren.
+
+Der Helper verändert keine Disc-Datei. Nicht unterstützte Morph Targets, fehlende UVs, unbekannte
+Vertexattribute oder fehlerhafte Primitive werden übersprungen statt still beschädigt zu werden.
