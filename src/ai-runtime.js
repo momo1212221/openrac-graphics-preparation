@@ -13,6 +13,7 @@ import {detectOutputFailures} from "./failure-detect.js";
 import {resizePng,upscalePng} from "./upscale.js";
 import {acceptSpecializedRefinement,specializedModelFor,verifySpecializedModelBytes} from "./specialized-models.js";
 import {reconstructAlphaEdges} from "./alpha-reconstruct.js";
+import {hardwareSnapshot,laneCeiling,normalizePerformanceMode,selectMeasuredLaneCount} from "./ai-performance.js";
 
 let wasmSessionPromise;
 let gpuCaptureSessionPromise;
@@ -29,6 +30,28 @@ let gpuCaptureDisabledForRun = false;
 let lastGpuError = null;
 let lastGpuCaptureError = null;
 let preflightKey = "";
+let performanceMode = "auto";
+let inferenceLanes = 1;
+let performanceMeasurements = [];
+let performanceHardware = hardwareSnapshot();
+
+export function aiPerformanceState(){
+  return {
+    mode:performanceMode,
+    lanes:inferenceLanes,
+    measurements:performanceMeasurements.map((row)=>({...row})),
+    hardware:{...performanceHardware},
+  };
+}
+
+export function setAiPerformanceMode(value){
+  performanceMode=normalizePerformanceMode(value);
+  performanceHardware=hardwareSnapshot();
+  const ceiling=laneCeiling({backend:activeBackend||"wasm",mode:performanceMode,hardware:performanceHardware});
+  inferenceLanes=Math.max(1,ceiling);
+  performanceMeasurements=[];
+  return aiPerformanceState();
+}
 
 const imageFromBytes = async (buffer) => {
   const blob = new Blob([buffer], {type: "image/png"});
@@ -384,6 +407,58 @@ export async function resetAiSession() {
   await releasePromise(current);
 }
 
+async function benchmarkInferenceLanes(runtime,maxLanes){
+  if(!String(runtime.backend).startsWith("webgpu")||maxLanes<=1){
+    performanceMeasurements=[];
+    inferenceLanes=1;
+    return 1;
+  }
+  const rows=[];
+  const inputName=runtime.session.inputNames[0];
+  const zero=()=>new runtime.ort.Tensor(
+    "float32",
+    new Float32Array(3*MODEL_INPUT*MODEL_INPUT),
+    [1,3,MODEL_INPUT,MODEL_INPUT],
+  );
+
+  for(let lanes=1;lanes<=maxLanes;lanes++){
+    try{
+      // One untimed warm call keeps shader compilation out of the throughput sample.
+      await runtime.session.run({[inputName]:zero()});
+      const runs=lanes*2;
+      const started=performance.now();
+      for(let offset=0;offset<runs;offset+=lanes){
+        const batch=[];
+        for(let i=0;i<Math.min(lanes,runs-offset);i++){
+          batch.push(runtime.session.run({[inputName]:zero()}));
+        }
+        await Promise.all(batch);
+      }
+      rows.push({lanes,runs,elapsedMs:Math.max(.01,performance.now()-started)});
+    }catch{
+      break;
+    }
+  }
+  performanceMeasurements=rows;
+  inferenceLanes=selectMeasuredLaneCount(rows);
+  return inferenceLanes;
+}
+
+async function mapConcurrentStable(items,limit,worker){
+  const out=new Array(items.length);
+  const width=Math.max(1,Math.min(Number(limit)||1,items.length||1));
+  let next=0;
+  const lanes=Array.from({length:width},async()=>{
+    while(true){
+      const index=next++;
+      if(index>=items.length)return;
+      out[index]=await worker(items[index],index);
+    }
+  });
+  await Promise.all(lanes);
+  return out;
+}
+
 async function preflight(runtime) {
   const key = runtime.backend;
   if (preflightKey === key) return;
@@ -403,13 +478,17 @@ async function preflight(runtime) {
   preflightKey = key;
 }
 
-export async function warmAi(preference = "auto") {
+export async function warmAi(preference = "auto", requestedPerformanceMode = performanceMode) {
+  setAiPerformanceMode(requestedPerformanceMode);
   // Capture -> plain WebGPU -> WASM in Auto mode. Each failed preflight removes only that layer.
   for (let attempt = 0; attempt < 3; attempt++) {
     let runtime;
     try {
       runtime = await acquireSession(preference);
       await preflight(runtime);
+      const ceiling=laneCeiling({backend:runtime.backend,mode:performanceMode,hardware:performanceHardware});
+      if(performanceMode==="auto")await benchmarkInferenceLanes(runtime,ceiling);
+      else inferenceLanes=ceiling;
 
       if (runtime.backend === "webgpu-capture") {
         return {
@@ -419,6 +498,7 @@ export async function warmAi(preference = "auto") {
           graphCapture:true,
           webgpu:true,
           fallbackReason:null,
+          performance:aiPerformanceState(),
         };
       }
       if (runtime.backend === "webgpu") {
@@ -429,6 +509,7 @@ export async function warmAi(preference = "auto") {
           graphCapture:false,
           webgpu:true,
           fallbackReason:lastGpuCaptureError,
+          performance:aiPerformanceState(),
         };
       }
 
@@ -441,6 +522,7 @@ export async function warmAi(preference = "auto") {
         webgpu:false,
         graphCapture:false,
         fallbackReason:lastGpuError || lastGpuCaptureError,
+        performance:aiPerformanceState(),
       };
     } catch (error) {
       if (runtime?.backend === "webgpu-capture") {
@@ -468,6 +550,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
   const preserveMicrodetail = options.preserveMicrodetail !== false;
   const preserveStars = options.preserveStars !== false;
   const backend = ["auto", "webgpu", "wasm"].includes(options.backend) ? options.backend : "auto";
+  const requestedPerformanceMode=normalizePerformanceMode(options.performanceMode??performanceMode);
+  if(requestedPerformanceMode!==performanceMode)setAiPerformanceMode(requestedPerformanceMode);
   const image = await imageFromBytes(buffer);
   const started = performance.now();
 
@@ -554,47 +638,78 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
     const detailRuntime = detailCnn && effectiveQuality !== "standard" && textureClass !== "ui"
       ? await detailSessionFor(runtime).catch(()=>null)
       : null;
-    const inputValues = new Float32Array(3 * MODEL_INPUT * MODEL_INPUT);
-    const detailInputValues = detailRuntime ? new Float32Array(3 * MODEL_INPUT * MODEL_INPUT) : null;
     let cnnAgreementSum=0,cnnConfidenceSum=0,cnnAgreementTiles=0,detailPixels=0,rejectedDetailPixels=0,consideredDetailPixels=0,lowConfidencePixels=0,cnnConfidenceP10=1;
     const outputData = new ImageData(output.width, output.height);
     const weights = new Uint16Array(output.width * output.height);
     const xs=[]; for(let x=0;x<source.width;x+=geometry.step)xs.push(x);
     const ys=[]; for(let y=0;y<source.height;y+=geometry.step)ys.push(y);
-    const total = xs.length * ys.length;
-    let done = 0;
-
-    for (const y of ys) {
-      for (const x of xs) {
-        const coreW = Math.min(geometry.core, source.width - x);
-        const coreH = Math.min(geometry.core, source.height - y);
-        let tile = await runTile(sourceData, x, y, coreW, coreH, runtime, inputValues, geometry, wrap);
+    const jobs=[];
+    for(const y of ys)for(const x of xs)jobs.push({
+      x,y,
+      coreW:Math.min(geometry.core,source.width-x),
+      coreH:Math.min(geometry.core,source.height-y),
+    });
+    const total=jobs.length;
+    const laneCount=String(runtime.backend).startsWith("webgpu")?Math.max(1,inferenceLanes):1;
+    let completed=0;
+    let results;
+    try{
+      results=await mapConcurrentStable(jobs,laneCount,async(job)=>{
+        const inputValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+        let tile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,runtime,inputValues,geometry,wrap);
+        let fused=null;
         if(detailRuntime){
           try{
-            const detailTile=await runTile(sourceData,x,y,coreW,coreH,detailRuntime,detailInputValues,geometry,wrap);
-            const fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
+            const detailValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+            const detailTile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,detailRuntime,detailValues,geometry,wrap);
+            fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
             tile=fused.image;
-            cnnAgreementSum+=fused.agreement;
-            cnnConfidenceSum+=fused.confidence??fused.agreement;
-            cnnAgreementTiles++;
-            detailPixels+=fused.detailPixels;
-            rejectedDetailPixels+=fused.rejectedPixels||0;
-            consideredDetailPixels+=fused.consideredPixels||0;
-            lowConfidencePixels+=fused.lowConfidencePixels||0;
-            cnnConfidenceP10=Math.min(cnnConfidenceP10,Number(fused.confidenceP10??1));
-          }catch{
-            // Detail CNN is optional; the x4plus result remains valid.
-          }
+          }catch{}
         }
-        blendTile(outputData, weights, tile, x*SCALE, y*SCALE, {
-          overlap:geometry.overlap,
-          sourceX:x,sourceY:y,
-          sourceWidth:source.width,sourceHeight:source.height,
-          coreW,coreH,
-        });
-        onProgress(++done,total);
-        if(done===total||done%4===0)await new Promise((resolve)=>setTimeout(resolve,0));
+        completed++;
+        onProgress(completed,total);
+        if(completed===total||completed%Math.max(4,laneCount*2)===0)await new Promise((resolve)=>setTimeout(resolve,0));
+        return {job,tile,fused};
+      });
+    }catch(error){
+      if(laneCount<=1)throw error;
+      inferenceLanes=1;
+      performanceMeasurements=[...performanceMeasurements,{lanes:laneCount,runs:0,elapsedMs:0,error:"runtime fallback"}];
+      results=await mapConcurrentStable(jobs,1,async(job)=>{
+        const inputValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+        let tile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,runtime,inputValues,geometry,wrap);
+        let fused=null;
+        if(detailRuntime){
+          try{
+            const detailValues=new Float32Array(3*MODEL_INPUT*MODEL_INPUT);
+            const detailTile=await runTile(sourceData,job.x,job.y,job.coreW,job.coreH,detailRuntime,detailValues,geometry,wrap);
+            fused=fuseCnnOutputs(tile,detailTile,{quality:effectiveQuality,material});
+            tile=fused.image;
+          }catch{}
+        }
+        completed++;
+        onProgress(Math.min(completed,total),total);
+        return {job,tile,fused};
+      });
+    }
+    for(const row of results){
+      const {job,tile,fused}=row;
+      if(fused){
+        cnnAgreementSum+=fused.agreement;
+        cnnConfidenceSum+=fused.confidence??fused.agreement;
+        cnnAgreementTiles++;
+        detailPixels+=fused.detailPixels;
+        rejectedDetailPixels+=fused.rejectedPixels||0;
+        consideredDetailPixels+=fused.consideredPixels||0;
+        lowConfidencePixels+=fused.lowConfidencePixels||0;
+        cnnConfidenceP10=Math.min(cnnConfidenceP10,Number(fused.confidenceP10??1));
       }
+      blendTile(outputData,weights,tile,job.x*SCALE,job.y*SCALE,{
+        overlap:geometry.overlap,
+        sourceX:job.x,sourceY:job.y,
+        sourceWidth:source.width,sourceHeight:source.height,
+        coreW:job.coreW,coreH:job.coreH,
+      });
     }
     outputCtx.putImageData(outputData,0,0);
     let outData = outputCtx.getImageData(0, 0, output.width, output.height);
@@ -681,6 +796,8 @@ export async function upscaleAiPng(buffer, options = {}, onProgress = () => {}) 
       tiles:total,
       textureComplexity:complexity,
       tileGeometry:geometry.name,
+      inferenceLanes:String(runtime.backend).startsWith("webgpu")?Math.max(1,inferenceLanes):1,
+      performanceMode,
     };
   } finally {
     if (typeof image.close === "function") image.close();
