@@ -445,22 +445,31 @@ def split_crease_vertices(
     return out,new_indices,split_count
 
 
+def _corner_angle(origin: tuple, a: tuple, b: tuple) -> float:
+    va = (a[0]-origin[0], a[1]-origin[1], a[2]-origin[2])
+    vb = (b[0]-origin[0], b[1]-origin[1], b[2]-origin[2])
+    na = _normalise(va, (1.0,0.0,0.0))
+    nb = _normalise(vb, (1.0,0.0,0.0))
+    dot = max(-1.0, min(1.0, sum(na[i]*nb[i] for i in range(3))))
+    return math.acos(dot)
+
+
 def recalc_normals(positions: list[tuple], indices: list[int]) -> list[tuple]:
+    # Angle weighting keeps the shading stable when adaptive subdivision produces
+    # different triangle sizes around the same vertex.
     sums = [[0.0, 0.0, 0.0] for _ in positions]
     for i in range(0, len(indices), 3):
         ia, ib, ic = indices[i:i + 3]
         a, b, c = positions[ia], positions[ib], positions[ic]
-        ab = (b[0]-a[0], b[1]-a[1], b[2]-a[2])
-        ac = (c[0]-a[0], c[1]-a[1], c[2]-a[2])
-        n = (
-            ab[1]*ac[2]-ab[2]*ac[1],
-            ab[2]*ac[0]-ab[0]*ac[2],
-            ab[0]*ac[1]-ab[1]*ac[0],
+        normal = _face_normal(a,b,c)
+        corners = (
+            (ia,_corner_angle(a,b,c)),
+            (ib,_corner_angle(b,c,a)),
+            (ic,_corner_angle(c,a,b)),
         )
-        for idx in (ia, ib, ic):
-            sums[idx][0] += n[0]
-            sums[idx][1] += n[1]
-            sums[idx][2] += n[2]
+        for idx, weight in corners:
+            for axis in range(3):
+                sums[idx][axis] += normal[axis] * weight
     return [_normalise(row, (0.0, 0.0, 1.0)) for row in sums]
 
 
@@ -482,10 +491,15 @@ def recalc_tangents(positions, uvs, normals, indices) -> list[tuple]:
         r = 1.0 / denom
         sdir = ((t2*x1-t1*x2)*r, (t2*y1-t1*y2)*r, (t2*z1-t1*z2)*r)
         tdir = ((s1*x2-s2*x1)*r, (s1*y2-s2*y1)*r, (s1*z2-s2*z1)*r)
-        for idx in (i1, i2, i3):
+        corner_weights = (
+            (i1,_corner_angle(v1,v2,v3)),
+            (i2,_corner_angle(v2,v3,v1)),
+            (i3,_corner_angle(v3,v1,v2)),
+        )
+        for idx, weight in corner_weights:
             for axis in range(3):
-                tan1[idx][axis] += sdir[axis]
-                tan2[idx][axis] += tdir[axis]
+                tan1[idx][axis] += sdir[axis] * weight
+                tan2[idx][axis] += tdir[axis] * weight
     out = []
     for n, t, b in zip(normals, tan1, tan2):
         dot = sum(n[i]*t[i] for i in range(3))
@@ -514,16 +528,43 @@ def _adjacency(indices: list[int], count: int):
     return neighbours, boundary
 
 
-def relax_positions(positions: list[tuple], indices: list[int], strength: float) -> tuple[list[tuple], float, float]:
+def _crease_vertices(positions: list[tuple], indices: list[int], crease_angle_degrees: float) -> set[int]:
+    face_normals = []
+    edge_faces: dict[tuple[int,int], list[int]] = {}
+    for face in range(len(indices)//3):
+        a,b,c=indices[face*3:face*3+3]
+        face_normals.append(_face_normal(positions[a],positions[b],positions[c]))
+        for x,y in ((a,b),(b,c),(c,a)):
+            edge=(x,y) if x<y else (y,x)
+            edge_faces.setdefault(edge,[]).append(face)
+    threshold=math.cos(math.radians(crease_angle_degrees))
+    pinned=set()
+    for (a,b),faces in edge_faces.items():
+        if len(faces)!=2:
+            continue
+        n1,n2=face_normals[faces[0]],face_normals[faces[1]]
+        if sum(n1[i]*n2[i] for i in range(3)) < threshold:
+            pinned.add(a)
+            pinned.add(b)
+    return pinned
+
+
+def relax_positions(
+    positions: list[tuple],
+    indices: list[int],
+    strength: float,
+    crease_angle_degrees: float = 55.0,
+) -> tuple[list[tuple], float, float]:
     if strength <= 0:
         return list(positions), 0.0, 0.0
     neighbours, boundary = _adjacency(indices, len(positions))
+    pinned = boundary | _crease_vertices(positions,indices,crease_angle_degrees)
     original = [tuple(map(float, p)) for p in positions]
 
     def step(current, factor):
         nxt = list(current)
         for i, p in enumerate(current):
-            if i in boundary or not neighbours[i]:
+            if i in pinned or not neighbours[i]:
                 continue
             avg = tuple(sum(current[j][axis] for j in neighbours[i]) / len(neighbours[i]) for axis in range(3))
             nxt[i] = tuple(p[axis] + (avg[axis]-p[axis]) * factor for axis in range(3))
@@ -639,7 +680,9 @@ def enhance_gltf(path: Path, *, mode: str = "high", options: dict | None = None)
 
             moved_max = moved_mean = 0.0
             if profile.shape_relax > 0:
-                relaxed, moved_max, moved_mean = relax_positions(data["POSITION"], indices, profile.shape_relax)
+                relaxed, moved_max, moved_mean = relax_positions(
+                    data["POSITION"], indices, profile.shape_relax, profile.crease_angle_degrees
+                )
                 data["POSITION"] = relaxed
 
             crease_vertices_split = 0
