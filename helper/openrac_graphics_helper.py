@@ -18,7 +18,10 @@ import sys
 import tempfile
 import zipfile
 
-from geometry_enhance import derive_height_from_rgba, enhance_export, height_map_from_rgba
+try:
+    from .geometry_enhance import derive_height_from_rgba, enhance_export, height_map_from_rgba
+except ImportError:  # Direct script execution from the packaged helper folder.
+    from geometry_enhance import derive_height_from_rgba, enhance_export, height_map_from_rgba
 
 JOB_KIND = "openrac-graphics-preparation-job"
 RESULT_KIND = "openrac-graphics-preparation-result"
