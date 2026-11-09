@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.21.2 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.21.3 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 The normal texture-AI workflow needs no custom launcher service, Python helper or external executable.
 Geometry Enhancement is optional and uses the bundled Python helper only for OpenRAC's official
@@ -18,7 +18,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.21.2.zip`.
+2. Install `graphics-preparation-0.21.3.zip`.
 3. Open **Graphics preparation**. Current Dev Launchers automatically recover static world textures from the already extracted level data.
 4. For HUD, animated or other runtime-only textures, optionally enable **Models and textures -> Save the game's textures while you play** and play the relevant content once.
 5. Choose Faithful, Balanced or Maximum Detail.
