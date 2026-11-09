@@ -250,6 +250,10 @@ def mesh_job(job: dict, root: Path, levels: Path, output: Path, *, dry_run: bool
     before = int(report.get("triangles_before", 0))
     after = int(report.get("triangles_after", 0))
     collision_count = len(report.get("collision_rebuild_recommended", []))
+    adaptive_edges = int(report.get("adaptive_edges_split", 0))
+    crease_splits = int(report.get("crease_vertices_split", 0))
+    budget_limited = int(report.get("budget_limited_primitives", 0))
+    skipped_primitives = int(report.get("primitives_skipped", 0))
     return {
         "format": 1,
         "kind": RESULT_KIND,
@@ -264,11 +268,17 @@ def mesh_job(job: dict, root: Path, levels: Path, output: Path, *, dry_run: bool
             "triangles_before": before,
             "triangles_after": after,
             "collision_rebuild_recommended": collision_count,
+            "adaptive_edges_split": adaptive_edges,
+            "crease_vertices_split": crease_splits,
+            "budget_limited_primitives": budget_limited,
+            "primitives_skipped": skipped_primitives,
         },
         "message": (
             f"Dry run valid; planned geometry output is {archive.resolve()}."
             if dry_run
             else f"Enhanced {changed} model files ({before} -> {after} triangles). "
+                 f"Adaptive edges: {adaptive_edges}; preserved crease splits: {crease_splits}; "
+                 f"budget-limited primitives: {budget_limited}; skipped unsupported primitives: {skipped_primitives}. "
                  f"Collision review recommended for {collision_count} moved primitives. "
                  "Install the generated ZIP through OpenRAC's Mods page."
         ),
