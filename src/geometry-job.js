@@ -11,12 +11,20 @@ export function normalizeGeometrySettings(value={}){
   const heightSource=GEOMETRY_HEIGHT_SOURCES.includes(value.heightSource)?value.heightSource:"auto";
   const crease=Number(value.creaseAngleDegrees);
   const displacement=Number(value.displacementStrength);
+  const silhouette=Number(value.silhouetteStrength);
   return {
     profile,
     scope,
     shapeRefine:value.shapeRefine===true,
     allowCollisionMismatch:value.allowCollisionMismatch===true,
     adaptiveSubdivision:value.adaptiveSubdivision!==false,
+    assetAwareRemesh:value.assetAwareRemesh!==false,
+    topologyOptimize:value.topologyOptimize!==false,
+    silhouetteRefine:value.silhouetteRefine!==false,
+    silhouetteStrength:Number.isFinite(silhouette)
+      ? Math.max(0,Math.min(1.5,silhouette))
+      : 1.0,
+    lodPlanning:value.lodPlanning!==false,
     microDisplacement:value.microDisplacement===true,
     heightSource,
     displacementStrength:Number.isFinite(displacement)
@@ -38,6 +46,11 @@ export function modernGeometryPreset(){
     shapeRefine:true,
     allowCollisionMismatch:false,
     adaptiveSubdivision:true,
+    assetAwareRemesh:true,
+    topologyOptimize:true,
+    silhouetteRefine:true,
+    silhouetteStrength:1.0,
+    lodPlanning:true,
     microDisplacement:true,
     heightSource:"auto",
     displacementStrength:0.8,
@@ -54,6 +67,11 @@ export function buildGeometryJob(info,settings={}){
     shape_refine:cfg.shapeRefine,
     allow_collision_mismatch:cfg.allowCollisionMismatch,
     adaptive_subdivision:cfg.adaptiveSubdivision,
+    asset_aware_remesh:cfg.assetAwareRemesh,
+    topology_optimize:cfg.topologyOptimize,
+    silhouette_refine:cfg.silhouetteRefine,
+    silhouette_strength:cfg.silhouetteStrength,
+    lod_planning:cfg.lodPlanning,
     micro_displacement:cfg.microDisplacement,
     height_source:cfg.heightSource,
     displacement_strength:cfg.displacementStrength,
@@ -81,6 +99,9 @@ export function geometryJobIssues(info,settings={}){
   if(cfg.microDisplacement && cfg.allowCollisionMismatch){
     issues.push("micro-displacement may move terrain/moby surfaces while collision remains original");
   }
+  if(cfg.silhouetteRefine && cfg.allowCollisionMismatch){
+    issues.push("asset-aware silhouette refinement may move terrain/moby surfaces while collision remains original");
+  }
   if(cfg.profile==="experimental"){
     issues.push("experimental profile may need manual geometry/collision review");
   }
@@ -89,6 +110,9 @@ export function geometryJobIssues(info,settings={}){
   }
   if(cfg.microDisplacement && cfg.heightSource==="sidecar"){
     issues.push("sidecar-only displacement needs a Graphics preparation pack containing Materials/<hash>/height.png");
+  }
+  if(cfg.lodPlanning){
+    issues.push("stock OpenRAC assets.py imports one replacement GLB; LOD stages are prepared/reported but stock runtime switching is not enabled yet");
   }
   return issues;
 }
