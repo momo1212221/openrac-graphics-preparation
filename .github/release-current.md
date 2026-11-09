@@ -1,10 +1,18 @@
-Graphics preparation 0.17.3 preserves the user's previous AI upscale while making the staged material maps easy to add afterwards.
+Graphics preparation 0.18.0 adds the first production Geometry Enhancement pipeline on top of the existing texture/material stack.
 
-- Adds **Add materials to last AI run** to the normal OpenRAC Mod Tool page.
-- The material rebuild never starts Real-ESRGAN or the detail CNN. It reads the existing persistent AI cache and generates the staged Albedo/Height/Normal/AO/Roughness/Curvature sidecars from those cached 4x pixels.
-- Auto-detail exports can recover an existing Standard/High/Max cache entry instead of requiring the current automatic planner to choose the exact same quality tier.
-- A cache miss in this special rebuild path uses the deterministic 4x fallback only; it never silently launches a new AI inference pass.
-- The existing IndexedDB database, cache-key pipeline identity and completed-run record are unchanged. Upgrading from 0.17.2 does not clear or migrate the user's cached AI results.
-- The saved pack records `ai_cache_only_material_rebuild: true` and `material_maps_mode: all-from-last-ai-cache` so it is auditable.
-- Normal/Roughness/AO/Height still require OpenRAC's enhanced material-sidecar renderer to affect live lighting; the generated maps themselves remain deterministic and inspectable in Quality Lab.
-- Existing one-package native runtime, particles/glow/haze, CNN models, quality guard, duplicate elimination and resume behavior are unchanged.
+- Adds a **3D Geometry Enhancement** panel to the normal launcher tool page.
+- Exports `ai.meshes` jobs with profile, asset scope, triangle budget, shape-refinement and collision-safety settings.
+- Ships the production helper inside the release: `helper/openrac_graphics_helper.py` and `helper/geometry_enhance.py`.
+- Uses OpenRAC's official `editor/assets.py export/import` glTF round trip and emits a normal overrides-pack ZIP.
+- **Enhanced** rebuilds normals/tangent space without topology growth.
+- **High** performs one crack-free midpoint subdivision pass.
+- **Ultra** performs up to two passes while respecting per-asset triangle budgets.
+- UVs, vertex colours, joint indices and normalized skin weights are interpolated for generated vertices.
+- Original skeletons/animations remain authoritative; the helper never invents bones or imports new animation data.
+- Existing tangents are regenerated from new positions, UVs and normals.
+- Morph targets, unknown attributes, malformed primitives and missing UVs are skipped instead of silently rewritten.
+- Shape refinement remains Off by default; with it Off, original positions stay exact and collision alignment is unchanged.
+- Moby/terrain position movement is separately protected unless the user explicitly allows visual/collision mismatch.
+- Writes `geometry-report.json` with file/primitive counts, before/after triangle totals, applied subdivision levels, budget limits, vertex-motion metrics and collision-review candidates.
+- Geometry runs independently from the existing texture AI cache; adding geometry does not rerun the user's saved texture pass.
+- Texture AI, material maps, cached material rebuild, native effects runtime and launcher-native platform release assets remain unchanged.
