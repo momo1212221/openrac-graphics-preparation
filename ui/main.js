@@ -23,6 +23,7 @@ import {PauseGate} from "../src/pause-gate.js";
 import {ProgressEstimator,formatDuration} from "../src/progress-estimator.js";
 import {buildGeometryJob,geometryJobFilename,geometryJobIssues,modernGeometryPreset,normalizeGeometrySettings} from "../src/geometry-job.js";
 import {modernGraphicsPreset} from "../src/modern-preset.js";
+import {listTextureSources} from "../src/source-bootstrap.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -788,7 +789,7 @@ async function createPack({ai, cacheOnly=false}) {
             await zip.add(root+"edgewear.png", generatedMaps.edgewear);
             const meta = {
               format:1,
-              generator:"Graphics preparation 0.21.2",
+              generator:"Graphics preparation 0.21.3",
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
