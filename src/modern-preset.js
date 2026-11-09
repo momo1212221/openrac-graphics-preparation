@@ -16,7 +16,7 @@ export function modernGraphicsPreset(current={}){
     persistentCache:true,
     materialMaps:"all",
     materialCurvature:true,
-    mipmaps:"all",
+    mipmaps:"off",
     geometryProfile:geometry.profile,
     geometryScope:geometry.scope,
     geometryShapeRefine:geometry.shapeRefine,
