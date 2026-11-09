@@ -1,6 +1,6 @@
 # Graphics preparation – Anleitung
 
-Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.21.1** mit dem aktuellen **OpenRAC Dev Launcher**.
+Diese Anleitung beschreibt die normale Nutzung von **Graphics preparation 0.21.2** mit dem aktuellen **OpenRAC Dev Launcher**.
 
 Graphics preparation verarbeitet von OpenRAC gespeicherte Spieltexturen lokal mit Real-ESRGAN und erzeugt daraus ein hochauflösendes Texture-Pack. Für den normalen **Texture-AI-Lauf** werden kein eigener Launcher, kein Python-Helper und kein externes Upscaler-Programm benötigt. Der neue optionale **3D Geometry Enhancement**-Pfad nutzt den mitgelieferten Python-Helper ausschließlich für OpenRACs offiziellen glTF-Export/Import über `editor/assets.py`.
 
@@ -20,7 +20,7 @@ Wenn WebGPU nicht verfügbar ist oder fehlschlägt, kann der Mod automatisch auf
 ## 2. Mod installieren
 
 1. Lade die aktuelle Release-ZIP von Graphics preparation herunter.
-2. Die Datei heißt ungefähr `graphics-preparation-0.21.1.zip`.
+2. Die Datei heißt ungefähr `graphics-preparation-0.21.2.zip`.
 3. Öffne OpenRAC.
 4. Gehe zu **Mods -> Add a mod**.
 5. Wähle die ZIP-Datei aus.
