@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "openrac/mod.hpp"
+#include "config.h"
+#include "plugin_list.h"
 
 #include <algorithm>
 #include <array>
@@ -14,22 +16,7 @@
 
 namespace {
 
-struct Emitter {
-    int level = -1;
-    std::string preset;
-    std::array<float, 3> position{};
-    std::array<float, 3> colour{1, 1, 1};
-    float alpha = 1;
-    float rate = 0;
-    float life = 1;
-    float size = 0.1f;
-    float speed = 1;
-    float spread = 1;
-    float gravity = 0;
-    float haze_radius = 0;
-    float haze_strength = 0;
-    float spawn = 0;
-};
+using graphics_effects::Emitter;
 
 struct Particle {
     int prop = -1;
@@ -43,49 +30,37 @@ struct Particle {
     float gravity = 0;
     std::uint32_t blend = OPENRAC_PROP_ADD;
 };
-
-std::vector<std::string> split_tabs(const std::string& line) {
-    std::vector<std::string> out;
-    std::size_t at = 0;
-    while (true) {
-        const auto next = line.find('\t', at);
-        out.push_back(line.substr(at, next == std::string::npos ? next : next - at));
-        if (next == std::string::npos) break;
-        at = next + 1;
-    }
-    return out;
-}
-
-float number(const std::string& text) {
-    std::size_t used = 0;
-    const float value = std::stof(text, &used);
-    if (used != text.size() || !std::isfinite(value)) throw std::runtime_error("invalid number");
-    return value;
-}
-
-int integer(const std::string& text) {
-    std::size_t used = 0;
-    const int value = std::stoi(text, &used);
-    if (used != text.size()) throw std::runtime_error("invalid integer");
-    return value;
-}
-
-bool known_preset(const std::string& preset) {
-    return preset == "sparks" || preset == "smoke" || preset == "mist" ||
-           preset == "glow" || preset == "energy" || preset == "rain" ||
-           preset == "heat-haze";
-}
-
 std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac::Mod& mod) {
     std::vector<Emitter> out;
     std::error_code ec;
     if (plugins.empty() || !std::filesystem::is_directory(plugins, ec)) return out;
 
-    for (const auto& entry : std::filesystem::directory_iterator(plugins, ec)) {
-        if (ec || !entry.is_directory()) continue;
-        const auto file = entry.path() / "graphics-effects.tsv";
-        if (!std::filesystem::is_regular_file(file, ec)) continue;
+    const auto list = plugins / "plugins.json";
+    std::ifstream input(list, std::ios::binary);
+    if (!input) {
+        mod.warn("cannot read plugins.json; authored effects stay disabled");
+        return out;
+    }
+    std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (text.size() > 4u * 1024u * 1024u) {
+        mod.warn("plugins.json is unexpectedly large; authored effects stay disabled");
+        return out;
+    }
 
+    std::vector<std::string> active;
+    std::string expected;
+    try {
+        active = graphics_effects::parse_active_plugin_ids(text);
+        expected = graphics_effects::effects_plugin_id(mod.game(), mod.version());
+    } catch (const std::exception& error) {
+        mod.warn(std::string("cannot parse plugins.json; authored effects stay disabled: ") + error.what());
+        return out;
+    }
+
+    for (const auto& id : active) {
+        if (id != expected) continue;
+        const auto file = plugins / id / "graphics-effects.tsv";
+        if (!std::filesystem::is_regular_file(file, ec)) continue;
         std::ifstream in(file);
         std::string line;
         int row = 0;
@@ -93,35 +68,9 @@ std::vector<Emitter> read_emitters(const std::filesystem::path& plugins, openrac
             ++row;
             if (line.empty() || line[0] == '#') continue;
             try {
-                const auto v = split_tabs(line);
-                if (v.size() != 17) throw std::runtime_error("expected 17 tab-separated fields");
-                Emitter e;
-                e.level = integer(v[0]);
-                if (e.level < 0 || e.level > 999) throw std::runtime_error("level out of range");
-                e.preset = v[1];
-                if (!known_preset(e.preset)) throw std::runtime_error("unknown preset");
-                e.position = {
-                    std::clamp(number(v[2]), -1000000.0f, 1000000.0f),
-                    std::clamp(number(v[3]), -1000000.0f, 1000000.0f),
-                    std::clamp(number(v[4]), -1000000.0f, 1000000.0f),
-                };
-                e.colour = {
-                    std::clamp(number(v[5]), 0.0f, 4.0f),
-                    std::clamp(number(v[6]), 0.0f, 4.0f),
-                    std::clamp(number(v[7]), 0.0f, 4.0f),
-                };
-                e.alpha = std::clamp(number(v[8]), 0.0f, 1.0f);
-                e.rate = std::clamp(number(v[9]), 0.0f, 120.0f);
-                e.life = std::clamp(number(v[10]), 0.05f, 20.0f);
-                e.size = std::clamp(number(v[11]), 0.01f, 50.0f);
-                e.speed = std::clamp(number(v[12]), 0.0f, 100.0f);
-                e.spread = std::clamp(number(v[13]), 0.0f, 20.0f);
-                e.gravity = std::clamp(number(v[14]), -100.0f, 100.0f);
-                e.haze_radius = std::clamp(number(v[15]), 0.0f, 100.0f);
-                e.haze_strength = std::clamp(number(v[16]), 0.0f, 10.0f);
-                out.push_back(std::move(e));
+                out.push_back(graphics_effects::parse_emitter_line(line));
             } catch (const std::exception& error) {
-                mod.warn("ignored " + file.filename().string() + " row " + std::to_string(row) + ": " + error.what());
+                mod.warn("ignored " + id + "/graphics-effects.tsv row " + std::to_string(row) + ": " + error.what());
             }
         }
     }
@@ -204,7 +153,7 @@ private:
                 p.size = e.size;
                 p.gravity = e.gravity;
                 p.tint = {e.colour[0], e.colour[1], e.colour[2], e.alpha};
-                p.blend = (e.preset == "smoke" || e.preset == "mist" || e.preset == "rain")
+                p.blend = (e.preset == "smoke" || e.preset == "smog" || e.preset == "mist" || e.preset == "rain")
                     ? OPENRAC_PROP_ALPHA : OPENRAC_PROP_ADD;
 
                 if (e.preset == "rain") {
@@ -212,10 +161,10 @@ private:
                     p.position[1] += signed_random() * e.spread;
                     p.position[2] += random01() * e.spread;
                     p.velocity = {signed_random() * 0.2f, signed_random() * 0.2f, -e.speed};
-                } else if (e.preset == "smoke" || e.preset == "mist") {
+                } else if (e.preset == "smoke" || e.preset == "smog" || e.preset == "mist") {
                     p.velocity = {signed_random() * e.spread, signed_random() * e.spread,
                                   e.speed * (0.5f + random01())};
-                    p.grow = e.preset == "smoke" ? e.size * 0.7f : e.size * 0.25f;
+                    p.grow = e.preset == "smoke" ? e.size * 0.7f : e.preset == "smog" ? e.size * 0.15f : e.size * 0.25f;
                 } else if (e.preset == "glow") {
                     p.position[0] += signed_random() * e.spread;
                     p.position[1] += signed_random() * e.spread;

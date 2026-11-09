@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {
-  DEFAULT_EFFECTS, effectExportIssues, normalizeEffects, normalizeLight, normalizeAreaLight, normalizeParticle,
-  loadLevels, readProbeProfile, exportBakerProfile, exportEffectsMod,
+  DEFAULT_EFFECTS, bakerExportIssues, bakerSettingsForLevel, effectExportIssues, normalizeEffects, normalizeLight, normalizeAreaLight, normalizeParticle,
+  setBakerSettingsForLevel, loadLevels, readProbeProfile, exportBakerProfile, exportEffectsMod,
 } from "../src/effects-authoring.js";
 
 const node=(tag,text,cls)=>{
@@ -25,6 +25,12 @@ const field=(label,value,onchange,{type="number",step="0.1",min,max}={})=>{
   };
   wrap.append(input);return wrap;
 };
+const toggleField=(label,value,onchange)=>{
+  const wrap=node("label",undefined,"effect-field effect-toggle");
+  wrap.append(node("span",label));
+  const input=document.createElement("input"); input.type="checkbox"; input.checked=Boolean(value);
+  input.onchange=()=>onchange(input.checked); wrap.append(input); return wrap;
+};
 const vecFields=(title,value,onchange)=>{
   const wrap=node("div",undefined,"effect-vector");
   wrap.append(node("span",title,"effect-vector-title"));
@@ -42,7 +48,7 @@ const selectField=(label,value,rows,onchange)=>{
 export class EffectsEditor {
   constructor(controller,info,setMessage){
     this.controller=controller;this.info=info;this.setMessage=setMessage;
-    this.state=normalizeEffects(DEFAULT_EFFECTS);this.levels=[];this.profile={};this.positionClipboard=null;
+    this.state=normalizeEffects(DEFAULT_EFFECTS);this.levels=[];this.profile={};this.profileError="";this.positionClipboard=null;
   }
   async start(){
     const [levels,saved]=await Promise.all([
@@ -55,10 +61,21 @@ export class EffectsEditor {
     const level=this.currentLevel();
     if(!level?.objects.some(o=>o.key===this.state.selectedObject))this.state.selectedObject=level?.objects[0]?.key||"";
     if(!level?.placements?.some(o=>o.key===this.state.selectedPlacement))this.state.selectedPlacement=level?.placements?.[0]?.key||"";
-    this.profile=await readProbeProfile(this.controller,this.state.selectedLevel);
+    await this.loadProfile(this.state.selectedLevel);
     await this.persist();
   }
   currentLevel(){return this.levels.find(l=>l.dir===this.state.selectedLevel)}
+  async loadProfile(dir){
+    this.profileError="";
+    try{
+      this.profile=await readProbeProfile(this.controller,dir);
+    }catch(error){
+      this.profile={};
+      this.profileError=error instanceof Error?error.message:String(error);
+      this.setMessage(this.profileError,true);
+    }
+    this.state.baker=bakerSettingsForLevel(this.state,dir,this.profile);
+  }
   selectedPlacementInstance(){
     return this.currentLevel()?.placements?.find((row)=>row.key===this.state.selectedPlacement)||null;
   }
@@ -93,22 +110,39 @@ export class EffectsEditor {
     const level=this.currentLevel();
     if(!level?.objects.some(o=>o.key===this.state.selectedObject))this.state.selectedObject=level?.objects[0]?.key||"";
     if(!level?.placements?.some(o=>o.key===this.state.selectedPlacement))this.state.selectedPlacement=level?.placements?.[0]?.key||"";
-    this.profile=await readProbeProfile(this.controller,dir);
+    await this.loadProfile(dir);
     await this.persist();
     document.dispatchEvent(new CustomEvent("graphics-effects-change"));
+  }
+  async updateBaker(key,value){
+    setBakerSettingsForLevel(this.state,this.state.selectedLevel,{...this.state.baker,[key]:value});
+    await this.persist(); document.dispatchEvent(new CustomEvent("graphics-effects-change"));
+  }
+  async placeAreaAtInstance(area){
+    const anchor=this.selectedPlacementInstance();
+    if(!anchor?.position){this.setMessage("No exported level instance is selected. Enter X/Y/Z manually or select an instance from placements.json.",true);return}
+    area.position=[...anchor.position]; area.placement="object"; area.anchorObject=anchor.key;
+    await this.persist(); document.dispatchEvent(new CustomEvent("graphics-effects-change"));
+  }
+  async setAreaPosition(area,position){
+    const next=Array.isArray(position)?position.slice(0,3).map(Number):[];
+    if(next.length!==3||!next.every(Number.isFinite)){this.setMessage("Area-light placement needs finite X/Y/Z coordinates.",true);return}
+    area.position=next; area.placement="manual"; area.anchorObject="";
+    await this.persist(); document.dispatchEvent(new CustomEvent("graphics-effects-change"));
   }
   addLight(type){
     this.state.lights.push(normalizeLight({object:this.state.selectedObject,type,name:type==="spot"?"Spot light":"Point light"}));
     void this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"));
   }
   addArea(){
-    this.state.areaLights.push(normalizeAreaLight({level:this.state.selectedLevel}));
+    this.state.areaLights.push(normalizeAreaLight({level:this.state.selectedLevel,placement:"unplaced"}));
     void this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"));
   }
   addParticle(preset){
     const presets={
       sparks:{preset:"sparks",colour:[1,0.45,0.08],rate:18,life:0.9,size:0.12,speed:6,spread:2,gravity:-8},
       smoke:{preset:"smoke",colour:[0.55,0.55,0.55],alpha:0.45,rate:5,life:3,size:0.6,speed:0.9,spread:0.5,gravity:0.25},
+      smog:{preset:"smog",colour:[0.48,0.46,0.42],alpha:0.24,rate:3,life:6,size:1.4,speed:0.2,spread:1.2,gravity:0},
       mist:{preset:"mist",colour:[0.7,0.85,1],alpha:0.2,rate:4,life:4,size:1.1,speed:0.35,spread:0.8,gravity:0},
       glow:{preset:"glow",colour:[0.2,0.65,1],alpha:0.8,rate:2,life:1.2,size:0.28,speed:0.2,spread:0.2,gravity:0},
       energy:{preset:"energy",colour:[0.45,0.2,1],alpha:0.85,rate:14,life:1,size:0.15,speed:3,spread:1.2,gravity:0},
@@ -134,26 +168,33 @@ export class EffectsEditor {
     lighting.append(top);
 
     const baker=node("div",undefined,"effect-subpanel");
-    baker.append(node("strong","Enhanced Baker"));
+    baker.append(node("strong","Enhanced Baker · stock launcher"));
+    baker.append(node("p","Edits the official probe-bake.json schema used by the normal OpenRAC Enhanced graphics baker. This mod does not patch or replace the launcher.","muted"));
     const bgrid=node("div",undefined,"effect-grid four");
-    bgrid.append(field("Sky intensity",this.state.baker.skyIntensity,async v=>{this.state.baker.skyIntensity=v;await this.persist()},{step:"0.05",min:"0"}));
-    bgrid.append(field("Sky weight",this.state.baker.skyWeight,async v=>{this.state.baker.skyWeight=v;await this.persist()},{step:"0.05",min:"0",max:"1"}));
-    bgrid.append(field("Surface emission",this.state.baker.surfaceEmissionScale,async v=>{this.state.baker.surfaceEmissionScale=v;await this.persist()},{step:"0.1",min:"0"}));
-    bgrid.append(field("Probe spacing",this.state.baker.spacing,async v=>{this.state.baker.spacing=v;await this.persist()},{step:"1",min:"1"}));
-    bgrid.append(field("Probe resolution",this.state.baker.probeResolution,async v=>{this.state.baker.probeResolution=Math.round(v);await this.persist()},{step:"1",min:"16"}));
-    bgrid.append(field("Maximum probes",this.state.baker.maximumProbes,async v=>{this.state.baker.maximumProbes=Math.round(v);await this.persist()},{step:"1",min:"16"}));
+    bgrid.append(field("Sky intensity",this.state.baker.skyIntensity,v=>void this.updateBaker("skyIntensity",v),{step:"0.05",min:"0",max:"1000000"}));
+    bgrid.append(field("Sky weight",this.state.baker.skyWeight,v=>void this.updateBaker("skyWeight",v),{step:"0.05",min:"0",max:"1"}));
+    bgrid.append(field("Surface emission",this.state.baker.surfaceEmissionScale,v=>void this.updateBaker("surfaceEmissionScale",v),{step:"0.1",min:"0",max:"1000000"}));
+    bgrid.append(selectField("Probe resolution",String(this.state.baker.probeResolution),[4,8,16,32,64,128,256].map(v=>[String(v),String(v)]),v=>void this.updateBaker("probeResolution",Number(v))));
+    bgrid.append(field("Maximum probes",this.state.baker.maximumProbes,v=>void this.updateBaker("maximumProbes",Math.round(v)),{step:"1",min:"1",max:"512"}));
+    bgrid.append(field("Probe spacing",this.state.baker.spacing,v=>void this.updateBaker("spacing",v),{step:"1",min:"2",max:"1024"}));
+    bgrid.append(field("Rays / probe",this.state.baker.rays,v=>void this.updateBaker("rays",Math.round(v)),{step:"16",min:"16",max:"1048576"}));
+    bgrid.append(field("Bounces",this.state.baker.bounces,v=>void this.updateBaker("bounces",Math.round(v)),{step:"1",min:"0",max:"32"}));
+    bgrid.append(toggleField("Adaptive rays",this.state.baker.adaptiveRays,v=>void this.updateBaker("adaptiveRays",v)));
+    bgrid.append(toggleField("Environment probes",this.state.baker.environmentProbes,v=>void this.updateBaker("environmentProbes",v)));
     baker.append(bgrid);
+    const bakerIssues=[...(this.profileError?[this.profileError]:[]),...bakerExportIssues(this.state,this.state.selectedLevel,this.profile)];
+    if(bakerIssues.length)baker.append(node("p","Baker export blocked: "+bakerIssues.slice(0,3).join(" · ")+(bakerIssues.length>3?" · +"+(bakerIssues.length-3)+" more":""),"placement-warning"));
     lighting.append(baker);
-
     const buttons=node("div",undefined,"effect-actions");
     for(const [label,fn] of [["Add point light",()=>this.addLight("point")],["Add spot light",()=>this.addLight("spot")],["Add bake area light",()=>this.addArea()]]) {
       const b=node("button",label,"ghost");b.type="button";b.onclick=fn;buttons.append(b);
     }
     const exportBake=node("button","Export baker profile","primary");exportBake.type="button";
+    exportBake.disabled=bakerIssues.length>0;exportBake.title=bakerIssues[0]||"Export a stock Enhanced graphics probe-bake.json profile.";
     exportBake.onclick=async()=>{
       try{
         const saved=await exportBakerProfile(this.controller,this.info,this.state,this.state.selectedLevel,this.profile);
-        this.setMessage(saved?`Saved ${saved}. Put it in the selected exported level as probe-bake.json, then use Enhanced graphics → Prepare lighting.`:"Save cancelled.");
+        this.setMessage(saved?`Saved ${saved}. Save it directly inside the selected exported level folder with the exact name probe-bake.json, then use Enhanced graphics → Prepare lighting in the normal launcher.`:"Save cancelled.");
       }catch(e){this.setMessage(e instanceof Error?e.message:String(e),true)}
     };
     buttons.append(exportBake);lighting.append(buttons);
@@ -181,7 +222,7 @@ export class EffectsEditor {
     ));
     particles.append(placementTop);
     const presets=node("div",undefined,"effect-actions wrap");
-    for(const [id,label] of [["sparks","Sparks"],["smoke","Smoke"],["mist","Mist"],["glow","Glow"],["energy","Energy"],["rain","Rain"],["heat-haze","Heat haze"]]) {
+    for(const [id,label] of [["sparks","Sparks"],["smoke","Smoke"],["smog","Smog"],["mist","Mist"],["glow","Glow"],["energy","Energy"],["rain","Rain"],["heat-haze","Heat haze"]]) {
       const b=node("button","+ "+label,"ghost");b.type="button";b.onclick=()=>this.addParticle(id);presets.append(b);
     }
     particles.append(presets,this.renderParticles());
@@ -221,7 +262,7 @@ export class EffectsEditor {
 
     const note=node("section",undefined,"panel");
     note.append(node("div","HOW IT APPLIES","eyebrow"));
-    note.append(node("p","Point/spot lights are written as assets/object-lights.json and are read by the standard Enhanced renderer from normal mod assets. Area lights are bake-only and go into probe-bake.json. The current stock Mod Tool API can save that profile but cannot overwrite OpenRAC's extracted level folder or press Prepare lighting for you, so the final bake remains the built-in Enhanced graphics action.","info-note"));
+    note.append(node("p","Point/spot lights are written to assets/level_NN/object-lights.json, which is the per-level asset root used by the standard Enhanced renderer. Area lights are bake-only and go into probe-bake.json. The current stock Mod Tool API can save that profile but cannot overwrite OpenRAC's extracted level folder or press Prepare lighting for you, so the final bake remains the built-in Enhanced graphics action.","info-note"));
     sections.push(note);
     return sections;
   }
@@ -248,7 +289,14 @@ export class EffectsEditor {
       const index=this.state.areaLights.indexOf(area);const card=node("div",undefined,"effect-card");
       const head=node("div",undefined,"effect-card-head");head.append(node("strong","Bake area light"));
       const del=node("button","Remove","ghost");del.onclick=async()=>{this.state.areaLights.splice(index,1);await this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"))};head.append(del);card.append(head);
-      card.append(vecFields("Position",area.position,async v=>{area.position=v;await this.persist()}));
+      const status=area.placement==="unplaced"?"Needs placement":area.placement==="object"?`Placed at ${area.anchorObject||"level instance"}`:"Manual X/Y/Z confirmed";
+      card.append(node("p",status,area.placement==="unplaced"?"placement-warning":"placement-ready"));
+      const actions=node("div",undefined,"effect-actions wrap");
+      const snap=node("button","Place at selected level instance","ghost");snap.type="button";snap.onclick=()=>void this.placeAreaAtInstance(area);actions.append(snap);
+      const confirm=node("button","Confirm X/Y/Z","ghost");confirm.type="button";confirm.onclick=()=>void this.setAreaPosition(area,area.position);actions.append(confirm);
+      const clear=node("button","Clear placement","ghost");clear.type="button";clear.onclick=async()=>{area.placement="unplaced";area.anchorObject="";await this.persist();document.dispatchEvent(new CustomEvent("graphics-effects-change"))};actions.append(clear);
+      card.append(actions);
+      card.append(vecFields("Position",area.position,v=>void this.setAreaPosition(area,v)));
       card.append(vecFields("Half-edge U",area.axis_u,async v=>{area.axis_u=v;await this.persist()}));
       card.append(vecFields("Half-edge V",area.axis_v,async v=>{area.axis_v=v;await this.persist()}));
       card.append(vecFields("Radiance RGB",area.radiance,async v=>{area.radiance=v;await this.persist()}));

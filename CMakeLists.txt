@@ -51,3 +51,11 @@ add_custom_command(TARGET graphics_preparation_runtime POST_BUILD
           "${GRAPHICS_PREPARATION_PACKAGE_DIR}/assets/particle.glb"
   COMMENT "Adding integrated Graphics preparation runtime assets"
 )
+
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(graphics_effects_config_test effects-runtime/tests/config_test.cpp)
+  target_include_directories(graphics_effects_config_test PRIVATE effects-runtime/src)
+  target_compile_features(graphics_effects_config_test PRIVATE cxx_std_20)
+  add_test(NAME graphics_effects_config COMMAND graphics_effects_config_test)
+endif()

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import {ZipStream} from "./zip.js";
+import {DEFAULT_BAKER_SETTINGS,bakerSettingsIssues,normalizeBakerSettings} from "./enhanced-baker-schema.js";
 
 const encoder = new TextEncoder();
 const dec = new TextDecoder();
@@ -16,7 +17,7 @@ const finiteVec3 = (value) => {
   return raw;
 };
 const clone = (value) => JSON.parse(JSON.stringify(value));
-export const EFFECTS_SCHEMA_VERSION = 2;
+export const EFFECTS_SCHEMA_VERSION = 3;
 
 export function manifestObjectPosition(entry = {}) {
   for (const candidate of [
@@ -42,15 +43,8 @@ export const DEFAULT_EFFECTS = {
   selectedLevel: "",
   selectedObject: "",
   selectedPlacement: "",
-  baker: {
-    skyIntensity: 0.5,
-    skyWeight: 0.3,
-    surfaceEmissionScale: 1,
-    environmentProbes: true,
-    probeResolution: 64,
-    maximumProbes: 512,
-    spacing: 24,
-  },
+  baker: {...DEFAULT_BAKER_SETTINGS},
+  bakerByLevel: {},
   lights: [],
   areaLights: [],
   particles: [],
@@ -59,32 +53,32 @@ export const DEFAULT_EFFECTS = {
 export function normalizeEffects(value) {
   const src = value && typeof value === "object" ? value : {};
   const legacy = Number(src.schemaVersion || 0) < EFFECTS_SCHEMA_VERSION;
-  const particles = Array.isArray(src.particles)
-    ? src.particles.map((row)=>{
-        const migrated = legacy && !["manual","object","unplaced"].includes(row?.placement)
-          ? {...row,placement:"unplaced"}
-          : row;
-        return normalizeParticle(migrated);
-      })
-    : [];
+  const particles = Array.isArray(src.particles) ? src.particles.map((row)=>normalizeParticle(legacy && !["manual","object","unplaced"].includes(row?.placement) ? {...(row&&typeof row==="object"?row:{}),placement:"unplaced"} : row)) : [];
+  const areaLights = Array.isArray(src.areaLights) ? src.areaLights.map((row)=>normalizeAreaLight(legacy && !["manual","object","unplaced"].includes(row?.placement) ? {...(row&&typeof row==="object"?row:{}),placement:"unplaced"} : row)) : [];
+  const bakerByLevel={};
+  if(src.bakerByLevel&&typeof src.bakerByLevel==="object"){ for(const [level,settings] of Object.entries(src.bakerByLevel)){ if(/^level_\d+$/.test(level))bakerByLevel[level]=normalizeBakerSettings(settings); } }
+  if(legacy&&typeof src.selectedLevel==="string"&&/^level_\d+$/.test(src.selectedLevel)&&!bakerByLevel[src.selectedLevel])bakerByLevel[src.selectedLevel]=normalizeBakerSettings(src.baker);
   return {
-    schemaVersion: EFFECTS_SCHEMA_VERSION,
-    selectedLevel: typeof src.selectedLevel === "string" ? src.selectedLevel : "",
-    selectedObject: typeof src.selectedObject === "string" ? src.selectedObject : "",
-    selectedPlacement: typeof src.selectedPlacement === "string" ? src.selectedPlacement : "",
-    baker: {
-      skyIntensity: safeNumber(src.baker?.skyIntensity, 0.5),
-      skyWeight: safeNumber(src.baker?.skyWeight, 0.3),
-      surfaceEmissionScale: safeNumber(src.baker?.surfaceEmissionScale, 1),
-      environmentProbes: src.baker?.environmentProbes !== false,
-      probeResolution: Math.max(16, Math.round(safeNumber(src.baker?.probeResolution, 64))),
-      maximumProbes: Math.max(16, Math.round(safeNumber(src.baker?.maximumProbes, 512))),
-      spacing: Math.max(1, safeNumber(src.baker?.spacing, 24)),
-    },
-    lights: Array.isArray(src.lights) ? src.lights.map(normalizeLight) : [],
-    areaLights: Array.isArray(src.areaLights) ? src.areaLights.map(normalizeAreaLight) : [],
-    particles,
+    schemaVersion:EFFECTS_SCHEMA_VERSION,
+    selectedLevel:typeof src.selectedLevel==="string"?src.selectedLevel:"",
+    selectedObject:typeof src.selectedObject==="string"?src.selectedObject:"",
+    selectedPlacement:typeof src.selectedPlacement==="string"?src.selectedPlacement:"",
+    baker:normalizeBakerSettings(src.baker), bakerByLevel,
+    lights:Array.isArray(src.lights)?src.lights.map(normalizeLight):[], areaLights, particles,
   };
+}
+
+export function bakerSettingsForLevel(state,levelDir,baseProfile={}){
+  const saved=state?.bakerByLevel&&typeof state.bakerByLevel==="object"?state.bakerByLevel[levelDir]:null;
+  return normalizeBakerSettings(saved||{},baseProfile);
+}
+
+export function setBakerSettingsForLevel(state,levelDir,settings){
+  const normalized=normalizeBakerSettings(settings);
+  if(!state.bakerByLevel||typeof state.bakerByLevel!=="object")state.bakerByLevel={};
+  if(levelDir)state.bakerByLevel[levelDir]=clone(normalized);
+  state.baker=clone(normalized);
+  return state.baker;
 }
 
 export function normalizeLight(value = {}) {
@@ -100,26 +94,27 @@ export function normalizeLight(value = {}) {
     direction: vec3(value.direction,[0,0,-1]),
     colour: vec3(value.colour,[1,0.8,0.45]).map(v=>Math.max(0,v)),
     intensity: Math.max(0,safeNumber(value.intensity,4)),
-    range: Math.max(0,safeNumber(value.range,12)),
+    range: Math.max(0.01,safeNumber(value.range,12)),
     inner_angle: Math.max(0,Math.min(1.55,safeNumber(value.inner_angle,0.25))),
     outer_angle: Math.max(0,Math.min(1.56,safeNumber(value.outer_angle,0.55))),
   };
 }
 
 export function normalizeAreaLight(value = {}) {
-  value = value && typeof value === "object" ? value : {};
+  value=value&&typeof value==="object"?value:{};
+  const explicitPosition=finiteVec3(value.position);
+  const requested=["manual","object","unplaced"].includes(value.placement)?value.placement:(explicitPosition?"manual":"unplaced");
+  const placement=explicitPosition&&requested!=="unplaced"?requested:"unplaced";
   return {
-    level: String(value.level || ""),
-    position: vec3(value.position,[0,0,0]),
-    axis_u: vec3(value.axis_u,[2,0,0]),
-    axis_v: vec3(value.axis_v,[0,2,0]),
-    radiance: vec3(value.radiance,[8,6,3]).map(v=>Math.max(0,v)),
+    level:String(value.level||""), placement, anchorObject:placement==="object"?String(value.anchorObject||"").slice(0,256):"",
+    position:explicitPosition||[0,0,0], axis_u:vec3(value.axis_u,[2,0,0]), axis_v:vec3(value.axis_v,[0,2,0]),
+    radiance:vec3(value.radiance,[8,6,3]).map(v=>Math.max(0,Math.min(1e6,v))),
   };
 }
 
 export function normalizeParticle(value = {}) {
   value = value && typeof value === "object" ? value : {};
-  const presets = ["sparks","smoke","mist","glow","energy","rain","heat-haze"];
+  const presets = ["sparks","smoke","smog","mist","glow","energy","rain","heat-haze"];
   const explicitPosition = finiteVec3(value.position);
   const requestedPlacement = ["manual","object","unplaced"].includes(value.placement)
     ? value.placement
@@ -146,7 +141,7 @@ export function normalizeParticle(value = {}) {
   };
 }
 
-const stem = (path) => String(path || "").replace(/\.glb$/i,"");
+const stem = (path) => String(path || "").replace(/\.(?:glb|gltf)$/i,"");
 
 function objectsFromManifest(manifest) {
   const out = [];
@@ -240,13 +235,26 @@ export async function loadLevels(controller) {
 
 export async function readProbeProfile(controller, levelDir) {
   if (!levelDir) return {};
+  let raw;
   try {
-    const raw = await controller.read("levels", `${levelDir}/probe-bake.json`);
-    const value = JSON.parse(dec.decode(raw));
-    return value && typeof value === "object" ? value : {};
+    raw = await controller.read("levels", `${levelDir}/probe-bake.json`);
   } catch {
+    // A missing optional profile means the stock baker defaults.
     return {};
   }
+  let value;
+  try {
+    value = JSON.parse(dec.decode(raw));
+  } catch (error) {
+    throw new Error(`${levelDir}/probe-bake.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${levelDir}/probe-bake.json must contain a JSON object`);
+  }
+  if (value.version !== undefined && value.version !== 1) {
+    throw new Error(`${levelDir}/probe-bake.json uses unsupported version ${String(value.version)}; stock Enhanced baker expects version 1`);
+  }
+  return value;
 }
 
 export function objectLightCatalog(state) {
@@ -271,25 +279,51 @@ export function objectLightCatalog(state) {
   return {version:1,objects};
 }
 
-export function bakerProfile(baseProfile, state, levelDir) {
-  const profile = clone(baseProfile && typeof baseProfile === "object" ? baseProfile : {});
-  profile.version = Number.isInteger(profile.version) ? profile.version : 1;
-  profile.sky_intensity = state.baker.skyIntensity;
-  profile.sky_weight = state.baker.skyWeight;
-  profile.surface_emission_scale = state.baker.surfaceEmissionScale;
-  profile.environment_probes = {
-    ...(profile.environment_probes && typeof profile.environment_probes === "object" ? profile.environment_probes : {}),
-    enabled:state.baker.environmentProbes,
-    resolution:state.baker.probeResolution,
-    maximum_probes:state.baker.maximumProbes,
-    spacing:state.baker.spacing,
+const vectorLength=(v)=>Math.hypot(Number(v?.[0]),Number(v?.[1]),Number(v?.[2]));
+const crossLength=(a,b)=>Math.hypot(Number(a?.[1])*Number(b?.[2])-Number(a?.[2])*Number(b?.[1]),Number(a?.[2])*Number(b?.[0])-Number(a?.[0])*Number(b?.[2]),Number(a?.[0])*Number(b?.[1])-Number(a?.[1])*Number(b?.[0]));
+
+const bakedAreaLight=(raw)=>{
+  const row=normalizeAreaLight(raw);
+  return {position:row.position,axis_u:row.axis_u,axis_v:row.axis_v,radiance:row.radiance};
+};
+const areaSignature=(row)=>JSON.stringify([row?.position,row?.axis_u,row?.axis_v,row?.radiance]);
+
+export function mergedAreaLights(baseProfile,state,levelDir){
+  const out=[],seen=new Set();
+  const add=(row)=>{
+    if(!row||typeof row!=="object")return;
+    const baked=bakedAreaLight(row),sig=areaSignature(baked);
+    if(seen.has(sig))return;
+    seen.add(sig);out.push(baked);
   };
-  profile.area_lights = state.areaLights
-    .filter((row)=>row.level===levelDir)
-    .map((raw)=>{
-      const row=normalizeAreaLight(raw);
-      return {position:row.position,axis_u:row.axis_u,axis_v:row.axis_v,radiance:row.radiance};
-    });
+  if(Array.isArray(baseProfile?.area_lights))baseProfile.area_lights.forEach(add);
+  (state?.areaLights||[]).filter(row=>row?.level===levelDir).forEach(add);
+  return out;
+}
+
+export function bakerExportIssues(state,levelDir,baseProfile={}){
+  const issues=[]; if(!/^level_\d+$/.test(String(levelDir||"")))issues.push("Select an exported level");
+  const settings=bakerSettingsForLevel(state,levelDir,baseProfile); issues.push(...bakerSettingsIssues(settings));
+  const rows=(state?.areaLights||[]).filter(row=>row?.level===levelDir);
+  if(mergedAreaLights(baseProfile,state,levelDir).length>64)issues.push("Enhanced Baker supports at most 64 area lights per level");
+  rows.forEach((raw,index)=>{
+    const area=normalizeAreaLight(raw), label=`Area light ${index+1}`;
+    if(area.placement==="unplaced")issues.push(`${label}: placement is not confirmed`);
+    if(!finiteVec3(raw?.position))issues.push(`${label}: X/Y/Z must be finite numbers`);
+    if(vectorLength(area.axis_u)<=1e-6||vectorLength(area.axis_v)<=1e-6||crossLength(area.axis_u,area.axis_v)<=1e-6)issues.push(`${label}: half-edge U/V must form a non-degenerate rectangle`);
+    if(!area.radiance.every(v=>Number.isFinite(v)&&v>=0&&v<=1e6))issues.push(`${label}: radiance must be finite and non-negative`);
+  });
+  return issues;
+}
+
+export function bakerProfile(baseProfile,state,levelDir){
+  const profile=clone(baseProfile&&typeof baseProfile==="object"?baseProfile:{});
+  const settings=bakerSettingsForLevel(state,levelDir,profile);
+  profile.version=Number.isInteger(profile.version)?profile.version:1;
+  profile.sky_intensity=settings.skyIntensity; profile.sky_weight=settings.skyWeight; profile.surface_emission_scale=settings.surfaceEmissionScale;
+  profile.rays=settings.rays; profile.bounces=settings.bounces; profile.adaptive_rays=settings.adaptiveRays;
+  profile.environment_probes={...(profile.environment_probes&&typeof profile.environment_probes==="object"?profile.environment_probes:{}),enabled:settings.environmentProbes,resolution:settings.probeResolution,maximum_probes:settings.maximumProbes,spacing:settings.spacing};
+  profile.area_lights=mergedAreaLights(profile,state,levelDir);
   return profile;
 }
 
@@ -297,9 +331,31 @@ function tsvValue(value) {
   return String(value).replace(/[\t\r\n]/g," ");
 }
 
+export function objectLightIssues(state){
+  const issues=[];
+  const rows=Array.isArray(state?.lights)?state.lights:[];
+  if(rows.length>4096)issues.push("Enhanced renderer supports at most 4096 authored local lights");
+  rows.forEach((raw,index)=>{
+    const light=normalizeLight(raw), label=`Light ${index+1} (${light.name})`;
+    if(!light.object)issues.push(`${label}: no object is selected`);
+    if(!Number.isFinite(light.range)||light.range<=0)issues.push(`${label}: range must be positive`);
+    if(!Number.isFinite(light.intensity)||light.intensity<0)issues.push(`${label}: intensity must be non-negative`);
+    if(!light.position.every(Number.isFinite)||!light.colour.every(v=>Number.isFinite(v)&&v>=0))issues.push(`${label}: position/colour must be finite and colour non-negative`);
+    if(light.type==="spot"){
+      const axis=Math.hypot(...light.direction);
+      if(!Number.isFinite(axis)||axis<1e-6)issues.push(`${label}: spot direction must be non-zero`);
+      const inner=Math.min(light.inner_angle,light.outer_angle), outer=Math.max(light.inner_angle,light.outer_angle);
+      if(inner<0||outer>=Math.PI/2)issues.push(`${label}: spot angles must satisfy 0 <= inner <= outer < pi/2`);
+    }
+  });
+  return issues;
+}
 export function effectExportIssues(state, levels) {
-  const issues = [];
-  const validLevels = new Set((levels || []).map((row)=>row.dir));
+  const issues = [...objectLightIssues(state)];
+  const validRows=(levels || []).filter((row)=>/^level_\d+$/.test(String(row?.dir||""))&&Number.isInteger(row?.level));
+  const validLevels = new Set(validRows.map((row)=>row.dir));
+  if((state?.lights||[]).length && !validRows.length)issues.push("Runtime object lights need at least one exported level");
+
   (state?.particles || []).forEach((raw,index)=>{
     const p = normalizeParticle(raw);
     const label = `Effect ${index+1} (${p.preset})`;
@@ -340,9 +396,12 @@ export async function saveText(controller, name, extension, text) {
 }
 
 export async function exportBakerProfile(controller, info, state, levelDir, baseProfile) {
+  const issues=bakerExportIssues(state,levelDir,baseProfile);
+  if(issues.length)throw new Error("Baker profile is not ready: "+issues.slice(0,3).join("; ")+(issues.length>3?" (+"+(issues.length-3)+" more)":""));
   const profile = bakerProfile(baseProfile,state,levelDir);
-  const name = `${info.packId}-${levelDir}-probe-bake`;
-  return saveText(controller,name,"json",JSON.stringify(profile,null,2)+"\n");
+  // The stock Enhanced baker only reads this exact filename from level_XX/.
+  // saveStart still lets the player choose the destination folder in the normal launcher.
+  return saveText(controller,"probe-bake","json",JSON.stringify(profile,null,2)+"\n");
 }
 
 export async function exportEffectsMod(controller, info, state, levels) {
@@ -375,13 +434,20 @@ export async function exportEffectsMod(controller, info, state, levels) {
     const noop = "-- Generated by Graphics preparation. Runtime effects are handled by the native runtime integrated into graphics-preparation >= 0.17.0.\n";
     await zip.add(root+"openrac-mod.json",encoder.encode(JSON.stringify(manifest,null,2)+"\n"));
     await zip.add(root+"main.luau",encoder.encode(noop));
-    await zip.add(root+"assets/object-lights.json",encoder.encode(JSON.stringify(objectLightCatalog(state),null,2)+"\n"));
+    const objectLights=encoder.encode(JSON.stringify(objectLightCatalog(state),null,2)+"\n");
+    if((state?.lights||[]).length){
+      for(const level of levels.filter((row)=>/^level_\d+$/.test(String(row?.dir||""))&&Number.isInteger(row?.level))){
+        // Stock OpenRAC turns a mod's assets root into assets/level_NN for the loaded world.
+        // Enhanced object_lights.cpp reads object-lights.json from that per-level mod root.
+        await zip.add(root+"assets/"+level.dir+"/object-lights.json",objectLights);
+      }
+    }
     await zip.add(root+"graphics-effects.tsv",encoder.encode(particleConfig(state,levels)));
     const note = [
       "OpenRAC Graphics effects",
       "",
       "Install this ZIP through Mods -> Add a mod.",
-      "Runtime point/spot lights are read from assets/object-lights.json by Enhanced graphics.",
+      "Runtime point/spot lights are copied to assets/level_NN/object-lights.json, the per-level mod root used by standard Enhanced graphics.",
       "Particles use the native runtime integrated into Graphics preparation >= 0.17.0; no second runtime mod is required.",
       "Bake-only area lights are exported separately as probe-bake.json and use Enhanced graphics -> Prepare lighting.",
       "",

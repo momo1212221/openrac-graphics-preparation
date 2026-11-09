@@ -26,8 +26,10 @@ jobs:
           echo "SDK=$(python tools/fetch_sdk.py)" >> "$GITHUB_ENV"
       - name: Configure integrated runtime
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-      - name: Build integrated runtime
-        run: cmake --build build --target graphics_preparation_runtime --parallel
+      - name: Build integrated runtime and parser tests
+        run: cmake --build build --target graphics_preparation_runtime graphics_effects_config_test --parallel
+      - name: Test native effects parser
+        run: ctest --test-dir build --output-on-failure
       - name: Package Linux smoke artifact
         env:
           OPENRAC_NATIVE_PACKAGE: build/package/graphics_preparation_runtime
