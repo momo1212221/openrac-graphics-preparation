@@ -48,7 +48,7 @@ export class QualityLab{
         : await upscaleAiMasterPng(source,{
             mode:state.aiMode,detailQuality,detailCnn:state.detailCnn,
             sourceColorLock:state.sourceColorLock,master8x:state.master8x,preserveMicrodetail:state.preserveMicrodetail,
-            preserveStars:state.preserveStars,backend:state.aiBackend,texturePaths:[texture.path],
+            preserveStars:state.preserveStars,backend:state.aiBackend,performanceMode:state.performanceMode,texturePaths:[texture.path],
             textureClassOverride:override.textureClass,materialOverride:override.material,
           });
       let finalResult=result;
@@ -59,7 +59,7 @@ export class QualityLab{
             const refined=await upscaleAiMasterPng(source,{
               mode:state.aiMode,detailQuality:refinedQuality,detailCnn:state.detailCnn,
               sourceColorLock:state.sourceColorLock,master8x:state.master8x,preserveMicrodetail:state.preserveMicrodetail,
-              preserveStars:state.preserveStars,backend:state.aiBackend,texturePaths:[texture.path],
+              preserveStars:state.preserveStars,backend:state.aiBackend,performanceMode:state.performanceMode,texturePaths:[texture.path],
               textureClassOverride:override.textureClass,materialOverride:override.material,
             });
             if(refinedQuality==="max"
