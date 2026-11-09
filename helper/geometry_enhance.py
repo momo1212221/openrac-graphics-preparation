@@ -272,6 +272,266 @@ def _kind(path: Path) -> str:
     return "generic"
 
 
+@dataclass(frozen=True)
+class RemeshPolicy:
+    role: str
+    budget_multiplier: float
+    length_scale: float
+    curvature_weight: float
+    boundary_weight: float
+    silhouette_relax: float
+    lod_ratios: tuple[float, float, float]
+
+
+_REMESH_POLICIES = {
+    "terrain": RemeshPolicy("terrain", 1.00, 1.00, .55, .10, 0.000, (1.00, .58, .30)),
+    "character": RemeshPolicy("character", 1.45, .72, .95, .55, 0.004, (1.00, .55, .28)),
+    "weapon": RemeshPolicy("weapon", 1.30, .68, 1.05, .65, 0.003, (1.00, .60, .30)),
+    "rock": RemeshPolicy("rock", 1.55, .75, .90, .50, 0.018, (1.00, .50, .22)),
+    "foliage": RemeshPolicy("foliage", .75, 1.15, .35, .15, 0.000, (1.00, .45, .16)),
+    "structure": RemeshPolicy("structure", 1.15, .88, .72, .30, 0.007, (1.00, .55, .26)),
+    "prop": RemeshPolicy("prop", 1.00, .92, .68, .30, 0.006, (1.00, .55, .25)),
+    "generic": RemeshPolicy("generic", 1.00, .95, .62, .25, 0.005, (1.00, .55, .25)),
+}
+
+
+def _material_name(doc: dict, primitive: dict) -> str:
+    index = primitive.get("material")
+    materials = doc.get("materials") or []
+    if isinstance(index, int) and 0 <= index < len(materials):
+        return str(materials[index].get("name") or "").lower()
+    return ""
+
+
+def classify_asset_role(
+    path: Path,
+    doc: dict,
+    primitive: dict,
+    kind: str,
+    attributes: dict | None = None,
+) -> str:
+    text = " ".join((path.as_posix().lower(), _material_name(doc, primitive)))
+    if kind == "terrain":
+        return "terrain"
+    if kind == "shrub" or any(token in text for token in ("leaf","leaves","grass","plant","tree","bush","shrub","vine")):
+        return "foliage"
+    if any(token in text for token in (
+        "weapon","wrench","blaster","gun","cannon","launcher","bomb","mine","turret","rifle","pistol",
+    )):
+        return "weapon"
+    if any(token in text for token in (
+        "rock","stone","cliff","boulder","cave","crystal","ore","brick","concrete",
+    )):
+        return "rock"
+    if kind == "moby" and attributes and "JOINTS_0" in attributes and "WEIGHTS_0" in attributes:
+        return "character"
+    if any(token in text for token in (
+        "wall","floor","door","bridge","building","platform","pipe","machine","metal","tower","crate",
+    )):
+        return "structure"
+    if kind in {"tie","shrub","moby"}:
+        return "prop"
+    return "generic"
+
+
+def remesh_policy(role: str) -> RemeshPolicy:
+    return _REMESH_POLICIES.get(role, _REMESH_POLICIES["generic"])
+
+
+def _triangle_quality(a: tuple, b: tuple, c: tuple) -> float:
+    ab = math.dist(a,b)
+    bc = math.dist(b,c)
+    ca = math.dist(c,a)
+    denom = ab*ab + bc*bc + ca*ca
+    if denom <= 1e-18:
+        return 0.0
+    ux,uy,uz = b[0]-a[0],b[1]-a[1],b[2]-a[2]
+    vx,vy,vz = c[0]-a[0],c[1]-a[1],c[2]-a[2]
+    cross = (
+        uy*vz-uz*vy,
+        uz*vx-ux*vz,
+        ux*vy-uy*vx,
+    )
+    area2 = math.sqrt(sum(v*v for v in cross))
+    return max(0.0, min(1.0, 2.0*math.sqrt(3.0)*area2/denom))
+
+
+def _uv_signed_area(a: tuple, b: tuple, c: tuple) -> float:
+    return (float(b[0])-float(a[0]))*(float(c[1])-float(a[1])) - (
+        float(b[1])-float(a[1])
+    )*(float(c[0])-float(a[0]))
+
+
+def optimize_triangle_topology(
+    attributes: dict[str, list[tuple]],
+    indices: list[int],
+    crease_angle_degrees: float,
+    *,
+    max_flips: int = 20_000,
+) -> tuple[list[int], dict]:
+    positions = attributes.get("POSITION") or []
+    uvs = attributes.get("TEXCOORD_0")
+    if len(indices) < 6 or not positions:
+        return list(indices), {"flips": 0, "quality_before": 1.0, "quality_after": 1.0}
+
+    faces = [list(indices[i:i+3]) for i in range(0,len(indices),3)]
+    quality_before = sum(
+        _triangle_quality(positions[a],positions[b],positions[c]) for a,b,c in faces
+    ) / max(1,len(faces))
+
+    edge_faces: dict[tuple[int,int], list[int]] = {}
+    for face_index,(a,b,c) in enumerate(faces):
+        for x,y in ((a,b),(b,c),(c,a)):
+            edge=(x,y) if x<y else (y,x)
+            edge_faces.setdefault(edge,[]).append(face_index)
+    existing=set(edge_faces)
+    crease_cos=math.cos(math.radians(crease_angle_degrees))
+    candidates=[]
+    for edge, owners in edge_faces.items():
+        if len(owners)!=2:
+            continue
+        f1,f2=owners
+        a,b=edge
+        tri1,tri2=faces[f1],faces[f2]
+        c=next((v for v in tri1 if v not in edge),None)
+        d=next((v for v in tri2 if v not in edge),None)
+        if c is None or d is None or c==d:
+            continue
+        new_edge=(c,d) if c<d else (d,c)
+        if new_edge in existing:
+            continue
+        n1=_face_normal(positions[tri1[0]],positions[tri1[1]],positions[tri1[2]])
+        n2=_face_normal(positions[tri2[0]],positions[tri2[1]],positions[tri2[2]])
+        if sum(n1[i]*n2[i] for i in range(3)) < crease_cos:
+            continue
+        ref=_normalise(tuple(n1[i]+n2[i] for i in range(3)),n1)
+        old_min=min(
+            _triangle_quality(positions[tri1[0]],positions[tri1[1]],positions[tri1[2]]),
+            _triangle_quality(positions[tri2[0]],positions[tri2[1]],positions[tri2[2]]),
+        )
+        best=None
+        for cand1,cand2 in (
+            ((c,d,a),(d,c,b)),
+            ((d,c,a),(c,d,b)),
+        ):
+            cn1=_face_normal(positions[cand1[0]],positions[cand1[1]],positions[cand1[2]])
+            cn2=_face_normal(positions[cand2[0]],positions[cand2[1]],positions[cand2[2]])
+            if sum(ref[i]*cn1[i] for i in range(3)) < .35 or sum(ref[i]*cn2[i] for i in range(3)) < .35:
+                continue
+            if uvs:
+                old_a1=_uv_signed_area(uvs[tri1[0]],uvs[tri1[1]],uvs[tri1[2]])
+                old_a2=_uv_signed_area(uvs[tri2[0]],uvs[tri2[1]],uvs[tri2[2]])
+                new_a1=_uv_signed_area(uvs[cand1[0]],uvs[cand1[1]],uvs[cand1[2]])
+                new_a2=_uv_signed_area(uvs[cand2[0]],uvs[cand2[1]],uvs[cand2[2]])
+                if min(abs(new_a1),abs(new_a2)) < 1e-10:
+                    continue
+                if old_a1*old_a2 > 0 and (new_a1*old_a1 <= 0 or new_a2*old_a1 <= 0):
+                    continue
+            new_min=min(
+                _triangle_quality(positions[cand1[0]],positions[cand1[1]],positions[cand1[2]]),
+                _triangle_quality(positions[cand2[0]],positions[cand2[1]],positions[cand2[2]]),
+            )
+            improvement=new_min-old_min
+            if improvement > .025 and (best is None or improvement>best[0]):
+                best=(improvement,cand1,cand2)
+        if best is not None:
+            candidates.append((best[0],f1,f2,best[1],best[2]))
+
+    used=set()
+    flips=0
+    for _,f1,f2,cand1,cand2 in sorted(candidates,key=lambda row:(-row[0],row[1],row[2])):
+        if flips>=max_flips or f1 in used or f2 in used:
+            continue
+        faces[f1]=list(cand1)
+        faces[f2]=list(cand2)
+        used.add(f1);used.add(f2);flips+=1
+
+    out=[v for face in faces for v in face]
+    quality_after=sum(
+        _triangle_quality(positions[a],positions[b],positions[c]) for a,b,c in faces
+    ) / max(1,len(faces))
+    return out,{
+        "flips":flips,
+        "quality_before":quality_before,
+        "quality_after":quality_after,
+        "quality_gain":quality_after-quality_before,
+    }
+
+
+def refine_silhouette_positions(
+    positions: list[tuple],
+    indices: list[int],
+    strength: float,
+    crease_angle_degrees: float,
+) -> tuple[list[tuple], dict]:
+    if strength <= 0 or not positions:
+        return list(positions), {"applied": False, "max_move": 0.0, "mean_move": 0.0}
+    neighbours,boundary=_adjacency(indices,len(positions))
+    pinned=boundary | _crease_vertices(positions,indices,crease_angle_degrees)
+    incident=[[] for _ in positions]
+    for i in range(0,len(indices),3):
+        a,b,c=indices[i:i+3]
+        n=_face_normal(positions[a],positions[b],positions[c])
+        incident[a].append(n);incident[b].append(n);incident[c].append(n)
+    box=_bbox(positions)
+    diagonal=max(_diag(box),1e-9)
+    weights=[]
+    for i,p in enumerate(positions):
+        if i in pinned or not neighbours[i]:
+            weights.append(0.0)
+            continue
+        normals=incident[i]
+        if normals:
+            avg=[sum(n[k] for n in normals)/len(normals) for k in range(3)]
+            normal_coherence=min(1.0,math.sqrt(sum(v*v for v in avg)))
+            curvature=max(0.0,1.0-normal_coherence)
+        else:
+            curvature=0.0
+        edge_scale=sum(math.dist(p,positions[j]) for j in neighbours[i])/len(neighbours[i])/diagonal
+        weights.append(max(.12,min(1.0,curvature*4.0+edge_scale*7.0)))
+
+    original=[tuple(map(float,p)) for p in positions]
+    def step(current,factor):
+        nxt=list(current)
+        for i,p in enumerate(current):
+            weight=weights[i]
+            if weight<=0:
+                continue
+            avg=tuple(sum(current[j][axis] for j in neighbours[i])/len(neighbours[i]) for axis in range(3))
+            nxt[i]=tuple(p[axis]+(avg[axis]-p[axis])*factor*weight for axis in range(3))
+        return nxt
+    current=step(original,strength)
+    current=step(current,-strength*1.025)
+    distances=[math.dist(a,b) for a,b in zip(original,current)]
+    moved=[v for v in distances if v>1e-12]
+    return current,{
+        "applied":bool(moved),
+        "max_move":max(moved) if moved else 0.0,
+        "mean_move":sum(moved)/len(moved) if moved else 0.0,
+        "vertices_moved":len(moved),
+        "vertices_pinned":len(pinned),
+    }
+
+
+def build_lod_plan(role: str, stage_triangles: list[int], final_triangles: int) -> dict:
+    policy=remesh_policy(role)
+    stages=sorted(set(int(v) for v in stage_triangles if int(v)>0))
+    high=max(1,int(final_triangles))
+    medium=stages[-2] if len(stages)>=2 else stages[0] if stages else high
+    low=stages[0] if stages else max(1,round(high*policy.lod_ratios[2]))
+    return {
+        "role":role,
+        "target_ratios":list(policy.lod_ratios),
+        "available_stage_triangles":{
+            "lod0":high,
+            "lod1":medium,
+            "lod2":low,
+        },
+        "stock_import_runtime":False,
+        "runtime_note":"OpenRAC assets.py currently imports one replacement GLB; staged LODs are prepared/reported but not selected at runtime by the stock importer.",
+    }
+
+
 def geometry_profile(mode: str, kind: str, options: dict | None = None) -> GeometryProfile:
     options = options or {}
     if mode not in {"enhanced", "high", "ultra", "modern", "experimental"}:
