@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.17.1 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.17.2 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 There is no custom launcher service, no Python helper and no external executable. The release ZIP
 contains:
@@ -17,7 +17,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.17.1.zip`.
+2. Install `graphics-preparation-0.17.2.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -429,3 +429,15 @@ The resume journal now uses a launcher-safe, game-scoped key, sanitizes/truncate
 same contract and validates every `storeGet`/`storeSet` key locally before it reaches the launcher.
 The IndexedDB AI result cache is independent of this journal, so already completed cached textures
 remain reusable after installing the hotfix.
+
+
+## Native launcher release assets (0.17.2)
+
+0.17.2 fixes GitHub-link installation of the unified native mod. OpenRAC resolves native releases
+by the exact asset name `<id>-<version>-<platform>.zip`, for example
+`graphics-preparation-0.17.2-macos-arm64.zip` on Apple Silicon.
+
+The release now contains one complete platform archive for each supported desktop target plus the
+joined all-platform archive for manual installation. Every platform archive contains the full
+Graphics preparation product (tool UI, local AI runtime/models, material pipeline and the selected
+native runtime library), and every file is listed in `SHA256SUMS`.
