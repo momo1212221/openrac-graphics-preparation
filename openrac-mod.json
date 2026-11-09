@@ -2,7 +2,7 @@
   "format": 2,
   "id": "graphics-preparation",
   "name": "Graphics preparation",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "author": "OpenRAC fork contributors",
   "description": "One-package OpenRAC graphics preparation: AI texture/material authoring, Geometry Enhancement and integrated native particle, glow and haze runtime.",
   "license": "GPL-3.0-or-later",
