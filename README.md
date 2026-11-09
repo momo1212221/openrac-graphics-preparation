@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.20.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.21.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 The normal texture-AI workflow needs no custom launcher service, Python helper or external executable.
 Geometry Enhancement is optional and uses the bundled Python helper only for OpenRAC's official
@@ -18,7 +18,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.20.0.zip`.
+2. Install `graphics-preparation-0.21.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -581,3 +581,51 @@ python3 helper/openrac_graphics_helper.py geometry-job.json \
 the displacement source per primitive, maximum measured vertex movement, and the existing collision QA.
 
 This is real geometry movement, not a renderer-only parallax effect and not random vertex noise.
+
+
+## Asset-aware remesh and LOD planning (0.21.0)
+
+0.21.0 adds a role-aware remesh stage on top of the 0.20.0 adaptive geometry and Height displacement path.
+
+Each compatible primitive is classified conservatively as one of:
+
+- **Character**
+- **Weapon**
+- **Rock**
+- **Foliage**
+- **Terrain**
+- **Structure**
+- **Prop / Generic**
+
+The role changes how the automatic triangle budget is spent. Characters, weapons and rocks receive
+more density around long, curved and outline-forming edges. Foliage stays conservative to avoid
+multiplying alpha-card geometry unnecessarily. Terrain keeps its large world budget but does not
+receive aggressive outline smoothing.
+
+The remesher now performs three separate quality steps:
+
+1. **Role-aware adaptive subdivision** chooses shared edges by geometric length, curvature and
+   boundary/silhouette priority.
+2. **Triangle topology optimization** can flip a shared diagonal when the replacement improves
+   triangle quality, stays below the crease threshold, keeps face orientation valid and does not
+   reverse the UV mapping.
+3. **Silhouette refinement** uses a small volume-preserving, curvature-weighted relaxation. Hard
+   creases and open boundaries are pinned. Static rocks/scenery may receive stronger refinement;
+   mobys and terrain remain position-locked unless the existing collision-mismatch opt-in is enabled.
+
+This is deliberately not an unconstrained AI mesh generator: it does not invent disconnected
+geometry, new limbs, weapon parts, holes or arbitrary high-frequency vertex noise.
+
+### LOD planning
+
+Every processed primitive can also receive a deterministic LOD policy. The report records the actual
+triangle counts produced by the subdivision stages and maps them to LOD0/LOD1/LOD2 integration
+targets. A separate `geometry-lod-plan.json` is written beside `geometry-report.json`.
+
+Current stock OpenRAC `editor/assets.py import` accepts one replacement GLB for an edited class.
+Therefore 0.21.0 does **not** claim runtime switching between the generated LOD targets. The LOD file
+is an explicit integration contract for the next renderer/importer step, while the high-detail
+asset-aware remesh itself is already used by the normal override ZIP.
+
+The Modern / PS5 target enables Asset-aware Remesh, Triangle Topology Optimization, Silhouette
+Refinement at 100%, LOD Planning and the existing bounded Height micro-displacement together.
