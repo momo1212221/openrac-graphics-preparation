@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.18.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.19.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 The normal texture-AI workflow needs no custom launcher service, Python helper or external executable.
 Geometry Enhancement is optional and uses the bundled Python helper only for OpenRAC's official
@@ -18,7 +18,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.18.0.zip`.
+2. Install `graphics-preparation-0.19.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -444,7 +444,7 @@ Graphics preparation product (tool UI, local AI runtime/models, material pipelin
 native runtime library), and every file is listed in `SHA256SUMS`.
 
 
-## 3D Geometry Enhancement (0.18.0)
+## 3D Geometry Enhancement (0.19.0)
 
 Graphics preparation now includes a conservative OpenRAC-native geometry pipeline for exported glTF
 models. The launcher page can export an `ai.meshes` job; the bundled
@@ -484,3 +484,51 @@ python3 helper/openrac_graphics_helper.py geometry-job.json --openrac-root /path
 The generated Geometry ZIP is installed through OpenRAC's normal Mods page. Game/disc assets are
 never bundled in Graphics preparation itself; the helper operates only on the user's own OpenRAC
 exports.
+
+
+## Modern / PS5 target (0.19.0)
+
+0.19.0 adds a one-click **Modern / PS5 target** preset that configures the existing texture/material
+pipeline and the new geometry path together. It is a quality target, not a claim that the original
+PS2 assets become equivalent to hand-authored current-generation assets automatically.
+
+The preset enables:
+
+- Enhanced AI reconstruction with Auto detail planning;
+- dual-CNN fidelity/detail gating;
+- source-colour lock and Quality Guard;
+- selective internal 8x masters for important textures;
+- key-material sidecars and enhanced mipmaps;
+- the Modern geometry profile;
+- adaptive subdivision;
+- automatic per-asset crease angles;
+- collision-safe static shape refinement.
+
+Geometry quality is improved further by adaptive edge selection. Long or strongly curved edges are
+subdivided first, while already dense flat areas keep their existing density. Shared edges are split
+globally so neighbouring triangles do not produce T-junction cracks.
+
+Normals and tangents are now corner-angle weighted after subdivision. This makes highlights and
+normal-mapped lighting more stable when adaptive tessellation produces triangles of different sizes.
+Hard creases are preserved by splitting shading vertices at the configured crease angle, and the
+small optional shape-refinement pass pins those creases instead of smoothing them away.
+
+The Modern profile uses higher automatic budgets than the older High/Ultra defaults while still
+keeping terrain and moby position movement locked unless visual/collision mismatch is explicitly
+allowed.
+
+The generated `geometry-report.json` is now version 2 and includes:
+
+- changed and skipped primitive counts;
+- skip reasons;
+- before/after triangle totals;
+- adaptive edges split;
+- crease vertices split;
+- primitives stopped by their triangle budget;
+- collision-review candidates;
+- per-file/per-primitive detail.
+
+The highest-quality next step after 0.19.0 is true material-aware micro-displacement: using the
+already generated height/material data to move newly created geometry in a bounded, collision-safe
+way. That requires renderer/importer support and per-material displacement limits; it is intentionally
+not faked by arbitrary vertex noise in this release.
