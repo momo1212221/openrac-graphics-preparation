@@ -11,11 +11,16 @@ from helper.geometry_enhance import (
     HeightMap,
     _append_accessor,
     apply_micro_displacement,
+    build_lod_plan,
+    classify_asset_role,
     derive_height_from_rgba,
     enhance_export,
     enhance_gltf,
     geometry_profile,
+    optimize_triangle_topology,
     read_accessor,
+    refine_silhouette_positions,
+    remesh_policy,
     select_adaptive_edges,
     split_crease_vertices,
 )
@@ -325,6 +330,79 @@ class GeometryEnhanceTests(unittest.TestCase):
             self.assertEqual(result.source,"diffuse-derived")
             self.assertEqual(result.material,"stone")
             self.assertEqual(provider.stats["diffuse-derived"],1)
+
+    def test_asset_role_classification_separates_character_weapon_rock_and_foliage(self):
+        primitive={"material":0}
+        skinned={"JOINTS_0":[(0,0,0,0)],"WEIGHTS_0":[(1,0,0,0)]}
+        character_doc={"materials":[{"name":"ratchet_body"}]}
+        self.assertEqual(
+            classify_asset_role(Path("level_01/mobys/moby_0_ratchet/model.gltf"),character_doc,primitive,"moby",skinned),
+            "character",
+        )
+        weapon_doc={"materials":[{"name":"metal_blaster"}]}
+        self.assertEqual(
+            classify_asset_role(Path("level_01/mobys/moby_42_blaster/model.gltf"),weapon_doc,primitive,"moby",skinned),
+            "weapon",
+        )
+        rock_doc={"materials":[{"name":"stone_cliff"}]}
+        self.assertEqual(
+            classify_asset_role(Path("level_01/ties/tie_5/model.gltf"),rock_doc,primitive,"tie",{}),
+            "rock",
+        )
+        self.assertEqual(
+            classify_asset_role(Path("level_01/shrubs/shrub_6/model.gltf"),{"materials":[]},{}, "shrub",{}),
+            "foliage",
+        )
+        self.assertGreater(remesh_policy("character").budget_multiplier,1.0)
+        self.assertLess(remesh_policy("foliage").budget_multiplier,1.0)
+
+    def test_role_aware_adaptive_selection_prioritises_character_outline_density(self):
+        positions=[
+            (0.0,0.0,0.0),(4.0,0.0,0.0),(0.0,1.0,0.0),
+            (4.0,1.0,0.0),
+        ]
+        indices=[0,1,2, 1,3,2]
+        generic=select_adaptive_edges(
+            positions,indices,triangle_budget=5,mode="modern",pass_index=0,role="generic"
+        )
+        character=select_adaptive_edges(
+            positions,indices,triangle_budget=5,mode="modern",pass_index=0,role="character"
+        )
+        self.assertGreaterEqual(len(character),len(generic))
+        self.assertTrue(character)
+
+    def test_triangle_topology_optimizer_never_degrades_average_quality(self):
+        attrs={
+            "POSITION":[
+                (0.0,0.0,0.0),(3.0,0.0,0.0),(2.2,1.0,0.0),(0.0,2.2,0.0),
+            ],
+            "TEXCOORD_0":[
+                (0.0,0.0),(1.0,0.0),(.75,.45),(0.0,1.0),
+            ],
+        }
+        indices=[0,1,2, 0,2,3]
+        out,qa=optimize_triangle_topology(attrs,indices,175.0)
+        self.assertEqual(len(out),len(indices))
+        self.assertGreaterEqual(qa["quality_after"]+1e-12,qa["quality_before"])
+        self.assertGreaterEqual(qa["flips"],0)
+
+    def test_silhouette_refinement_moves_closed_curved_mesh_but_keeps_bounds_finite(self):
+        positions=[
+            (1.0,1.0,1.0),(-1.0,-1.0,1.0),(-1.0,1.0,-1.0),(1.0,-1.0,-1.0),
+        ]
+        indices=[0,2,1, 0,1,3, 0,3,2, 1,2,3]
+        refined,qa=refine_silhouette_positions(positions,indices,.02,175.0)
+        self.assertTrue(qa["applied"])
+        self.assertGreater(qa["max_move"],0.0)
+        self.assertTrue(all(math.isfinite(v) for p in refined for v in p))
+
+    def test_lod_plan_uses_real_subdivision_stages_and_marks_stock_runtime_gap(self):
+        plan=build_lod_plan("weapon",[1200,3400,7600],7600)
+        self.assertEqual(plan["available_stage_triangles"]["lod0"],7600)
+        self.assertEqual(plan["available_stage_triangles"]["lod1"],3400)
+        self.assertEqual(plan["available_stage_triangles"]["lod2"],1200)
+        self.assertFalse(plan["stock_import_runtime"])
+        self.assertEqual(plan["role"],"weapon")
 
     def test_unsupported_morph_target_is_left_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
