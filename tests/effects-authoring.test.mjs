@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
   EFFECTS_SCHEMA_VERSION,bakerExportIssues,bakerSettingsForLevel,effectExportIssues,loadLevels,manifestObjectPosition,
-  normalizeAreaLight,normalizeEffects,normalizeParticle,objectLightCatalog,bakerProfile,particleConfig,placementsFromLevel,setBakerSettingsForLevel,
+  normalizeAreaLight,normalizeEffects,normalizeParticle,objectLightCatalog,objectLightIssues,bakerProfile,particleConfig,placementsFromLevel,setBakerSettingsForLevel,
 } from '../src/effects-authoring.js';
 
 test('runtime point and spot lights serialize to the official object-lights format',()=>{
@@ -207,4 +207,16 @@ test('smog is a first-class runtime preset',()=>{
 test('baker profile writes stock rays bounces and adaptive fields',()=>{
   const state=normalizeEffects({schemaVersion:EFFECTS_SCHEMA_VERSION,selectedLevel:'level_01',bakerByLevel:{level_01:{skyIntensity:.8,skyWeight:.5,surfaceEmissionScale:1,environmentProbes:true,probeResolution:128,maximumProbes:128,spacing:32,rays:1024,bounces:4,adaptiveRays:false}}});
   const out=bakerProfile({version:1},state,'level_01'); assert.equal(out.rays,1024); assert.equal(out.bounces,4); assert.equal(out.adaptive_rays,false); assert.equal(out.environment_probes.resolution,128);
+});
+
+test('gltf and glb object mesh names normalize to the renderer object-light key',()=>{
+ const manifest={classes:{moby:{'1':{mesh:'mobys/lamp.gltf',name:'lamp'},'2':{mesh:'mobys/weapon.glb',name:'weapon'}}}};
+ const rows=placementsFromLevel(manifest,{mobys:[]}); assert.deepEqual(rows,[]);
+ const state=normalizeEffects({lights:[{object:'mobys/lamp',type:'point',range:4}]});
+ assert.ok(objectLightCatalog(state).objects['mobys/lamp']);
+});
+
+test('object-light export validation rejects missing object and zero spot axis',()=>{
+ const state=normalizeEffects({lights:[{object:'',type:'point',range:4},{object:'mobys/lamp',type:'spot',direction:[0,0,0],range:5}]});
+ const issues=objectLightIssues(state).join('\n'); assert.match(issues,/no object is selected/); assert.match(issues,/spot direction must be non-zero/);
 });
