@@ -23,6 +23,7 @@ import {aiRunStoreKey,aiRunSignature,beginAiRun,checkpointAiRun,interruptAiRun,c
 import {PauseGate} from "../src/pause-gate.js";
 import {ProgressEstimator,formatDuration} from "../src/progress-estimator.js";
 import {buildGeometryJob,geometryJobFilename,geometryJobIssues,modernGeometryPreset,normalizeGeometrySettings} from "../src/geometry-job.js";
+import {modernGraphicsPreset} from "../src/modern-preset.js";
 
 const controller = new ModController(request);
 const content = document.querySelector("#content");
@@ -1005,8 +1006,16 @@ function render() {
     setMessage("Reusing the last persistent AI results. No Real-ESRGAN or detail-CNN inference will run; material maps are generated from those cached 4x textures.");
     void createPack({ai:true,cacheOnly:true});
   };
+  const globalModernPresetButton=el("button","Modern / PS5 target");
+  globalModernPresetButton.type="button";
+  globalModernPresetButton.onclick=async()=>{
+    state=modernGraphicsPreset(state);
+    await savePrefs();
+    setMessage("Modern / PS5 target applied: Enhanced AI, guarded Auto detail, selective 8x masters, key material maps/mipmaps and adaptive collision-safe geometry.");
+    render();
+  };
   const runButtons=el("div",undefined,"button-row");
-  runButtons.append(prepareButton,materialReuseButton,pauseButton);
+  runButtons.append(globalModernPresetButton,prepareButton,materialReuseButton,pauseButton);
   prepareCard.append(left, runButtons);
   const progressWrap = el("div", undefined, "progress span");
   progressWrap.append(el("div", "Ready.", "progress-label"));
@@ -1432,7 +1441,7 @@ async function start() {
       mipmaps: ["off","key","all"].includes(saved.mipmaps) ? saved.mipmaps : "off",
       geometryProfile: ["enhanced","high","ultra","modern","experimental"].includes(saved.geometryProfile) ? saved.geometryProfile : "modern",
       geometryScope: ["all","terrain","scenery","mobys"].includes(saved.geometryScope) ? saved.geometryScope : "all",
-      geometryShapeRefine: saved.geometryShapeRefine !== false,
+      geometryShapeRefine: saved.geometryShapeRefine === true,
       geometryAllowCollisionMismatch: saved.geometryAllowCollisionMismatch === true,
       geometryAdaptiveSubdivision: saved.geometryAdaptiveSubdivision !== false,
       geometryCreaseAngle: [0,45,55,65,75].includes(Number(saved.geometryCreaseAngle)) ? Number(saved.geometryCreaseAngle) : 0,
