@@ -7,7 +7,10 @@ import tempfile
 import unittest
 
 from helper.geometry_enhance import (
+    HeightMap,
     _append_accessor,
+    apply_micro_displacement,
+    derive_height_from_rgba,
     enhance_export,
     enhance_gltf,
     geometry_profile,
@@ -182,6 +185,72 @@ class GeometryEnhanceTests(unittest.TestCase):
             self.assertIn("budget_limited_primitives",report)
             self.assertIn("primitives_skipped",report)
             self.assertIn("skip_reasons",report)
+
+    def test_micro_displacement_moves_only_interior_static_vertices(self):
+        attrs={
+            "POSITION":[
+                (-1.0,-1.0,0.0),(1.0,-1.0,0.0),(1.0,1.0,0.0),(-1.0,1.0,0.0),(0.0,0.0,0.0),
+            ],
+            "TEXCOORD_0":[
+                (0.0,0.0),(1.0,0.0),(1.0,1.0),(0.0,1.0),(0.5,0.5),
+            ],
+        }
+        indices=[0,1,4, 1,2,4, 2,3,4, 3,0,4]
+        height=HeightMap(
+            3,3,
+            (0.5,0.5,0.5, 0.5,1.0,0.5, 0.5,0.5,0.5),
+            (255,)*9,
+            material="stone",neutral=0.5,recommended_scale=0.06,source="sidecar",
+        )
+        moved,qa=apply_micro_displacement(
+            attrs,indices,height,kind="tie",strength=1.0,crease_angle_degrees=75.0
+        )
+        self.assertTrue(qa["applied"])
+        self.assertGreater(moved[4][2],0.0)
+        for i in range(4):
+            self.assertEqual(moved[i],attrs["POSITION"][i])
+        self.assertEqual(qa["vertices_moved"],1)
+        self.assertGreater(qa["vertices_pinned"],0)
+        self.assertLessEqual(qa["cap"],math.dist((-1,-1,0),(1,1,0))*0.0048+1e-9)
+
+    def test_micro_displacement_keeps_terrain_and_mobys_collision_locked_by_default(self):
+        attrs={
+            "POSITION":[(-1.0,-1.0,0.0),(1.0,-1.0,0.0),(0.0,1.0,0.0),(0.0,0.0,0.0)],
+            "TEXCOORD_0":[(0,0),(1,0),(.5,1),(.5,.5)],
+        }
+        indices=[0,1,3,1,2,3,2,0,3]
+        height=HeightMap(1,1,(1.0,),(255,),material="terrain",source="sidecar")
+        for kind in ("terrain","moby"):
+            moved,qa=apply_micro_displacement(attrs,indices,height,kind=kind)
+            self.assertFalse(qa["applied"])
+            self.assertEqual(qa["reason"],"collision-safe lock")
+            self.assertEqual(moved,attrs["POSITION"])
+
+    def test_diffuse_height_fallback_stays_relative_and_conservative(self):
+        rgba=bytes([
+            32,32,32,255, 64,64,64,255, 32,32,32,255,
+            64,64,64,255, 240,240,240,255, 64,64,64,255,
+            32,32,32,255, 64,64,64,255, 32,32,32,255,
+        ])
+        height=derive_height_from_rgba(3,3,rgba,"stone")
+        self.assertEqual(height.source,"diffuse-derived")
+        self.assertGreater(height.values[4],0.5)
+        self.assertTrue(all(0.18<=value<=0.82 for value in height.values))
+        self.assertEqual(height.neutral,0.5)
+
+    def test_export_report_counts_micro_displacement_sources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            path=write_fixture(root,"tie")
+            height=HeightMap(1,1,(0.75,),(255,),material="stone",source="sidecar")
+            report=enhance_export(
+                root,mode="modern",
+                options={"micro_displacement":True},
+                height_provider=lambda *_args: height,
+            )
+            self.assertEqual(report["format"],2)
+            self.assertIn("micro_displacement_primitives",report)
+            self.assertIn("micro_displacement_sources",report)
 
     def test_unsupported_morph_target_is_left_untouched(self):
         with tempfile.TemporaryDirectory() as tmp:
