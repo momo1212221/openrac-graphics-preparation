@@ -774,21 +774,36 @@ def enhance_export(export_dir: Path, *, mode: str = "high", options: dict | None
         rows.append(enhance_gltf(path, mode=mode, options=options))
     changed = [row for row in rows if row.get("changed")]
     primitive_rows = [p for row in rows for p in row.get("primitives", [])]
-    before = sum(int(p.get("triangles_before", 0)) for p in primitive_rows if p.get("changed"))
-    after = sum(int(p.get("triangles_after", 0)) for p in primitive_rows if p.get("changed"))
+    changed_primitives = [p for p in primitive_rows if p.get("changed")]
+    skipped_primitives = [p for p in primitive_rows if not p.get("changed")]
+    before = sum(int(p.get("triangles_before", 0)) for p in changed_primitives)
+    after = sum(int(p.get("triangles_after", 0)) for p in changed_primitives)
+    adaptive_edges = sum(int(p.get("adaptive_edges_split", 0)) for p in changed_primitives)
+    crease_splits = sum(int(p.get("crease_vertices_split", 0)) for p in changed_primitives)
+    budget_limited = sum(1 for p in changed_primitives if p.get("budget_limited"))
+    skip_reasons: dict[str,int] = {}
+    for primitive in skipped_primitives:
+        reason = str(primitive.get("reason") or "unknown")
+        skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
     collision = [
         {"file": row["file"], "mesh": p["mesh"], "primitive": p["primitive"]}
         for row in rows for p in row.get("primitives", [])
         if p.get("collision_rebuild_recommended")
     ]
     return {
-        "format": 1,
+        "format": 2,
         "mode": mode,
         "files_seen": len(rows),
         "files_changed": len(changed),
+        "primitives_changed": len(changed_primitives),
+        "primitives_skipped": len(skipped_primitives),
+        "skip_reasons": skip_reasons,
         "triangles_before": before,
         "triangles_after": after,
         "triangle_multiplier": (after / before if before else 1.0),
+        "adaptive_edges_split": adaptive_edges,
+        "crease_vertices_split": crease_splits,
+        "budget_limited_primitives": budget_limited,
         "collision_rebuild_recommended": collision,
         "files": rows,
     }
