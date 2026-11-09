@@ -22,6 +22,9 @@ export function modernGraphicsPreset(current={}){
     geometryShapeRefine:geometry.shapeRefine,
     geometryAllowCollisionMismatch:geometry.allowCollisionMismatch,
     geometryAdaptiveSubdivision:geometry.adaptiveSubdivision,
+    geometryMicroDisplacement:geometry.microDisplacement,
+    geometryHeightSource:geometry.heightSource,
+    geometryDisplacementStrength:geometry.displacementStrength,
     geometryCreaseAngle:geometry.creaseAngleDegrees||0,
     geometryTriangleBudget:geometry.triangleBudget||0,
   };
