@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  EFFECTS_SCHEMA_VERSION,bakerExportIssues,bakerSettingsForLevel,effectExportIssues,loadLevels,manifestObjectPosition,
+  EFFECTS_SCHEMA_VERSION,bakerExportIssues,bakerSettingsForLevel,effectExportIssues,loadLevels,manifestObjectPosition,mergedAreaLights,
   normalizeAreaLight,normalizeEffects,normalizeParticle,objectLightCatalog,objectLightIssues,bakerProfile,particleConfig,placementsFromLevel,setBakerSettingsForLevel,exportEffectsMod,
 } from '../src/effects-authoring.js';
 
@@ -261,4 +261,32 @@ test('object-light export refuses a package with no exported level roots',()=>{
     lights:[{object:'mobys/lamp',type:'point',range:8}],
   }),[]);
   assert.ok(issues.some(x=>x.includes('at least one exported level')));
+});
+
+
+test('baker export preserves existing area lights and deduplicates authored copies',()=>{
+  const existing={position:[9,8,7],axis_u:[1,0,0],axis_v:[0,1,0],radiance:[2,3,4]};
+  const state=normalizeEffects({
+    schemaVersion:EFFECTS_SCHEMA_VERSION,
+    selectedLevel:'level_01',
+    areaLights:[
+      {level:'level_01',placement:'manual',...existing},
+      {level:'level_01',placement:'manual',position:[1,2,3],axis_u:[2,0,0],axis_v:[0,2,0],radiance:[5,4,3]},
+    ],
+  });
+  const base={version:1,area_lights:[existing]};
+  const out=bakerProfile(base,state,'level_01');
+  assert.equal(out.area_lights.length,2);
+  assert.deepEqual(out.area_lights[0],existing);
+  assert.deepEqual(mergedAreaLights(out,state,'level_01'),out.area_lights,'re-export must not duplicate authored rectangles');
+});
+
+test('area-light limit counts existing Enhanced profile lights too',()=>{
+  const existing=Array.from({length:64},(_,i)=>({position:[i,0,0],axis_u:[1,0,0],axis_v:[0,1,0],radiance:[1,1,1]}));
+  const state=normalizeEffects({
+    schemaVersion:EFFECTS_SCHEMA_VERSION,
+    selectedLevel:'level_01',
+    areaLights:[{level:'level_01',placement:'manual',position:[999,0,0],axis_u:[1,0,0],axis_v:[0,1,0],radiance:[1,1,1]}],
+  });
+  assert.ok(bakerExportIssues(state,'level_01',{version:1,area_lights:existing}).some(x=>x.includes('at most 64')));
 });

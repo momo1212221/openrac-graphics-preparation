@@ -269,11 +269,30 @@ export function objectLightCatalog(state) {
 const vectorLength=(v)=>Math.hypot(Number(v?.[0]),Number(v?.[1]),Number(v?.[2]));
 const crossLength=(a,b)=>Math.hypot(Number(a?.[1])*Number(b?.[2])-Number(a?.[2])*Number(b?.[1]),Number(a?.[2])*Number(b?.[0])-Number(a?.[0])*Number(b?.[2]),Number(a?.[0])*Number(b?.[1])-Number(a?.[1])*Number(b?.[0]));
 
-export function bakerExportIssues(state,levelDir){
+const bakedAreaLight=(raw)=>{
+  const row=normalizeAreaLight(raw);
+  return {position:row.position,axis_u:row.axis_u,axis_v:row.axis_v,radiance:row.radiance};
+};
+const areaSignature=(row)=>JSON.stringify([row?.position,row?.axis_u,row?.axis_v,row?.radiance]);
+
+export function mergedAreaLights(baseProfile,state,levelDir){
+  const out=[],seen=new Set();
+  const add=(row)=>{
+    if(!row||typeof row!=="object")return;
+    const baked=bakedAreaLight(row),sig=areaSignature(baked);
+    if(seen.has(sig))return;
+    seen.add(sig);out.push(baked);
+  };
+  if(Array.isArray(baseProfile?.area_lights))baseProfile.area_lights.forEach(add);
+  (state?.areaLights||[]).filter(row=>row?.level===levelDir).forEach(add);
+  return out;
+}
+
+export function bakerExportIssues(state,levelDir,baseProfile={}){
   const issues=[]; if(!/^level_\d+$/.test(String(levelDir||"")))issues.push("Select an exported level");
-  const settings=bakerSettingsForLevel(state,levelDir); issues.push(...bakerSettingsIssues(settings));
+  const settings=bakerSettingsForLevel(state,levelDir,baseProfile); issues.push(...bakerSettingsIssues(settings));
   const rows=(state?.areaLights||[]).filter(row=>row?.level===levelDir);
-  if(rows.length>64)issues.push("Enhanced Baker supports at most 64 area lights per level");
+  if(mergedAreaLights(baseProfile,state,levelDir).length>64)issues.push("Enhanced Baker supports at most 64 area lights per level");
   rows.forEach((raw,index)=>{
     const area=normalizeAreaLight(raw), label=`Area light ${index+1}`;
     if(area.placement==="unplaced")issues.push(`${label}: placement is not confirmed`);
@@ -291,7 +310,7 @@ export function bakerProfile(baseProfile,state,levelDir){
   profile.sky_intensity=settings.skyIntensity; profile.sky_weight=settings.skyWeight; profile.surface_emission_scale=settings.surfaceEmissionScale;
   profile.rays=settings.rays; profile.bounces=settings.bounces; profile.adaptive_rays=settings.adaptiveRays;
   profile.environment_probes={...(profile.environment_probes&&typeof profile.environment_probes==="object"?profile.environment_probes:{}),enabled:settings.environmentProbes,resolution:settings.probeResolution,maximum_probes:settings.maximumProbes,spacing:settings.spacing};
-  profile.area_lights=state.areaLights.filter(row=>row.level===levelDir).map(raw=>{const row=normalizeAreaLight(raw);return {position:row.position,axis_u:row.axis_u,axis_v:row.axis_v,radiance:row.radiance}});
+  profile.area_lights=mergedAreaLights(profile,state,levelDir);
   return profile;
 }
 
@@ -364,7 +383,7 @@ export async function saveText(controller, name, extension, text) {
 }
 
 export async function exportBakerProfile(controller, info, state, levelDir, baseProfile) {
-  const issues=bakerExportIssues(state,levelDir);
+  const issues=bakerExportIssues(state,levelDir,baseProfile);
   if(issues.length)throw new Error("Baker profile is not ready: "+issues.slice(0,3).join("; ")+(issues.length>3?" (+"+(issues.length-3)+" more)":""));
   const profile = bakerProfile(baseProfile,state,levelDir);
   const name = `${info.packId}-${levelDir}-probe-bake`;
