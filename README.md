@@ -1,9 +1,10 @@
 # Graphics preparation
 
-Graphics preparation 0.17.3 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.18.0 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
-There is no custom launcher service, no Python helper and no external executable. The release ZIP
-contains:
+The normal texture-AI workflow needs no custom launcher service, Python helper or external executable.
+Geometry Enhancement is optional and uses the bundled Python helper only for OpenRAC's official
+editor/assets.py glTF export/import round trip. The release ZIP contains:
 
 - Real-ESRGAN x4plus as an ONNX model;
 - ONNX Runtime Web's bundled WASM module;
@@ -17,7 +18,7 @@ therefore bundled inside the mod.
 ## Use
 
 1. Install the normal current OpenRAC Dev Launcher.
-2. Install `graphics-preparation-0.17.3.zip`.
+2. Install `graphics-preparation-0.18.0.zip`.
 3. In **Models and textures**, enable **Save the game's textures while you play**.
 4. Play the content whose textures you want to prepare.
 5. Open **Graphics preparation**.
@@ -441,3 +442,45 @@ The release now contains one complete platform archive for each supported deskto
 joined all-platform archive for manual installation. Every platform archive contains the full
 Graphics preparation product (tool UI, local AI runtime/models, material pipeline and the selected
 native runtime library), and every file is listed in `SHA256SUMS`.
+
+
+## 3D Geometry Enhancement (0.18.0)
+
+Graphics preparation now includes a conservative OpenRAC-native geometry pipeline for exported glTF
+models. The launcher page can export an `ai.meshes` job; the bundled
+`helper/openrac_graphics_helper.py` runs it against an OpenRAC checkout with ready levels.
+
+The helper uses OpenRAC's own `editor/assets.py export/import` path, so the result is a normal
+overrides pack rather than a custom runtime format.
+
+Profiles:
+
+- **Enhanced**: tangent-space cleanup and regenerated smooth normals without adding geometry.
+- **High**: one crack-free midpoint subdivision pass, up to the per-asset triangle budget.
+- **Ultra**: up to two subdivision passes where the budget allows.
+- **Experimental**: the Ultra topology path plus optional small shape refinement for manual review.
+
+Safety rules:
+
+- POSITION, UV, vertex colour, joint and weight streams are preserved/interpolated.
+- Skinning stays on the game's original `joint_NNN` skeleton; animations are not replaced.
+- Existing tangents are regenerated from the new mesh/UVs after normals are rebuilt.
+- Morph-target primitives, unknown attributes, malformed indices and missing UVs are skipped instead
+  of being silently rewritten.
+- Triangle budgets default to larger terrain limits and tighter animated-object limits.
+- Shape refinement is **Off by default**. With it Off, original vertex positions and collision
+  alignment remain unchanged; subdivision only increases surface resolution and shading quality.
+- Even when Shape refinement is enabled, moby and terrain positions remain protected unless
+  **Allow visual/collision mismatch** is explicitly enabled.
+- The helper writes `geometry-report.json` with before/after triangle counts, applied subdivision
+  levels, budget limits, measured vertex motion and collision-review candidates.
+
+Run an exported job with:
+
+```sh
+python3 helper/openrac_graphics_helper.py geometry-job.json --openrac-root /path/to/OpenRAC
+```
+
+The generated Geometry ZIP is installed through OpenRAC's normal Mods page. Game/disc assets are
+never bundled in Graphics preparation itself; the helper operates only on the user's own OpenRAC
+exports.
