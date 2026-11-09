@@ -25,7 +25,7 @@ test('WebGPU tries graph capture before plain GPU and only then CPU fallback',()
 
 test('AI runtime keeps reusable tile buffers and records timings',()=>{
   const code=readFileSync(root+'src/ai-runtime.js','utf8');
-  assert.match(code,/const inputValues = new Float32Array\(3 \* MODEL_INPUT \* MODEL_INPUT\)/);
+  assert.match(code,/new Float32Array\(3\*MODEL_INPUT\*MODEL_INPUT\)/);
   assert.match(code,/fillFixedRgbTile\(/);
   assert.match(code,/elapsedMs:performance\.now\(\)-started/);
   assert.doesNotMatch(code,/rendered = document\.createElement\("canvas"\)/);
