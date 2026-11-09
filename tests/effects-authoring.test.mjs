@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  EFFECTS_SCHEMA_VERSION,effectExportIssues,loadLevels,manifestObjectPosition,
-  normalizeEffects,normalizeParticle,objectLightCatalog,bakerProfile,particleConfig,placementsFromLevel,
+  EFFECTS_SCHEMA_VERSION,bakerExportIssues,bakerSettingsForLevel,effectExportIssues,loadLevels,manifestObjectPosition,
+  normalizeAreaLight,normalizeEffects,normalizeParticle,objectLightCatalog,bakerProfile,particleConfig,placementsFromLevel,setBakerSettingsForLevel,
 } from '../src/effects-authoring.js';
 
 test('runtime point and spot lights serialize to the official object-lights format',()=>{
@@ -20,7 +20,7 @@ test('runtime point and spot lights serialize to the official object-lights form
 test('baker authoring preserves existing profile and adds official area_lights',()=>{
   const state=normalizeEffects({
     baker:{skyIntensity:.7,skyWeight:.4,surfaceEmissionScale:2,environmentProbes:true,probeResolution:64,maximumProbes:256,spacing:16},
-    areaLights:[{level:'level_01',position:[1,2,3],axis_u:[2,0,0],axis_v:[0,2,0],radiance:[5,4,3]}],
+    areaLights:[{level:'level_01',placement:'manual',position:[1,2,3],axis_u:[2,0,0],axis_v:[0,2,0],radiance:[5,4,3]}],
   });
   const out=bakerProfile({version:1,regions:{adaptive_density:true}},state,'level_01');
   assert.equal(out.regions.adaptive_density,true);
@@ -170,4 +170,40 @@ test('legacy corrupt rows migrate to unplaced instead of becoming origin effects
   assert.equal(state.particles[0].placement,'unplaced');
   assert.equal(state.particles[1].placement,'unplaced');
   assert.deepEqual(state.particles[1].position,[1,2,3]);
+});
+
+test('stock Enhanced baker settings stay inside the real schema',()=>{
+  const state=normalizeEffects({schemaVersion:EFFECTS_SCHEMA_VERSION,selectedLevel:'level_01',bakerByLevel:{level_01:{probeResolution:96,maximumProbes:999,spacing:1,rays:2,bounces:99,adaptiveRays:false}}});
+  const settings=bakerSettingsForLevel(state,'level_01');
+  assert.equal(settings.probeResolution,64); assert.equal(settings.maximumProbes,512); assert.equal(settings.spacing,2); assert.equal(settings.rays,16); assert.equal(settings.bounces,32); assert.equal(settings.adaptiveRays,false);
+});
+
+test('baker settings are isolated per exported level',()=>{
+  const state=normalizeEffects({schemaVersion:EFFECTS_SCHEMA_VERSION,bakerByLevel:{}});
+  setBakerSettingsForLevel(state,'level_01',{...state.baker,skyIntensity:.4,rays:128});
+  setBakerSettingsForLevel(state,'level_02',{...state.baker,skyIntensity:1.2,rays:512});
+  assert.equal(bakerSettingsForLevel(state,'level_01').skyIntensity,.4); assert.equal(bakerSettingsForLevel(state,'level_01').rays,128);
+  assert.equal(bakerSettingsForLevel(state,'level_02').skyIntensity,1.2); assert.equal(bakerSettingsForLevel(state,'level_02').rays,512);
+});
+
+test('legacy area lights require placement confirmation before baking',()=>{
+  const state=normalizeEffects({schemaVersion:2,selectedLevel:'level_01',areaLights:[{level:'level_01',position:[4,5,6],axis_u:[2,0,0],axis_v:[0,2,0],radiance:[5,4,3]}]});
+  assert.equal(state.areaLights[0].placement,'unplaced'); assert.ok(bakerExportIssues(state,'level_01').some(x=>x.includes('placement is not confirmed')));
+});
+
+test('baker rejects degenerate area lights and accepts confirmed rectangles',()=>{
+  const state=normalizeEffects({schemaVersion:EFFECTS_SCHEMA_VERSION,selectedLevel:'level_01',areaLights:[{level:'level_01',placement:'manual',position:[1,2,3],axis_u:[1,0,0],axis_v:[2,0,0],radiance:[5,4,3]}]});
+  assert.ok(bakerExportIssues(state,'level_01').some(x=>x.includes('non-degenerate rectangle')));
+  state.areaLights[0]=normalizeAreaLight({level:'level_01',placement:'manual',position:[1,2,3],axis_u:[1,0,0],axis_v:[0,1,0],radiance:[5,4,3]});
+  assert.deepEqual(bakerExportIssues(state,'level_01'),[]);
+});
+
+test('smog is a first-class runtime preset',()=>{
+  const state=normalizeEffects({schemaVersion:EFFECTS_SCHEMA_VERSION,particles:[{level:'level_02',preset:'smog',placement:'manual',position:[1,2,3],rate:3}]});
+  assert.equal(state.particles[0].preset,'smog'); assert.match(particleConfig(state,[{dir:'level_02',level:2}]),/^2\tsmog\t1\t2\t3\t/m);
+});
+
+test('baker profile writes stock rays bounces and adaptive fields',()=>{
+  const state=normalizeEffects({schemaVersion:EFFECTS_SCHEMA_VERSION,selectedLevel:'level_01',bakerByLevel:{level_01:{skyIntensity:.8,skyWeight:.5,surfaceEmissionScale:1,environmentProbes:true,probeResolution:128,maximumProbes:128,spacing:32,rays:1024,bounces:4,adaptiveRays:false}}});
+  const out=bakerProfile({version:1},state,'level_01'); assert.equal(out.rays,1024); assert.equal(out.bounces,4); assert.equal(out.adaptive_rays,false); assert.equal(out.environment_probes.resolution,128);
 });
