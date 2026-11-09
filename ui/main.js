@@ -1189,6 +1189,82 @@ function render() {
   general.append(stars.row);
   content.append(general);
 
+  const geometry = el("section", undefined, "panel");
+  geometry.append(el("div", "3D GEOMETRY ENHANCEMENT", "eyebrow"));
+  geometry.append(el("p",
+    "OpenRAC-native model round trip: export glTF → refine mesh/UV/skinning → recalculate tangent space → import as an overrides pack. Geometry runs independently from the texture AI cache.",
+    "info-note"));
+
+  const geometryProfile = settingRow(
+    "Geometry profile",
+    "Enhanced recalculates smooth tangent space; High adds one crack-free subdivision pass; Ultra can add two passes inside per-asset triangle budgets. Experimental also permits stronger shape work when explicitly enabled.",
+  );
+  geometryProfile.control.append(select([
+    ["enhanced","Enhanced · tangent-space cleanup"],
+    ["high","High · 1 subdivision pass"],
+    ["ultra","Ultra · up to 2 passes"],
+    ["experimental","Experimental · manual review"],
+  ],state.geometryProfile,async(value)=>{
+    state.geometryProfile=value;await savePrefs();render();
+  }));
+  geometry.append(geometryProfile.row);
+
+  const geometryScope = settingRow(
+    "3D asset scope",
+    "Choose which OpenRAC exports the helper processes. Terrain, scenery and mobys use the official Models and textures glTF round trip.",
+  );
+  geometryScope.control.append(select([
+    ["all","All supported 3D assets"],
+    ["terrain","Terrain only"],
+    ["scenery","Scenery · ties + shrubs"],
+    ["mobys","Mobys · characters/objects/weapons"],
+  ],state.geometryScope,async(value)=>{
+    state.geometryScope=value;await savePrefs();render();
+  }));
+  geometry.append(geometryScope.row);
+
+  const geometryBudget = settingRow(
+    "Triangle budget",
+    "Caps each primitive before another 4× subdivision step. Auto uses larger budgets for terrain and tighter budgets for animated objects.",
+  );
+  geometryBudget.control.append(select([
+    [0,"Auto · per asset type"],
+    [60000,"60k triangles"],
+    [120000,"120k triangles"],
+    [250000,"250k triangles"],
+  ],state.geometryTriangleBudget,async(value)=>{
+    state.geometryTriangleBudget=Number(value)||0;await savePrefs();render();
+  }));
+  geometry.append(geometryBudget.row);
+
+  const shapeRefine = settingRow(
+    "Shape refinement",
+    "Allows a very small volume-preserving surface relaxation after subdivision. Off keeps all original vertex positions exactly; recommended for the first production pass.",
+  );
+  shapeRefine.control.append(toggle(state.geometryShapeRefine,"Shape refinement",async(value)=>{
+    state.geometryShapeRefine=value;await savePrefs();render();
+  }));
+  geometry.append(shapeRefine.row);
+
+  const collisionMismatch = settingRow(
+    "Allow visual/collision mismatch",
+    "Experimental. When Off, moby and terrain vertices are protected even if Shape refinement is On. When On, moved gameplay surfaces are reported for collision rebuild/manual review.",
+  );
+  collisionMismatch.control.append(toggle(state.geometryAllowCollisionMismatch,"Allow collision mismatch",async(value)=>{
+    state.geometryAllowCollisionMismatch=value;await savePrefs();render();
+  }));
+  geometry.append(collisionMismatch.row);
+
+  const geometryJobButton=el("button","Export Geometry Job","primary");
+  geometryJobButton.onclick=()=>void exportGeometryJob();
+  const geometryButtons=el("div",undefined,"button-row");
+  geometryButtons.append(geometryJobButton);
+  geometry.append(geometryButtons);
+  geometry.append(el("p",
+    "Run: python3 helper/openrac_graphics_helper.py <geometry-job.json> --openrac-root /path/to/OpenRAC. The helper creates geometry-report.json plus an installable OpenRAC override ZIP. Animations remain from the game; unknown bones, missing UVs, morph targets and unsupported primitive layouts are never silently rewritten.",
+    "muted"));
+  content.append(geometry);
+
   const safety = el("section", undefined, "panel");
   safety.append(el("div", "FAIL-SAFE", "eyebrow"));
   for (const [title, description, badge] of [
