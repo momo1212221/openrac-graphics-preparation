@@ -63,6 +63,8 @@ let state = {
   master8x: true,
   materialMaps: "key",
   materialCurvature: true,
+  emissiveCnn: false,
+  emissiveCnnConfidence: 0.68,
   mipmaps: "off",
   geometryProfile: "modern",
   geometryScope: "all",
@@ -744,7 +746,12 @@ async function createPack({ai, cacheOnly=false}) {
         ) {
           try {
             progress((groupIndex + .82) / workGroups.length, 1, `Material maps · ${baseLabel}`, {sampleRate:false});
-            generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic", {curvature:state.materialCurvature});
+            generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic", {
+              curvature:state.materialCurvature,
+              emissiveCnnBackend:state.emissiveCnn?"builtin":"off",
+              emissiveCnnConfidence:state.emissiveCnnConfidence,
+              emissiveCnnMode:"augment",
+            });
             stats.materialMapSets += group.members.length;
             for(const member of group.members){
               stats.materialQualityRows.push({
@@ -752,6 +759,7 @@ async function createPack({ai, cacheOnly=false}) {
                 pbrCalibration:generatedMaps.pbrCalibration,pbrValidation:generatedMaps.pbrValidation,
                 heightPipeline:generatedMaps.heightPipeline,
                 albedoDelight:generatedMaps.albedoDelight,albedoValidation:generatedMaps.albedoValidation,
+                ...(generatedMaps.emissiveCnn?{emissiveCnn:generatedMaps.emissiveCnn}:{}),
               });
             }
             if(generatedMaps.quality?.ok===false){
@@ -793,6 +801,7 @@ async function createPack({ai, cacheOnly=false}) {
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
+              ...(generatedMaps.emissiveCnn?{emissiveCnn:generatedMaps.emissiveCnn}:{}),
               pbrCalibration:generatedMaps.pbrCalibration,
               pbrValidation:generatedMaps.pbrValidation,
               albedoDelight:generatedMaps.albedoDelight,
@@ -867,6 +876,7 @@ async function createPack({ai, cacheOnly=false}) {
       material_maps_mode: cacheOnly ? "all-from-last-ai-cache" : state.materialMaps,
       ai_cache_only_material_rebuild: cacheOnly,
       material_curvature: state.materialCurvature,
+      emissive_cnn: state.emissiveCnn ? "builtin-synthetic-experimental" : "off",
       mipmap_sets: stats.mipmapSets,
       mipmap_levels: stats.mipmapLevels,
       mipmaps_mode: "openrac-runtime",
@@ -1160,6 +1170,28 @@ function render() {
     state.materialMaps=value;await savePrefs();render();
   }));
   general.append(materialMaps.row);
+
+  const emissiveCnn = settingRow(
+    "Experimental CNN emissive masks",
+    "Offline 3-layer neural classifier trained only on synthetic lamps and foliage. Runs while generating material sidecars, including rebuilding from the last AI cache. Enhances emissive.png; NOT real-time neural Bloom. Existing AI texture cache is preserved.",
+  );
+  emissiveCnn.control.append(toggle(state.emissiveCnn, "Experimental emissive CNN", async(value)=>{
+    state.emissiveCnn=value;await savePrefs();render();
+  }));
+  general.append(emissiveCnn.row);
+
+  const emissiveConfidence=settingRow(
+    "Emissive CNN sensitivity",
+    "Conservative reduces false positives. Balanced finds more candidates but needs visual review. Rule-based emissive pixels remain preserved.",
+  );
+  emissiveConfidence.control.append(select([
+    ["0.68","Balanced (experimental)"],
+    ["0.84","Conservative"],
+    ["0.94","Very conservative"],
+  ], String(state.emissiveCnnConfidence), async(value)=>{
+    state.emissiveCnnConfidence=Number(value);await savePrefs();render();
+  }));
+  general.append(emissiveConfidence.row);
 
   const curvature = settingRow(
     "Curvature sidecar",
@@ -1576,6 +1608,9 @@ async function start() {
       master8x: saved.master8x !== false,
       materialMaps: ["off","key","all"].includes(saved.materialMaps) ? saved.materialMaps : "key",
       materialCurvature: saved.materialCurvature !== false,
+      emissiveCnn: saved.emissiveCnn === true,
+      emissiveCnnConfidence: [0.68,0.84,0.94].includes(Number(saved.emissiveCnnConfidence))
+        ? Number(saved.emissiveCnnConfidence) : 0.68,
       mipmaps: ["off","key","all"].includes(saved.mipmaps) ? saved.mipmaps : "off",
       geometryProfile: ["enhanced","high","ultra","modern","experimental"].includes(saved.geometryProfile) ? saved.geometryProfile : "modern",
       geometryScope: ["all","terrain","scenery","mobys"].includes(saved.geometryScope) ? saved.geometryScope : "all",
