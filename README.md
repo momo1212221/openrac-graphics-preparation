@@ -1,6 +1,6 @@
 # Graphics preparation
 
-Graphics preparation 0.21.3 runs the AI texture path on the **standard OpenRAC Dev Launcher**.
+Graphics preparation 0.21.4 (personal-fork CNN PREVIEW) runs the AI texture path on the **standard OpenRAC Dev Launcher**.
 
 The normal texture-AI workflow needs no custom launcher service, Python helper or external executable.
 Geometry Enhancement is optional and uses the bundled Python helper only for OpenRAC's official
@@ -628,3 +628,28 @@ asset-aware remesh itself is already used by the normal override ZIP.
 
 The Modern / PS5 target enables Asset-aware Remesh, Triangle Topology Optimization, Silhouette
 Refinement at 100%, LOD Planning and the existing bounded Height micro-displacement together.
+
+## Experimental hybrid HQ Bloom + neural emission (personal fork 0.21.4)
+
+This branch is a separate **preview**, not the official OpenRAC project. A tiny
+3-layer CNN (trained only on generated synthetic lamps/backgrounds, not on
+licensed Ratchet & Clank assets) now runs **offline and opt-in** under
+`Enhanced material maps -> CNN emissive detection (experimental)`. Run
+`Prepare AI graphics`, or reconstruct from the existing AI cache to avoid
+re-running Real-ESRGAN. The CNN refines the heuristic emission and writes
+`Materials/<original-texture-hash>/emissive.png` alongside the diffuse
+replacement. The source textures and AI upscaler cache keys remain untouched.
+
+Install the preview Graphics Preparation mod via your PERSONAL fork's
+preview release, import its generated texture ZIP into a compatible
+`momo1212221/OpenRAC` build on
+`test/bloom-hq-cnn-materials-20261110`, then enable Enhanced graphics,
+Bloom Strong and 16-bit FP16 in that launcher.
+
+**Do not use the official launcher to import the technical sidecars: it
+does not retain them.** This fork's launcher adds verified importer, merge
+and export support. The game uses original 64-bit texture hashes to load
+emissive maps; it does not execute neural inference during frames.
+
+Default is OFF; model errors fall back to the existing material heuristics.
+No evidence yet of improved real-game image quality or 60fps performance.
