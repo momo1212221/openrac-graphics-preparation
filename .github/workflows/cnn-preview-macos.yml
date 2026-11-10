@@ -1,0 +1,96 @@
+name: cnn-preview-macos
+"on":
+  push:
+    branches:
+      - feat/emissive-cnn-runtime-bridge-20261110
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cnn-preview-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-neural-bloom-mod:
+    if: github.repository == 'momo1212221/openrac-graphics-preparation'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install ninja
+      - name: Fetch pinned OpenRAC mod SDK
+        shell: bash
+        run: echo "SDK=$(python tools/fetch_sdk.py)" >> "$GITHUB_ENV"
+      - name: Compile arm64-native effects plugin
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          cmake --build build --target graphics_preparation_runtime graphics_effects_config_test --parallel 4
+          ctest --test-dir build --output-on-failure
+      - name: Check CNN code and material-pipeline tests
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run prepare:webai
+          node --test
+      - name: Build native OpenRAC mod archive
+        shell: bash
+        run: |
+          mkdir -p native-dist native-package
+          python "$SDK/tools/package_mod.py" build/package/graphics_preparation_runtime -o native-dist
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+          zips=sorted(Path('native-dist').glob('graphics-preparation-*-macos-arm64.zip'))
+          assert len(zips)==1,zips
+          with zipfile.ZipFile(zips[0]) as z:
+              z.extractall('native-package')
+          PY
+      - name: Fetch pinned AI upscale runtime models
+        shell: bash
+        run: |
+          mkdir -p models
+          curl -L --fail --retry 5 --output models/realesrgan-x4plus.onnx \
+            "https://huggingface.co/qualcomm/Real-ESRGAN-x4plus/resolve/725b1db7360e0befb85be5ca9924d8c1e9b1b229/Real-ESRGAN-x4plus.onnx"
+          echo "a64fb7ec8780e6e67a99cf380067961a0aab618c934171240eea2724217fd304  models/realesrgan-x4plus.onnx" | shasum -a 256 -c -
+          curl -L --fail --retry 5 --output models/realesrgan-general-x4v3.onnx \
+            "https://huggingface.co/qualcomm/Real-ESRGAN-General-x4v3/resolve/fe119b62b7cb27c3fa5fd3d992122f8e5a3a52c4/Real-ESRGAN-General-x4v3.onnx"
+          echo "bea98dff749104082449888501454b85a05ace135c89249599caec7ef2dace23  models/realesrgan-general-x4v3.onnx" | shasum -a 256 -c -
+      - name: Package macOS arm64 preview (native + CNN + original AI models)
+        shell: bash
+        env:
+          OPENRAC_NATIVE_PACKAGE: native-package
+          OPENRAC_REQUIRE_AI_ASSETS: "1"
+        run: |
+          python tools/package.py
+          test -f dist/graphics-preparation-0.21.4-macos-arm64.zip
+          shasum -a 256 dist/graphics-preparation-0.21.4-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graphics-preparation-cnn-0.21.4-macos-arm64
+          path: |
+            dist/graphics-preparation-0.21.4-macos-arm64.zip
+            dist/SHA256SUMS
+      - name: Publish preview to user's personal fork only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="cnn-preview-v0.21.4"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Preview tag already exists; leaving it unchanged."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            dist/graphics-preparation-0.21.4-macos-arm64.zip \
+            dist/SHA256SUMS \
+            --target "$GITHUB_SHA" \
+            --title "Graphics Preparation 0.21.4 - experimental neural bloom (Mac arm64)" \
+            --prerelease \
+            --notes "Personal fork preview only. Offline synthetic-trained CNN emission, compatible only with OpenRAC test/bloom-hq-cnn-materials-20261110. CNN is experimental and OFF by default. No upstream OpenRAC changes."
