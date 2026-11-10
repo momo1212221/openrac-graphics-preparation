@@ -46,7 +46,7 @@ See [AGENT_HANDOFF.md](AGENT_HANDOFF.md) and [INTEGRATION.md](INTEGRATION.md).
 
 ## Runnable experimental CNN build (fork only)
 
-**Build:** Graphics preparation 0.21.4, feature branch
+**Build:** Graphics preparation 0.21.5, feature branch
 `feat/hybrid-bloom-cnn-usable-20261110`.
 
 The user-facing UI now has **Experimental CNN emissive masks** and a sensitivity
@@ -78,6 +78,6 @@ gameplay captures.
 
 **Build artifact:** see the branch's GitHub Actions workflow
 `Hybrid Bloom CNN macOS test package` and download the
-`graphics-preparation-0.21.4-macos-arm64-hybrid-cnn` artifact after
+`graphics-preparation-0.21.5-macos-arm64-hybrid-cnn` artifact after
 all checks pass. Add the enclosed ZIP to Mods → Add a mod. The official
 OpenRAC project and the user's main branches are unchanged.
