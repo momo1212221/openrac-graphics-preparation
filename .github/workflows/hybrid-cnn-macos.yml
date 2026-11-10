@@ -2,7 +2,7 @@ name: Hybrid Bloom CNN macOS test package
 on:
   push:
     branches:
-      - feat/hybrid-bloom-cnn-usable-20261110
+      - feat/hybrid-bloom-cnn-final-20261110
   workflow_dispatch: {}
 
 permissions:
@@ -41,17 +41,17 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
           cmake --build build --target graphics_preparation_runtime graphics_effects_config_test --parallel 4
           ctest --test-dir build --output-on-failure
-      - name: Build installable Graphics preparation 0.21.4 macOS ZIP
+      - name: Build installable Graphics preparation 0.21.5 macOS ZIP
         env:
           OPENRAC_NATIVE_PACKAGE: build/package/graphics_preparation_runtime
           OPENRAC_REQUIRE_AI_ASSETS: "1"
         run: |
           python tools/package.py
-          test -s dist/graphics-preparation-0.21.4-macos-arm64.zip
-          ls -lh dist/graphics-preparation-0.21.4-macos-arm64.zip
+          test -s dist/graphics-preparation-0.21.5-macos-arm64.zip
+          ls -lh dist/graphics-preparation-0.21.5-macos-arm64.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: graphics-preparation-0.21.4-macos-arm64-hybrid-cnn
-          path: dist/graphics-preparation-0.21.4-macos-arm64.zip
+          name: graphics-preparation-0.21.5-macos-arm64-hybrid-cnn
+          path: dist/graphics-preparation-0.21.5-macos-arm64.zip
           retention-days: 30
           if-no-files-found: error
