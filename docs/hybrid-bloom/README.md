@@ -42,3 +42,42 @@ The original three module test files passed locally (22/22) using mock ONNX sess
 This branch is in momo1212221/openrac-graphics-preparation only; its official upstreams and the owner's main are unchanged. **This fork and branch are public.** Do not merge until the collaborating agent reviews and tests the interface.
 
 See [AGENT_HANDOFF.md](AGENT_HANDOFF.md) and [INTEGRATION.md](INTEGRATION.md).
+
+
+## Runnable experimental CNN build (fork only)
+
+**Build:** Graphics preparation 0.21.4, feature branch
+`feat/hybrid-bloom-cnn-usable-20261110`.
+
+The user-facing UI now has **Experimental CNN emissive masks** and a sensitivity
+selector under **AI asset enhancement**. It runs a bundled three-layer convolution
+classifier (procedural synthetic training only, `synthetic-cnn-20261110-v1`)
+on upscaled textures during material-PNG export. The classifier uses a bounded
+128-pixel inference working size, emits full-size per-texel probabilities and
+fuses them with the existing emissive rules. Failure preserves the old map.
+There is no network request or GPU inference for this CNN.
+
+**To reuse previous work:** install the CI's macOS-arm64 mod ZIP (or a locally
+built installable package), open Graphics preparation, enable **Enhanced material maps**,
+enable **Experimental CNN emissive masks**, choose **Balanced** (or conservative)
+and click **Add materials to last AI run**. This reuses the already cached
+Real-ESRGAN textures rather than rerunning the previous upscale pass.
+The resulting texture pack includes `Materials/<hash>/emissive.png` and
+the `emissiveCnn` model/status in `material.json`. Install that generated
+pack in the standard OpenRAC launcher.
+
+**Important limitation:** The HQ Bloom renderer in
+`momo1212221/OpenRAC:test/bloom-hq-hybrid-20261110` has FP16 multi-level
+screen-space bloom, **but has not yet been validated as consuming the material
+emissive sidecars in its live lighting path**. The offline CNN is usable
+now for authoring material masks; whether it changes the in-game Bloom still
+requires the separate runtime importer/material-ID and HDR emission bridge.
+Do not call this an end-to-end neural-Bloom release. The synthetic model is
+experimental and is not a substitute for training/evaluation on licensed
+gameplay captures.
+
+**Build artifact:** see the branch's GitHub Actions workflow
+`Hybrid Bloom CNN macOS test package` and download the
+`graphics-preparation-0.21.4-macos-arm64-hybrid-cnn` artifact after
+all checks pass. Add the enclosed ZIP to Mods → Add a mod. The official
+OpenRAC project and the user's main branches are unchanged.
