@@ -63,6 +63,7 @@ let state = {
   master8x: true,
   materialMaps: "key",
   materialCurvature: true,
+  emissiveCnn: false, // Synthetic-trained model: experimental, opt-in only
   mipmaps: "off",
   geometryProfile: "modern",
   geometryScope: "all",
@@ -331,6 +332,9 @@ async function createPack({ai, cacheOnly=false}) {
     qualityScoreSum:0,
     qualityScoreCount:0,
     materialMapSets:0,
+    emissiveCnnRuns:0,
+    emissiveCnnPromoted:0,
+    emissiveCnnFallbacks:0,
     mipmapSets:0,
     mipmapLevels:0,
     master8xRuns:0,
@@ -744,7 +748,20 @@ async function createPack({ai, cacheOnly=false}) {
         ) {
           try {
             progress((groupIndex + .82) / workGroups.length, 1, `Material maps · ${baseLabel}`, {sampleRate:false});
-            generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic", {curvature:state.materialCurvature});
+            generatedMaps = await generateMaterialMapPngs(prepared.bytes, prepared.material || "generic", {
+              curvature:state.materialCurvature,
+              emissiveCnn:state.emissiveCnn?"embedded":"off",
+            });
+            if(generatedMaps.emissiveCnn){
+              if(generatedMaps.emissiveCnn.status==="applied"){
+                stats.emissiveCnnRuns += group.members.length;
+                stats.emissiveCnnPromoted += generatedMaps.emissiveCnn.promotedPixels*group.members.length;
+              }else if(generatedMaps.emissiveCnn.status==="inference-fallback"){
+                stats.emissiveCnnFallbacks += group.members.length;
+                stats.warnings.push({hashes:group.members.map(m=>m.hash),
+                  strategy:"emissive-cnn-fallback",error:generatedMaps.emissiveCnn.warning});
+              }
+            }
             stats.materialMapSets += group.members.length;
             for(const member of group.members){
               stats.materialQualityRows.push({
@@ -752,6 +769,7 @@ async function createPack({ai, cacheOnly=false}) {
                 pbrCalibration:generatedMaps.pbrCalibration,pbrValidation:generatedMaps.pbrValidation,
                 heightPipeline:generatedMaps.heightPipeline,
                 albedoDelight:generatedMaps.albedoDelight,albedoValidation:generatedMaps.albedoValidation,
+                emissiveCnn:generatedMaps.emissiveCnn||null,
               });
             }
             if(generatedMaps.quality?.ok===false){
@@ -793,6 +811,7 @@ async function createPack({ai, cacheOnly=false}) {
               material:prepared.material || "generic",
               textureClass:prepared.textureClass || "diffuse",
               emissivePixels:generatedMaps.emissivePixels,
+              ...(generatedMaps.emissiveCnn?{emissiveCnn:generatedMaps.emissiveCnn}:{}),
               pbrCalibration:generatedMaps.pbrCalibration,
               pbrValidation:generatedMaps.pbrValidation,
               albedoDelight:generatedMaps.albedoDelight,
@@ -1160,6 +1179,19 @@ function render() {
     state.materialMaps=value;await savePrefs();render();
   }));
   general.append(materialMaps.row);
+
+  const neuralEmission = settingRow(
+    "CNN emissive detection (experimental)",
+    "Runs a small real convolutional model OFFLINE during material-pack preparation. "
+    +"It adds high-confidence lamp and energy masks without re-running your existing AI upscale cache. "
+    +"Trained on synthetic samples; not yet validated on real Ratchet & Clank assets. "
+    +"Requires the HQ Bloom CNN OpenRAC fork build and Enhanced materials. "
+    +"Default Off; falls back to historical emissive maps if inference fails.",
+  );
+  neuralEmission.control.append(toggle(state.emissiveCnn,"Neural emission (offline)",async(value)=>{
+    state.emissiveCnn=value;await savePrefs();render();
+  }));
+  general.append(neuralEmission.row);
 
   const curvature = settingRow(
     "Curvature sidecar",

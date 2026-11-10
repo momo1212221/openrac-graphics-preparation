@@ -1,5 +1,6 @@
 import {validateMaterialMaps} from "./material-map-quality.js";
 import {fuseEmissivePrediction} from "./emissive-cnn-fusion.js";
+import {predictEmissiveEmbedded,EMBEDDED_EMISSIVE_CNN_SHA256} from "./emissive-cnn-embedded.js";
 import {calibratePbrMaps,validatePbrCalibration} from "./pbr-calibration.js";
 import {deriveAlbedoSidecar,validateAlbedoSidecar} from "./albedo-delight.js";
 import {deriveHeightBands,mergeHeightBands,normalFromHeight,deriveHeightSurfaceMaps} from "./material-height.js";
@@ -295,7 +296,27 @@ export async function generateMaterialMapPngs(bytes,material="generic",options={
     const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;
     const ctx=canvas.getContext("2d",{alpha:true,willReadFrequently:true});ctx.drawImage(image,0,0);
     const source=ctx.getImageData(0,0,canvas.width,canvas.height);
-    const maps=deriveMaterialMaps(source,material,options);
+    let prediction=options.emissivePrediction??null;
+    let warning=null;
+    // The user must opt in. CNN inference runs offline on upscaled diffuse
+    // output and does not touch cached source or change any existing AI keys.
+    if(!prediction && options.emissiveCnn==="embedded"){
+      try{
+        prediction=await predictEmissiveEmbedded(source,{
+          onProgress:options.onEmissiveProgress??(()=>{}),
+          shouldCancel:options.shouldCancel??(()=>false),
+          yieldControl:()=>new Promise(resolve=>setTimeout(resolve,0)),
+        });
+      }catch(error){
+        warning=error instanceof Error?error.message:String(error);
+      }
+    }
+    const maps=deriveMaterialMaps(source,material,{
+      ...options,
+      emissivePrediction:prediction,
+      emissiveCnnModelSha256:options.emissiveCnn==="embedded"&&prediction
+        ?EMBEDDED_EMISSIVE_CNN_SHA256:(options.emissiveCnnModelSha256??null),
+    });
     const out={
       emissivePixels:maps.emissivePixels,
       pbrCalibration:maps.pbrCalibration,pbrValidation:maps.pbrValidation,
@@ -303,6 +324,7 @@ export async function generateMaterialMapPngs(bytes,material="generic",options={
       heightPipeline:maps.heightPipeline,
       quality:validateMaterialMaps(maps),
       ...(maps.emissiveCnn?{emissiveCnn:maps.emissiveCnn}:{}),
+      ...(warning?{emissiveCnn:{status:"inference-fallback",warning}}:{}),
     };
     const names=[
       "albedo","normal","roughness","height","ao","emissive","specular","metallic",
