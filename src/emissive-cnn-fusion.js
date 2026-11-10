@@ -7,6 +7,7 @@ const MAX_PIXELS = 64 * 1024 * 1024;
 const DEFAULT_CONFIDENCE = 0.94;
 const LOW_CONFIDENCE_SUPPRESS = 0.12;
 const GATE_MATERIALS = new Set(['generic', 'terrain', 'organic', 'fabric', 'stone']);
+const CHROMA_MATERIALS = new Set(['generic', 'metal', 'weapon', 'character', 'energy']);
 
 function imageIsValid(image) {
   if (!image || !Number.isSafeInteger(image.width) || !Number.isSafeInteger(image.height)) return false;
@@ -40,7 +41,7 @@ function validPrediction(mask, width, height) {
 
 /**
  * Refine an existing rule-generated emissive PNG from *offline* CNN probabilities.
- * No CNN model is bundled/trained here. The caller may supply a mask after ONNX inference.
+ * A caller may supply a verified ONNX mask or a local, experimental CNN mask.
  * Mask format: {width,height,probabilities: Float32Array}, values 0..1, pixel aligned.
  *
  * mode="augment" (default): preserve all historical emissive pixels, add only confidently
@@ -74,6 +75,7 @@ export function fuseEmissivePrediction({
     status:'no-prediction', modelSha256, threshold:confidence,
     promotedPixels:0, suppressedPixels:0, greenRejectedPixels:0,
     brightRejectedPixels:0, transparentPixels:0,
+    chromaPromotedPixels:0, chromaDensity:0,
   };
   if (!prediction) return {emissive, emissivePixels:countEmissive(emissive), report};
   if (!validPrediction(prediction, source.width, source.height)) {
@@ -85,6 +87,27 @@ export function fuseEmissivePrediction({
   const src = source.data;
   const out = emissive.data;
   const family = String(material).toLowerCase();
+
+  // High-confidence saturated red/blue emission has low REC.709 luminance.
+  // A luminance-only gate rejected red weapon lamps and blue energy cores even
+  // after the CNN recognised them. Permit such masks only if the bright, vivid
+  // region is localised in this *material*, rather than covering a whole
+  // painted wall. Never do this for vegetation, stone, soil or textiles.
+  const chromaMinConfidence = Math.max(0.92, confidence);
+  let vividCandidates = 0, opaquePixels = 0;
+  if (CHROMA_MATERIALS.has(family)) {
+    for (let pixel = 0; pixel < p.length; pixel++) {
+      const i = pixel * 4;
+      if (src[i + 3] < 16) continue;
+      opaquePixels++;
+      const maxRB = Math.max(src[i], src[i + 2]);
+      if (maxRB >= 220 && src[i + 1] < maxRB * 0.65
+          && p[pixel] >= chromaMinConfidence) vividCandidates++;
+    }
+  }
+  const chromaDensity = opaquePixels ? vividCandidates / opaquePixels : 0;
+  report.chromaDensity = Math.round(chromaDensity * 10000) / 10000;
+  const localisedChroma = vividCandidates > 0 && chromaDensity <= 0.27;
   for (let pixel = 0; pixel < p.length; pixel++) {
     const i = pixel * 4;
     const a = src[i + 3];
@@ -103,7 +126,11 @@ export function fuseEmissivePrediction({
     const r = src[i], g = src[i + 1], b = src[i + 2];
     const peak = Math.max(r, g, b) / 255;
     const y = (0.2126*r + 0.7152*g + 0.0722*b) / 255;
-    if (peak < 0.72 || (y < 0.48 && !(family === 'energy' && peak >= 0.85))) {
+    const vividRB = Math.max(r, b) >= 220 && g < Math.max(r, b) * 0.65;
+    const chromaEmitter = localisedChroma && vividRB && peak >= 0.85
+      && p[pixel] >= chromaMinConfidence;
+    if (peak < 0.72 || (y < 0.48 && !(family === 'energy' && peak >= 0.85)
+        && !chromaEmitter)) {
       report.brightRejectedPixels++;
       continue;
     }
@@ -121,7 +148,10 @@ export function fuseEmissivePrediction({
     for (let c = 0; c < 3; c++) {
       out[i + c] = Math.max(out[i + c], Math.min(255, Math.round(src[i + c] * gain)));
     }
-    if (old.some((v,c) => v !== out[i+c])) report.promotedPixels++;
+    if (old.some((v,c) => v !== out[i+c])) {
+      report.promotedPixels++;
+      if (chromaEmitter) report.chromaPromotedPixels++;
+    }
   }
   return {emissive, emissivePixels:countEmissive(emissive), report};
 }
