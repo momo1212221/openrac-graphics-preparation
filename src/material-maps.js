@@ -1,5 +1,6 @@
 import {validateMaterialMaps} from "./material-map-quality.js";
 import {fuseEmissivePrediction} from "./emissive-cnn-fusion.js";
+import {predictBuiltinEmissive, BUILTIN_EMISSIVE_MODEL} from "./emissive-builtin-cnn.js";
 import {calibratePbrMaps,validatePbrCalibration} from "./pbr-calibration.js";
 import {deriveAlbedoSidecar,validateAlbedoSidecar} from "./albedo-delight.js";
 import {deriveHeightBands,mergeHeightBands,normalFromHeight,deriveHeightSurfaceMaps} from "./material-height.js";
@@ -295,7 +296,27 @@ export async function generateMaterialMapPngs(bytes,material="generic",options={
     const canvas=document.createElement("canvas");canvas.width=image.width;canvas.height=image.height;
     const ctx=canvas.getContext("2d",{alpha:true,willReadFrequently:true});ctx.drawImage(image,0,0);
     const source=ctx.getImageData(0,0,canvas.width,canvas.height);
-    const maps=deriveMaterialMaps(source,material,options);
+    // Local experimental CNN runs only during offline pack export; the base
+    // Real-ESRGAN cache, normal maps and original upscaled diffuse are untouched.
+    let preparedOptions=options;
+    let cnnWarning=null;
+    if(options.emissiveCnnBackend==="builtin" && !options.emissivePrediction){
+      try{
+        const prediction=predictBuiltinEmissive(source);
+        preparedOptions={...options,
+          emissivePrediction:prediction,
+          emissiveCnnConfidence:options.emissiveCnnConfidence??0.68,
+        };
+      }catch(error){
+        cnnWarning=String(error?.message??error);
+      }
+    }
+    const maps=deriveMaterialMaps(source,material,preparedOptions);
+    if(maps.emissiveCnn && options.emissiveCnnBackend==="builtin"){
+      maps.emissiveCnn.model=BUILTIN_EMISSIVE_MODEL;
+      maps.emissiveCnn.training="procedural-only";
+      maps.emissiveCnn.experimental=true;
+    }
     const out={
       emissivePixels:maps.emissivePixels,
       pbrCalibration:maps.pbrCalibration,pbrValidation:maps.pbrValidation,
@@ -303,6 +324,7 @@ export async function generateMaterialMapPngs(bytes,material="generic",options={
       heightPipeline:maps.heightPipeline,
       quality:validateMaterialMaps(maps),
       ...(maps.emissiveCnn?{emissiveCnn:maps.emissiveCnn}:{}),
+      ...(cnnWarning?{emissiveCnn:{status:"inference-fallback",warning:cnnWarning}}:{}),
     };
     const names=[
       "albedo","normal","roughness","height","ao","emissive","specular","metallic",
